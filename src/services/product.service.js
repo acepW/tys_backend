@@ -33,6 +33,28 @@ class ProductService extends DualDatabaseService {
     return await this.findAll(options, isDoubleDatabase);
   }
 
+  async getById(id, isDoubleDatabase = true) {
+    const dbModels = isDoubleDatabase ? models.db1 : models.db2;
+
+    const options = {
+      include: [
+        {
+          model: dbModels.Category,
+          as: "category",
+          attributes: ["id", "category_name"],
+        },
+        {
+          model: dbModels.SubCategory,
+          as: "subCategory",
+          attributes: ["id", "sub_category_name"],
+        },
+      ],
+      order: [["product_name_indo", "ASC"]],
+    };
+
+    return await this.findById(id, options, isDoubleDatabase);
+  }
+
   /**
    * Get products by category
    * @param {Number} categoryId

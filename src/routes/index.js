@@ -5,7 +5,7 @@ const router = express.Router();
 const categoryRoutes = require("./category.route");
 const subCategoryRoutes = require("./subCategory.route");
 const companyRoutes = require("./company.route");
-// const productRoutes = require("./product.route");
+const productRoutes = require("./product.route");
 const customerRoutes = require("./customer.route");
 const syncRoutes = require("./sync.route");
 
@@ -13,7 +13,7 @@ const syncRoutes = require("./sync.route");
 router.use("/categories", categoryRoutes);
 router.use("/sub-categories", subCategoryRoutes);
 router.use("/companies", companyRoutes);
-// router.use("/products", productRoutes);
+router.use("/products", productRoutes);
 router.use("/customers", customerRoutes);
 router.use("/sync", syncRoutes);
 
@@ -27,7 +27,7 @@ router.get("/", (req, res) => {
       categories: "/api/categories",
       subCategories: "/api/sub-categories",
       companies: "/api/companies",
-      //   products: "/api/products",
+      products: "/api/products",
       customers: "/api/customers",
     },
   });
