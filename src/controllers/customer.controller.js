@@ -113,6 +113,9 @@ class CustomerController {
         contact: req.body.contact,
         email: req.body.email,
         pic_name: req.body.pic_name,
+        pic_position: req.body.pic_position,
+        director_name: req.body.director_name,
+        director_position: req.body.director_position,
         is_active: req.body.is_active !== undefined ? req.body.is_active : true,
       };
 
@@ -162,6 +165,12 @@ class CustomerController {
       if (req.body.contact !== undefined) data.contact = req.body.contact;
       if (req.body.email !== undefined) data.email = req.body.email;
       if (req.body.pic_name !== undefined) data.pic_name = req.body.pic_name;
+      if (req.body.pic_position !== undefined)
+        data.pic_position = req.body.pic_position;
+      if (req.body.director_name !== undefined)
+        data.director_name = req.body.director_name;
+      if (req.body.director_position !== undefined)
+        data.director_position = req.body.director_position;
       if (req.body.is_active !== undefined) data.is_active = req.body.is_active;
 
       const customer = await customerService.update(id, data, isDoubleDatabase);

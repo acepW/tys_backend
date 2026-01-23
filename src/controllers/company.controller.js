@@ -112,7 +112,6 @@ class CompanyController {
         address: req.body.address,
         contact: req.body.contact,
         email: req.body.email,
-        currency: req.body.currency || "IDR",
         tax: req.body.tax !== undefined ? req.body.tax : false,
         is_active: req.body.is_active !== undefined ? req.body.is_active : true,
       };
@@ -157,7 +156,6 @@ class CompanyController {
       if (req.body.address !== undefined) data.address = req.body.address;
       if (req.body.contact !== undefined) data.contact = req.body.contact;
       if (req.body.email !== undefined) data.email = req.body.email;
-      if (req.body.currency) data.currency = req.body.currency;
       if (req.body.tax !== undefined) data.tax = req.body.tax;
       if (req.body.is_active !== undefined) data.is_active = req.body.is_active;
 

@@ -40,6 +40,21 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Person in Charge name",
       },
+      pic_position: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Person in Charge position",
+      },
+      director_name: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director name",
+      },
+      director_position: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director position",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

@@ -35,12 +35,6 @@ module.exports = (sequelize) => {
         },
         comment: "Company email address",
       },
-      currency: {
-        type: DataTypes.STRING(10),
-        allowNull: true,
-        defaultValue: "IDR",
-        comment: "Company default currency",
-      },
       tax: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
