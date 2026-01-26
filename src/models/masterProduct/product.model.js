@@ -10,48 +10,6 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for product",
       },
-      product_name_indo: {
-        type: DataTypes.STRING(200),
-        allowNull: false,
-        comment: "Product name in Indonesian",
-      },
-      product_name_mandarin: {
-        type: DataTypes.STRING(200),
-        allowNull: true,
-        comment: "Product name in Mandarin",
-      },
-      qty: {
-        type: DataTypes.INTEGER,
-        defaultValue: 0,
-        validate: {
-          min: {
-            args: [0],
-            msg: "Quantity cannot be negative",
-          },
-        },
-        comment: "Product quantity in stock",
-      },
-      category_indo: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment: "Category description in Indonesian",
-      },
-      category_mandarin: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment: "Category description in Mandarin",
-      },
-      total_color: {
-        type: DataTypes.INTEGER,
-        defaultValue: 0,
-        validate: {
-          min: {
-            args: [0],
-            msg: "Total color cannot be negative",
-          },
-        },
-        comment: "Total color variations available",
-      },
       id_category: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -82,10 +40,6 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
-          name: "idx_product_name_indo",
-          fields: ["product_name_indo"],
-        },
-        {
           name: "idx_id_category",
           fields: ["id_category"],
         },
@@ -98,7 +52,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations
@@ -115,6 +69,14 @@ module.exports = (sequelize) => {
     Product.belongsTo(models.SubCategory, {
       foreignKey: "id_sub_category",
       as: "subCategory",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Product belongs to Product Fields
+    Product.hasMany(models.ProductFields, {
+      foreignKey: "id_product",
+      as: "product_fields",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
