@@ -22,14 +22,44 @@ module.exports = (sequelize) => {
       field_name: {
         type: DataTypes.STRING(200),
         allowNull: true,
-        comment: "Fields name in Mandarin",
+        comment: "Fields name",
+      },
+      field_group: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment:
+          "Group identifier untuk field yang sama tapi beda bahasa (misal: product_name)",
+      },
+      language: {
+        type: DataTypes.STRING(10),
+        allowNull: true,
+        defaultValue: "id",
+        comment: "Language code (id, zh, en, dll)",
+      },
+      field_type: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "Fields type like text, number,dropdown etc.",
+      },
+      field_value: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: "Fields value like for value dropdown etc.",
+        get() {
+          const raw = this.getDataValue("field_value");
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return raw;
+          }
+        },
       },
     },
     {
       tableName: "products_fields",
       timestamps: true,
       underscored: true,
-    }
+    },
   );
 
   // Define associations

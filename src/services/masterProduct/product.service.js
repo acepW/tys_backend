@@ -20,7 +20,14 @@ class ProductService extends DualDatabaseService {
         {
           model: dbModels.ProductFields,
           as: "product_fields",
-          attributes: ["id", "field_name"],
+          attributes: [
+            "id",
+            "field_name",
+            "field_group",
+            "field_value",
+            "field_type",
+            "language",
+          ],
         },
         {
           model: dbModels.Category,
@@ -122,7 +129,7 @@ class ProductService extends DualDatabaseService {
 
     // Validate sub-category exists and belongs to the category
     const subCategory = await dbModels.SubCategory.findByPk(
-      data.id_sub_category
+      data.id_sub_category,
     );
     if (!subCategory) {
       throw new Error("Sub-category not found");
@@ -147,7 +154,7 @@ class ProductService extends DualDatabaseService {
   async createWithFields(
     productData,
     fieldsData = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -258,7 +265,7 @@ class ProductService extends DualDatabaseService {
     id,
     productData,
     fieldsData = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;

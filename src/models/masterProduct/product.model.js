@@ -52,7 +52,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations
