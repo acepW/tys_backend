@@ -1,6 +1,5 @@
 const { db1, db2 } = require("../config/database");
 const CategoryModel = require("./category.model");
-const SubCategoryModel = require("./subCategory.model");
 const CompanyModel = require("./company.model");
 const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
@@ -15,7 +14,6 @@ const initializeModels = (sequelize) => {
   // Initialize all models
   const models = {
     Category: CategoryModel(sequelize),
-    SubCategory: SubCategoryModel(sequelize),
     Company: CompanyModel(sequelize),
     Product: ProductModel(sequelize),
     ProductFields: ProductFieldsModel(sequelize),

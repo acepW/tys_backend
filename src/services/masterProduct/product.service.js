@@ -20,24 +20,12 @@ class ProductService extends DualDatabaseService {
         {
           model: dbModels.ProductFields,
           as: "product_fields",
-          attributes: [
-            "id",
-            "field_name",
-            "field_group",
-            "field_value",
-            "field_type",
-            "language",
-          ],
+          attributes: ["id", "field_name", "field_value", "field_type"],
         },
         {
           model: dbModels.Category,
           as: "category",
-          attributes: ["id", "category_name"],
-        },
-        {
-          model: dbModels.SubCategory,
-          as: "subCategory",
-          attributes: ["id", "sub_category_name"],
+          attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
       ],
     };
@@ -53,12 +41,7 @@ class ProductService extends DualDatabaseService {
         {
           model: dbModels.Category,
           as: "category",
-          attributes: ["id", "category_name"],
-        },
-        {
-          model: dbModels.SubCategory,
-          as: "subCategory",
-          attributes: ["id", "sub_category_name"],
+          attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
       ],
     };
@@ -77,36 +60,6 @@ class ProductService extends DualDatabaseService {
 
     const options = {
       where: { id_category: categoryId },
-      include: [
-        {
-          model: dbModels.SubCategory,
-          as: "subCategory",
-          attributes: ["id", "sub_category_name"],
-        },
-      ],
-    };
-
-    return await this.findAll(options, isDoubleDatabase);
-  }
-
-  /**
-   * Get products by sub-category
-   * @param {Number} subCategoryId
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Array} Products
-   */
-  async getBySubCategory(subCategoryId, isDoubleDatabase = true) {
-    const dbModels = isDoubleDatabase ? models.db1 : models.db2;
-
-    const options = {
-      where: { id_sub_category: subCategoryId },
-      include: [
-        {
-          model: dbModels.Category,
-          as: "category",
-          attributes: ["id", "category_name"],
-        },
-      ],
     };
 
     return await this.findAll(options, isDoubleDatabase);
@@ -127,15 +80,7 @@ class ProductService extends DualDatabaseService {
       throw new Error("Category not found");
     }
 
-    // Validate sub-category exists and belongs to the category
-    const subCategory = await dbModels.SubCategory.findByPk(
-      data.id_sub_category,
-    );
-    if (!subCategory) {
-      throw new Error("Sub-category not found");
-    }
-
-    if (subCategory.id_category !== data.id_category) {
+    if (data.id_category) {
       throw new Error("Sub-category does not belong to the selected category");
     }
 
@@ -319,12 +264,12 @@ class ProductService extends DualDatabaseService {
           fields: fieldsResult,
         };
       } else {
-        // Single database (DB2 only)
-        transaction2 = await db2.transaction();
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
 
-        const [updatedRows] = await this.Model2.update(productData, {
+        const [updatedRows] = await this.Model1.update(productData, {
           where: { id },
-          transaction: transaction2,
+          transaction: transaction1,
         });
 
         if (updatedRows === 0) {
@@ -332,20 +277,20 @@ class ProductService extends DualDatabaseService {
         }
 
         const fieldsResult = await syncChildRecords({
-          Model1: null,
-          Model2: models.db2.ProductFields,
+          Model1: models.db1.ProductFields,
+          Model2: null,
           foreignKey: "id_product",
           parentId: id,
           newData: fieldsData,
-          transaction1: null,
-          transaction2,
+          transaction1,
+          transaction2: null,
           isDoubleDatabase: false,
         });
 
-        await transaction2.commit();
+        await transaction1.commit();
         console.log(`✅ Product with fields updated in DB2 only`);
 
-        const updated = await this.Model2.findByPk(id);
+        const updated = await this.Model1.findByPk(id);
 
         return {
           product: updated ? updated.toJSON() : null,
@@ -383,12 +328,7 @@ class ProductService extends DualDatabaseService {
         {
           model: dbModels.Category,
           as: "category",
-          attributes: ["id", "category_name"],
-        },
-        {
-          model: dbModels.SubCategory,
-          as: "subCategory",
-          attributes: ["id", "sub_category_name"],
+          attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
       ],
     };

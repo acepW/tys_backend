@@ -10,10 +10,20 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for category",
       },
-      category_name: {
+      category_name_indo: {
         type: DataTypes.STRING(100),
         allowNull: false,
-        comment: "Name of the category",
+        comment: "Name of the category in Indonesian",
+      },
+      category_name_mandarin: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        comment: "Name of the category in Mandarin",
+      },
+      foot_note: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        comment: "Footnote for the category",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -27,8 +37,12 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
-          name: "idx_category_name",
-          fields: ["category_name"],
+          name: "idx_category_name_indo",
+          fields: ["category_name_indo"],
+        },
+        {
+          name: "idx_category_name_mandarin",
+          fields: ["category_name_mandarin"],
         },
         {
           name: "idx_is_active",
@@ -40,14 +54,6 @@ module.exports = (sequelize) => {
 
   // Define associations
   Category.associate = (models) => {
-    // Category has many SubCategory
-    Category.hasMany(models.SubCategory, {
-      foreignKey: "id_category",
-      as: "subCategories",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
     // Category has many Product
     Category.hasMany(models.Product, {
       foreignKey: "id_category",

@@ -40,6 +40,76 @@ module.exports = (sequelize) => {
         defaultValue: false,
         comment: "Tax applicable flag",
       },
+      initial_company: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        comment: "Initial company flag",
+      },
+      director_name: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director name",
+      },
+      main_note: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        comment: "Main note",
+      },
+      document_watermark: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Document watermark",
+      },
+      company_name_header_quotation: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Company name header for quotation",
+      },
+      address_header_quotation: {
+        type: DataTypes.STRING(300),
+        allowNull: true,
+        comment: "Address header for quotation",
+      },
+      wechat_header_quotation: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "WeChat header for quotation",
+      },
+      wa_header_quotation: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "WhatsApp header for quotation",
+      },
+      email_header_quotation: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Email header for quotation",
+      },
+      company_name_header_contract: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Company name header for contract",
+      },
+      address_header_contract: {
+        type: DataTypes.STRING(300),
+        allowNull: true,
+        comment: "Address header for contract",
+      },
+      wechat_header_contract: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "WeChat header for contract",
+      },
+      wa_header_contract: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "WhatsApp header for contract",
+      },
+      email_header_contract: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Email header for contract",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

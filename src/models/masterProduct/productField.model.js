@@ -24,18 +24,6 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Fields name",
       },
-      field_group: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        comment:
-          "Group identifier untuk field yang sama tapi beda bahasa (misal: product_name)",
-      },
-      language: {
-        type: DataTypes.STRING(10),
-        allowNull: true,
-        defaultValue: "id",
-        comment: "Language code (id, zh, en, dll)",
-      },
       field_type: {
         type: DataTypes.STRING(200),
         allowNull: true,

@@ -18,7 +18,7 @@ const startServer = async () => {
     console.log("");
 
     // Sync databases
-    await syncDatabases();
+    //await syncDatabases();
     console.log("");
 
     // Start Express server

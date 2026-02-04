@@ -96,17 +96,26 @@ class CategoryController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, category_name } = req.body;
+      const {
+        is_double_database,
+        category_name_indo,
+        category_name_mandarin,
+        foot_note,
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
-      if (!category_name) {
+      if (!category_name_indo) {
+        return errorResponse(res, "Category name is required", 400);
+      }
+
+      if (!category_name_mandarin) {
         return errorResponse(res, "Category name is required", 400);
       }
 
       // Check if category name already exists
       const exists = await categoryService.checkCategoryNameExists(
-        category_name,
+        category_name_indo,
         null,
         isDoubleDatabase,
       );
@@ -116,7 +125,9 @@ class CategoryController {
       }
 
       const data = {
-        category_name: category_name,
+        category_name_indo: category_name_indo,
+        category_name_mandarin: category_name_mandarin,
+        foot_note: foot_note,
         is_active: true,
       };
 
@@ -139,7 +150,12 @@ class CategoryController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database, category_name } = req.body;
+      const {
+        is_double_database,
+        category_name_indo,
+        category_name_mandarin,
+        foot_note,
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Check if category exists
@@ -150,10 +166,10 @@ class CategoryController {
 
       const data = {};
 
-      if (category_name) {
+      if (category_name_indo) {
         // Check if new name already exists
         const nameExists = await categoryService.checkCategoryNameExists(
-          category_name,
+          category_name_indo,
           id,
           isDoubleDatabase,
         );
@@ -162,7 +178,9 @@ class CategoryController {
           return errorResponse(res, "Category name already exists", 400);
         }
 
-        data.category_name = category_name;
+        data.category_name_indo = category_name_indo;
+        data.category_name_mandarin = category_name_mandarin;
+        data.foot_note = foot_note;
       }
 
       const category = await categoryService.update(id, data, isDoubleDatabase);

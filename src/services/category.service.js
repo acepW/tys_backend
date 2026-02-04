@@ -23,7 +23,7 @@ class CategoryService extends DualDatabaseService {
           where: { is_active: true },
         },
       ],
-      order: [["category_name", "ASC"]],
+      order: [["category_name_indo", "ASC"]],
     };
 
     return await this.findAll(options, isDoubleDatabase);
@@ -37,7 +37,7 @@ class CategoryService extends DualDatabaseService {
   async getActiveCategories(isDoubleDatabase = true) {
     const options = {
       where: { is_active: true },
-      order: [["category_name", "ASC"]],
+      order: [["category_name_indo", "ASC"]],
     };
 
     return await this.findAll(options, isDoubleDatabase);
@@ -73,11 +73,11 @@ class CategoryService extends DualDatabaseService {
    * @returns {Boolean} True if exists
    */
   async checkCategoryNameExists(
-    categoryName,
+    categoryNameIndo,
     excludeId = null,
     isDoubleDatabase = true,
   ) {
-    const where = { category_name: categoryName };
+    const where = { category_name_indo: categoryNameIndo };
     if (excludeId) {
       where.id = { [require("sequelize").Op.ne]: excludeId };
     }

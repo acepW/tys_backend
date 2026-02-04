@@ -87,7 +87,30 @@ class CompanyController {
    */
   async create(req, res) {
     try {
-      const isDoubleDatabase = req.body.is_double_database !== false;
+      const {
+        company_name,
+        address,
+        contact,
+        email,
+        tax,
+        initial_company,
+        director_name,
+        main_note,
+        document_watermark,
+        company_name_header_quotation,
+        address_header_quotation,
+        wechat_header_quotation,
+        wa_header_quotation,
+        email_header_quotation,
+        company_name_header_contract,
+        address_header_contract,
+        wechat_header_contract,
+        wa_header_contract,
+        email_header_contract,
+        is_active,
+        is_double_database,
+      } = req.body;
+      const isDoubleDatabase = is_double_database !== false;
 
       // Validation
       if (!req.body.company_name) {
@@ -108,12 +131,26 @@ class CompanyController {
       }
 
       const data = {
-        company_name: req.body.company_name,
-        address: req.body.address,
-        contact: req.body.contact,
-        email: req.body.email,
-        tax: req.body.tax !== undefined ? req.body.tax : false,
-        is_active: req.body.is_active !== undefined ? req.body.is_active : true,
+        company_name: company_name,
+        address: address,
+        contact: contact,
+        email: email,
+        tax: tax !== undefined ? tax : false,
+        initial_company: initial_company,
+        director_name: director_name,
+        main_note: main_note,
+        document_watermark: document_watermark,
+        company_name_header_quotation: company_name_header_quotation,
+        address_header_quotation: address_header_quotation,
+        wechat_header_quotation: wechat_header_quotation,
+        wa_header_quotation: wa_header_quotation,
+        email_header_quotation: email_header_quotation,
+        company_name_header_contract: company_name_header_contract,
+        address_header_contract: address_header_contract,
+        wechat_header_contract: wechat_header_contract,
+        wa_header_contract: wa_header_contract,
+        email_header_contract: email_header_contract,
+        is_active: is_active !== undefined ? is_active : true,
       };
 
       const company = await companyService.create(data, isDoubleDatabase);
@@ -130,7 +167,30 @@ class CompanyController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const isDoubleDatabase = req.body.is_double_database !== false;
+      const {
+        company_name,
+        address,
+        contact,
+        email,
+        tax,
+        initial_company,
+        director_name,
+        main_note,
+        document_watermark,
+        company_name_header_quotation,
+        address_header_quotation,
+        wechat_header_quotation,
+        wa_header_quotation,
+        email_header_quotation,
+        company_name_header_contract,
+        address_header_contract,
+        wechat_header_contract,
+        wa_header_contract,
+        email_header_contract,
+        is_active,
+        is_double_database,
+      } = req.body;
+      const isDoubleDatabase = is_double_database !== false;
 
       // Check if company exists
       const existing = await companyService.findById(id, {}, isDoubleDatabase);
@@ -152,12 +212,37 @@ class CompanyController {
       }
 
       const data = {};
-      if (req.body.company_name) data.company_name = req.body.company_name;
-      if (req.body.address !== undefined) data.address = req.body.address;
-      if (req.body.contact !== undefined) data.contact = req.body.contact;
-      if (req.body.email !== undefined) data.email = req.body.email;
-      if (req.body.tax !== undefined) data.tax = req.body.tax;
-      if (req.body.is_active !== undefined) data.is_active = req.body.is_active;
+      if (company_name) data.company_name = company_name;
+      if (address !== undefined) data.address = address;
+      if (contact !== undefined) data.contact = contact;
+      if (email !== undefined) data.email = email;
+      if (tax !== undefined) data.tax = tax;
+      if (initial_company !== undefined) data.initial_company = initial_company;
+      if (director_name !== undefined) data.director_name = director_name;
+      if (main_note !== undefined) data.main_note = main_note;
+      if (document_watermark !== undefined)
+        data.document_watermark = document_watermark;
+      if (company_name_header_quotation !== undefined)
+        data.company_name_header_quotation = company_name_header_quotation;
+      if (address_header_quotation !== undefined)
+        data.address_header_quotation = address_header_quotation;
+      if (wechat_header_quotation !== undefined)
+        data.wechat_header_quotation = wechat_header_quotation;
+      if (wa_header_quotation !== undefined)
+        data.wa_header_quotation = wa_header_quotation;
+      if (email_header_quotation !== undefined)
+        data.email_header_quotation = email_header_quotation;
+      if (company_name_header_contract !== undefined)
+        data.company_name_header_contract = company_name_header_contract;
+      if (address_header_contract !== undefined)
+        data.address_header_contract = address_header_contract;
+      if (wechat_header_contract !== undefined)
+        data.wechat_header_contract = wechat_header_contract;
+      if (wa_header_contract !== undefined)
+        data.wa_header_contract = wa_header_contract;
+      if (email_header_contract !== undefined)
+        data.email_header_contract = email_header_contract;
+      if (is_active !== undefined) data.is_active = is_active;
 
       const company = await companyService.update(id, data, isDoubleDatabase);
 

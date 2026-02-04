@@ -1,7 +1,6 @@
 const productService = require("../services/masterProduct/product.service");
 const productFieldService = require("../services/masterProduct/productField.service");
 const categoryService = require("../services/category.service");
-const subCategoryService = require("../services/subCategory.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
 class ProductController {
@@ -14,7 +13,7 @@ class ProductController {
       const isDoubleDatabase = is_double_database !== "false";
       const products = await productService.getAllWithRelations(
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, products, "Products retrieved successfully");
@@ -45,49 +44,32 @@ class ProductController {
    */
   async create(req, res) {
     try {
-      const {
-        is_double_database,
-        id_category,
-        id_sub_category,
-        product_fields,
-      } = req.body;
+      const { is_double_database, id_category, product_fields } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
       if (!id_category) {
         return errorResponse(res, "Category is required", 400);
       }
-      if (!id_sub_category) {
-        return errorResponse(res, "Sub Category is required", 400);
-      }
 
       const checkDataCategory = await categoryService.findById(
         id_category,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!checkDataCategory) {
         return errorResponse(res, "Category not found", 400);
       }
-      const checkDataSubCategory = await subCategoryService.findById(
-        id_sub_category,
-        {},
-        isDoubleDatabase
-      );
-      if (!checkDataSubCategory) {
-        return errorResponse(res, "Sub-category not found", 400);
-      }
 
       const data = {
         id_category: id_category,
-        id_sub_category: id_sub_category,
         is_active: true,
       };
 
       const product = await productService.createWithFields(
         data,
         product_fields,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, product, "Product created successfully", 201);
@@ -125,7 +107,7 @@ class ProductController {
         id,
         data,
         product_fields,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, product, "Product updated successfully");

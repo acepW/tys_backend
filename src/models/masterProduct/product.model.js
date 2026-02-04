@@ -19,15 +19,6 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to categories table",
       },
-      id_sub_category: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        references: {
-          model: "sub_categories",
-          key: "id",
-        },
-        comment: "Foreign key to sub_categories table",
-      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -44,10 +35,6 @@ module.exports = (sequelize) => {
           fields: ["id_category"],
         },
         {
-          name: "idx_id_sub_category",
-          fields: ["id_sub_category"],
-        },
-        {
           name: "idx_is_active",
           fields: ["is_active"],
         },
@@ -61,14 +48,6 @@ module.exports = (sequelize) => {
     Product.belongsTo(models.Category, {
       foreignKey: "id_category",
       as: "category",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // Product belongs to SubCategory
-    Product.belongsTo(models.SubCategory, {
-      foreignKey: "id_sub_category",
-      as: "subCategory",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
