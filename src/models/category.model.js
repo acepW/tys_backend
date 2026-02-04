@@ -61,6 +61,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // Category has many Service Pricing
+    Category.hasMany(models.ServicePricing, {
+      foreignKey: "id_category",
+      as: "service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Category;

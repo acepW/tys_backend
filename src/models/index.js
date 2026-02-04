@@ -1,9 +1,14 @@
 const { db1, db2 } = require("../config/database");
+//maser data
 const CategoryModel = require("./category.model");
 const CompanyModel = require("./company.model");
 const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
 const CustomerModel = require("./customer.model");
+
+//service pricing
+const ServicePricingModel = require("./servicePricing/servicePricing.model");
+const ServicePricingVariantModel = require("./servicePricing/servicePricingVarian.model");
 
 /**
  * Initialize all models for a given sequelize instance
@@ -18,6 +23,8 @@ const initializeModels = (sequelize) => {
     Product: ProductModel(sequelize),
     ProductFields: ProductFieldsModel(sequelize),
     Customer: CustomerModel(sequelize),
+    ServicePricing: ServicePricingModel(sequelize),
+    ServicePricingVariant: ServicePricingVariantModel(sequelize),
   };
 
   // Setup associations for all models

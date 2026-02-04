@@ -216,7 +216,7 @@ class DualDatabaseService {
 
         return true;
       } else {
-        // Only delete from DB2
+        // Only delete from DB1
         transaction1 = await db1.transaction();
 
         const deleted = await this.Model1.destroy({

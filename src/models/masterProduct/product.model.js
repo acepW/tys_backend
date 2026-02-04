@@ -19,6 +19,15 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to categories table",
       },
+      id_service_pricing: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: "service_pricing",
+          key: "id",
+        },
+        comment: "Foreign key to service_pricing table",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -48,6 +57,14 @@ module.exports = (sequelize) => {
     Product.belongsTo(models.Category, {
       foreignKey: "id_category",
       as: "category",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Product belongs to Service Pricing
+    Product.belongsTo(models.ServicePricing, {
+      foreignKey: "id_service_pricing",
+      as: "service_pricing",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

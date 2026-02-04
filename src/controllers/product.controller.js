@@ -1,6 +1,7 @@
 const productService = require("../services/masterProduct/product.service");
 const productFieldService = require("../services/masterProduct/productField.service");
 const categoryService = require("../services/category.service");
+const servicePricingService = require("../services/servicePricing/servicePricing.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
 class ProductController {
@@ -44,14 +45,23 @@ class ProductController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, id_category, product_fields } = req.body;
+      const {
+        is_double_database,
+        id_category,
+        id_service_pricing,
+        product_fields,
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
       if (!id_category) {
         return errorResponse(res, "Category is required", 400);
       }
+      if (!id_service_pricing) {
+        return errorResponse(res, "Service Pricing is required", 400);
+      }
 
+      //check data category
       const checkDataCategory = await categoryService.findById(
         id_category,
         {},
@@ -61,8 +71,19 @@ class ProductController {
         return errorResponse(res, "Category not found", 400);
       }
 
+      //check data service pricing
+      const checkDataServicePricing = await servicePricingService.findById(
+        id_service_pricing,
+        {},
+        isDoubleDatabase,
+      );
+      if (!checkDataServicePricing) {
+        return errorResponse(res, "Service Pricing not found", 400);
+      }
+
       const data = {
         id_category: id_category,
+        id_service_pricing: id_service_pricing,
         is_active: true,
       };
 
@@ -88,6 +109,7 @@ class ProductController {
         is_double_database,
         id_category,
         id_sub_category,
+        id_service_pricing,
         product_fields,
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
@@ -100,6 +122,7 @@ class ProductController {
 
       const data = {
         id_category: id_category,
+        id_service_pricing: id_service_pricing,
         id_sub_category: id_sub_category,
       };
 

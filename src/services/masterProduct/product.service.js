@@ -27,6 +27,11 @@ class ProductService extends DualDatabaseService {
           as: "category",
           attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
+        {
+          model: dbModels.ServicePricing,
+          as: "service_pricing",
+          attributes: ["id", "product_name_indo", "product_name_mandarin"],
+        },
       ],
     };
 
@@ -39,9 +44,19 @@ class ProductService extends DualDatabaseService {
     const options = {
       include: [
         {
+          model: dbModels.ProductFields,
+          as: "product_fields",
+          attributes: ["id", "field_name", "field_value", "field_type"],
+        },
+        {
           model: dbModels.Category,
           as: "category",
           attributes: ["id", "category_name_indo", "category_name_mandarin"],
+        },
+        {
+          model: dbModels.ServicePricing,
+          as: "service_pricing",
+          attributes: ["id", "product_name_indo", "product_name_mandarin"],
         },
       ],
     };
@@ -153,13 +168,13 @@ class ProductService extends DualDatabaseService {
           fields: fieldsResult,
         };
       } else {
-        // Single database (DB2 only)
-        transaction2 = await db2.transaction();
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
 
         let fieldsResultFilter = [];
 
-        const product = await this.Model2.create(productData, {
-          transaction: transaction2,
+        const product = await this.Model1.create(productData, {
+          transaction: transaction1,
         });
 
         for (let index = 0; index < fieldsData.length; index++) {
@@ -168,13 +183,13 @@ class ProductService extends DualDatabaseService {
         }
 
         const fieldsResult = await syncChildRecords({
-          Model1: null,
-          Model2: models.db2.ProductFields,
+          Model1: models.db1.ProductFields,
+          Model2: null,
           foreignKey: "id_product",
           parentId: product.id,
           newData: fieldsResultFilter,
-          transaction1: null,
-          transaction2,
+          transaction1,
+          transaction2: null,
           isDoubleDatabase: false,
         });
 
