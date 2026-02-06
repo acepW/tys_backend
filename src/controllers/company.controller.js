@@ -97,6 +97,7 @@ class CompanyController {
         director_name,
         main_note,
         document_watermark,
+        logo_header,
         company_name_header_quotation,
         address_header_quotation,
         wechat_header_quotation,
@@ -140,6 +141,7 @@ class CompanyController {
         director_name: director_name,
         main_note: main_note,
         document_watermark: document_watermark,
+        logo_header: logo_header,
         company_name_header_quotation: company_name_header_quotation,
         address_header_quotation: address_header_quotation,
         wechat_header_quotation: wechat_header_quotation,
@@ -177,6 +179,7 @@ class CompanyController {
         director_name,
         main_note,
         document_watermark,
+        logo_header,
         company_name_header_quotation,
         address_header_quotation,
         wechat_header_quotation,
@@ -222,6 +225,7 @@ class CompanyController {
       if (main_note !== undefined) data.main_note = main_note;
       if (document_watermark !== undefined)
         data.document_watermark = document_watermark;
+      if (logo_header !== undefined) data.logo_header = logo_header;
       if (company_name_header_quotation !== undefined)
         data.company_name_header_quotation = company_name_header_quotation;
       if (address_header_quotation !== undefined)

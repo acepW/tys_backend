@@ -19,10 +19,15 @@ module.exports = (sequelize) => {
         },
         comment: "Product id from product table",
       },
-      field_name: {
+      field_name_indo: {
         type: DataTypes.STRING(200),
         allowNull: true,
-        comment: "Fields name",
+        comment: "Fields name for Indonesian",
+      },
+      field_name_mandarin: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "Fields name for Mandarin",
       },
       field_type: {
         type: DataTypes.STRING(200),

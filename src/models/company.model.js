@@ -60,6 +60,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Document watermark",
       },
+      logo_header: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Logo header",
+      },
       company_name_header_quotation: {
         type: DataTypes.STRING(100),
         allowNull: true,

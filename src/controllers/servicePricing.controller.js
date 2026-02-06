@@ -1,5 +1,6 @@
 const servicePricingService = require("../services/servicePricing/servicePricing.service");
 const { successResponse, errorResponse } = require("../utils/response");
+const { Op } = require("sequelize");
 
 class ServicePricingController {
   /**
@@ -7,11 +8,23 @@ class ServicePricingController {
    */
   async getAll(req, res) {
     try {
-      const { is_double_database } = req.query;
+      const { is_double_database, id_category, status, search } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
+      let obj = {};
+      if (search) {
+        obj = {
+          [Op.or]: [
+            { product_name_indo: { [Op.like]: `%${search}%` } },
+            { product_name_mandarin: { [Op.like]: `%${search}%` } },
+          ],
+        };
+      }
+      if (id_category) obj.id_category = id_category;
+      if (status) obj.status = status;
+
       const servicePricing = await servicePricingService.getAllWithRelations(
-        {},
+        { where: obj },
         isDoubleDatabase,
       );
 

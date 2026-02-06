@@ -37,6 +37,11 @@ class ServicePricingService extends DualDatabaseService {
           as: "category",
           attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
+        {
+          model: dbModels.Product,
+          as: "product",
+          attributes: ["id", "id_category"],
+        },
       ],
     };
 
@@ -72,6 +77,11 @@ class ServicePricingService extends DualDatabaseService {
           model: dbModels.Category,
           as: "category",
           attributes: ["id", "category_name_indo", "category_name_mandarin"],
+        },
+        {
+          model: dbModels.Product,
+          as: "product",
+          attributes: ["id", "id_category"],
         },
       ],
     };

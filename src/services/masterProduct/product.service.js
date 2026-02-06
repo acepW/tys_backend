@@ -20,7 +20,13 @@ class ProductService extends DualDatabaseService {
         {
           model: dbModels.ProductFields,
           as: "product_fields",
-          attributes: ["id", "field_name", "field_value", "field_type"],
+          attributes: [
+            "id",
+            "field_name_indo",
+            "field_name_mandarin",
+            "field_value",
+            "field_type",
+          ],
         },
         {
           model: dbModels.Category,
@@ -46,7 +52,13 @@ class ProductService extends DualDatabaseService {
         {
           model: dbModels.ProductFields,
           as: "product_fields",
-          attributes: ["id", "field_name", "field_value", "field_type"],
+          attributes: [
+            "id",
+            "field_name_indo",
+            "field_name_mandarin",
+            "field_value",
+            "field_type",
+          ],
         },
         {
           model: dbModels.Category,
