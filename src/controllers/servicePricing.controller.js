@@ -25,13 +25,13 @@ class ServicePricingController {
 
       const servicePricing = await servicePricingService.getAllWithRelations(
         { where: obj },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         servicePricing,
-        "Service pricing retrieved successfully",
+        "Service pricing retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -50,7 +50,7 @@ class ServicePricingController {
       const servicePricing = await servicePricingService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!servicePricing) {
@@ -60,7 +60,7 @@ class ServicePricingController {
       return successResponse(
         res,
         servicePricing,
-        "Service pricing retrieved successfully",
+        "Service pricing retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -92,7 +92,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `product_name_indo is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -100,7 +100,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `product_name_mandarin is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -109,7 +109,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `variants must be an array for item at index ${i}`,
-            400,
+            400
           );
         }
       }
@@ -122,14 +122,14 @@ class ServicePricingController {
 
       const result = await servicePricingService.createMultipleWithVariants(
         servicePricingDataList,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Service pricing created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -149,7 +149,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -164,13 +164,13 @@ class ServicePricingController {
         id,
         servicePricingData,
         variants || [],
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing updated successfully",
+        "Service pricing updated successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -190,7 +190,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -199,13 +199,13 @@ class ServicePricingController {
       const result = await servicePricingService.update(
         id,
         { status: "approved" },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing approved successfully",
+        "Service pricing approved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -225,7 +225,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -234,13 +234,13 @@ class ServicePricingController {
       const result = await servicePricingService.update(
         id,
         { status: "rejected" },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing rejected successfully",
+        "Service pricing rejected successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -260,7 +260,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);

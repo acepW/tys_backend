@@ -48,15 +48,10 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Note in Mandarin",
       },
-      required_document_indo: {
+      required_document: {
         type: DataTypes.TEXT("long"),
         allowNull: false,
-        comment: "Required document in Indonesian",
-      },
-      required_document_mandarin: {
-        type: DataTypes.TEXT("long"),
-        allowNull: false,
-        comment: "Required document in Mandarin",
+        comment: "Required document",
       },
       processing_time: {
         type: DataTypes.INTEGER,
@@ -96,7 +91,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
