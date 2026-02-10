@@ -5,6 +5,7 @@ const CompanyModel = require("./company.model");
 const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
 const CustomerModel = require("./customer.model");
+const DivisionModel = require("./division.model");
 
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
@@ -18,11 +19,15 @@ const ServicePricingVariantModel = require("./servicePricing/servicePricingVaria
 const initializeModels = (sequelize) => {
   // Initialize all models
   const models = {
+    // Master Data
     Category: CategoryModel(sequelize),
     Company: CompanyModel(sequelize),
     Product: ProductModel(sequelize),
     ProductFields: ProductFieldsModel(sequelize),
     Customer: CustomerModel(sequelize),
+    Division: DivisionModel(sequelize),
+
+    // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
     ServicePricingVariant: ServicePricingVariantModel(sequelize),
   };

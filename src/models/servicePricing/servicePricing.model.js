@@ -19,6 +19,15 @@ module.exports = (sequelize) => {
         },
         comment: "Id category from category",
       },
+      id_division: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: "divisions",
+          key: "id",
+        },
+        comment: "Id division from division",
+      },
       product_name_indo: {
         type: DataTypes.STRING(500),
         allowNull: false,
@@ -115,6 +124,14 @@ module.exports = (sequelize) => {
     ServicePricing.hasOne(models.Product, {
       foreignKey: "id_service_pricing",
       as: "product",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Service Pricing belongs to division
+    ServicePricing.belongsTo(models.Division, {
+      foreignKey: "id_division",
+      as: "division",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

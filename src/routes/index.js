@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 
 // Import all routes
-
 //sync
 const syncRoutes = require("./sync.route");
 
@@ -11,12 +10,12 @@ const categoryRoutes = require("./category.route");
 const companyRoutes = require("./company.route");
 const productRoutes = require("./product.route");
 const customerRoutes = require("./customer.route");
+const divisionRoutes = require("./division.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
 
 // Use routes
-
 //sync
 router.use("/sync", syncRoutes);
 
@@ -25,6 +24,7 @@ router.use("/categories", categoryRoutes);
 router.use("/companies", companyRoutes);
 router.use("/products-header", productRoutes);
 router.use("/customers", customerRoutes);
+router.use("/divisions", divisionRoutes);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
@@ -36,10 +36,14 @@ router.get("/", (req, res) => {
     version: "1.0.0",
     endpoints: {
       sync: "/api/sync",
+      //master data
       categories: "/api/categories",
       companies: "/api/companies",
       products: "/api/products-header",
       customers: "/api/customers",
+      divisions: "/api/divisions",
+
+      //service pricing
       servicePricing: "/api/service-pricing",
     },
   });
