@@ -115,6 +115,37 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Email header for contract",
       },
+      bank_name_rmb: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Bank name for RMB transactions",
+      },
+      account_name_rmb: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Account name for RMB transactions",
+      },
+      account_no_rmb: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Account no for RMB transactions",
+      },
+      bank_name_idr: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Bank name for IDR transactions",
+      },
+      account_name_idr: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Account name for IDR transactions",
+      },
+      account_no_idr: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Account no for IDR transactions",
+      },
+
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -139,13 +170,21 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
   Company.associate = (models) => {
     // Contoh: Company dapat memiliki relasi dengan Order, Invoice, dll
     // Company.hasMany(models.Order, { ... });
+
+    // Company has many quotation
+    Company.hasMany(models.Quotation, {
+      foreignKey: "id_company",
+      as: "quotations",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Company;

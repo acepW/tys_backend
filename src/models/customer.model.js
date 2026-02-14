@@ -79,13 +79,20 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
   Customer.associate = (models) => {
     // Contoh: Customer dapat memiliki relasi dengan Order, dll
     // Customer.hasMany(models.Order, { ... });
+    // Customer has many quotations
+    Customer.belongsTo(models.Quotation, {
+      foreignKey: "id_customer",
+      as: "quotations",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Customer;

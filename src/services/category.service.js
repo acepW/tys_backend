@@ -30,6 +30,31 @@ class CategoryService extends DualDatabaseService {
   }
 
   /**
+   * Get all categories with their sub-categories
+   * @param {Boolean} isDoubleDatabase
+   * @param {Object} options - Query options
+   * @returns {Array} Categories with sub-categories
+   */
+  async getAllWithRelations(options = {}, isDoubleDatabase = true) {
+    const dbModels = isDoubleDatabase ? models.db1 : models.db2;
+
+    const queryOptions = {
+      ...options,
+      include: [
+        {
+          model: dbModels.FlowProcess,
+          as: "flow_process",
+          required: false,
+          where: { is_active: true },
+        },
+      ],
+      order: [["category_name_indo", "ASC"]],
+    };
+
+    return await this.findAll(queryOptions, isDoubleDatabase);
+  }
+
+  /**
    * Get active categories only
    * @param {Boolean} isDoubleDatabase
    * @returns {Array} Active categories
@@ -75,7 +100,7 @@ class CategoryService extends DualDatabaseService {
   async checkCategoryNameExists(
     categoryNameIndo,
     excludeId = null,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const where = { category_name_indo: categoryNameIndo };
     if (excludeId) {

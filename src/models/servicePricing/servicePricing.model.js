@@ -130,6 +130,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //Service Pricing has many variants
+    ServicePricing.hasMany(models.QuotationService, {
+      foreignKey: "id_service_pricing",
+      as: "quotation_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return ServicePricing;

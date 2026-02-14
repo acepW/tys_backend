@@ -6,10 +6,18 @@ const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
 const CustomerModel = require("./customer.model");
 const DivisionModel = require("./division.model");
+const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
 const ServicePricingVariantModel = require("./servicePricing/servicePricingVarian.model");
+
+//quotations
+const QuotationModel = require("./quotation/quotation.model");
+const QuotationCategoryModel = require("./quotation/quotationCategory.model");
+const QuotationServiceModel = require("./quotation/quotationService.model");
+const QuotationProductModel = require("./quotation/quotationProduct.model");
+const QuotationProductFieldModel = require("./quotation/quotationProductField.model");
 
 /**
  * Initialize all models for a given sequelize instance
@@ -26,10 +34,18 @@ const initializeModels = (sequelize) => {
     ProductFields: ProductFieldsModel(sequelize),
     Customer: CustomerModel(sequelize),
     Division: DivisionModel(sequelize),
+    FlowProcess: FlowProcessModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
     ServicePricingVariant: ServicePricingVariantModel(sequelize),
+
+    //quotation
+    Quotation: QuotationModel(sequelize),
+    QuotationCategory: QuotationCategoryModel(sequelize),
+    QuotationService: QuotationServiceModel(sequelize),
+    QuotationProduct: QuotationProductModel(sequelize),
+    QuotationProductField: QuotationProductFieldModel(sequelize),
   };
 
   // Setup associations for all models

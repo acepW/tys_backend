@@ -49,7 +49,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations
@@ -66,6 +66,22 @@ module.exports = (sequelize) => {
     Category.hasMany(models.ServicePricing, {
       foreignKey: "id_category",
       as: "service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Category has many Quotation Category
+    Category.hasMany(models.QuotationCategory, {
+      foreignKey: "id_category",
+      as: "quotation_category",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Category has many Flow Process
+    Category.hasMany(models.FlowProcess, {
+      foreignKey: "id_category",
+      as: "flow_process",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
