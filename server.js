@@ -14,7 +14,7 @@ const startServer = async () => {
     console.log("🚀 Starting ERP Backend Server...\n");
 
     // Test database connections
-    await testConnections();
+    //await testConnections();
     console.log("");
 
     // Sync databases

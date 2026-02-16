@@ -63,6 +63,11 @@ module.exports = (sequelize) => {
         type: DataTypes.FLOAT,
         comment: "Total Price in RMB",
       },
+      is_selected_contract: {
+        allowNull: false,
+        type: DataTypes.BOOLEAN,
+        comment: "Status for knowing this service is created contract",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -104,6 +109,14 @@ module.exports = (sequelize) => {
     QuotationService.belongsTo(models.ServicePricing, {
       foreignKey: "id_service_pricing",
       as: "service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // QuotationService has one Contract Service
+    QuotationService.hasOne(models.ServicePricing, {
+      foreignKey: "id_quotation_service",
+      as: "contract_service",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

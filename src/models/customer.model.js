@@ -86,10 +86,19 @@ module.exports = (sequelize) => {
   Customer.associate = (models) => {
     // Contoh: Customer dapat memiliki relasi dengan Order, dll
     // Customer.hasMany(models.Order, { ... });
+
     // Customer has many quotations
     Customer.belongsTo(models.Quotation, {
       foreignKey: "id_customer",
       as: "quotations",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Customer has many contracts
+    Customer.belongsTo(models.Contract, {
+      foreignKey: "id_customer",
+      as: "contracts",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

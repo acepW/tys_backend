@@ -12,12 +12,16 @@ const productRoutes = require("./product.route");
 const customerRoutes = require("./customer.route");
 const divisionRoutes = require("./division.route");
 const flowProcessRoutes = require("./flowProcess.route");
+const clauseRoute = require("./clause.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
 
 //Quotation
 const quotationRoutes = require("./quotation.route");
+
+//contract
+const contactRoutes = require("./contract.route");
 
 // Use routes
 //sync
@@ -30,12 +34,16 @@ router.use("/products-header", productRoutes);
 router.use("/customers", customerRoutes);
 router.use("/divisions", divisionRoutes);
 router.use("/flow-process", flowProcessRoutes);
+router.use("/clauses", clauseRoute);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
 
 //quotation
 router.use("/quotations", quotationRoutes);
+
+//contract
+router.use("/contracts", contactRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -51,12 +59,16 @@ router.get("/", (req, res) => {
       customers: "/api/customers",
       divisions: "/api/divisions",
       flowProcess: "/api/flow-process",
+      clauses: "/api/clauses",
 
       //service pricing
       servicePricing: "/api/service-pricing",
 
       //quotation
       quotation: "api/quotations",
+
+      //contract
+      contract: "api/contracts",
     },
   });
 });
