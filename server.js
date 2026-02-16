@@ -5,7 +5,6 @@ const { syncDatabases } = require("./src/models");
 const config = require("./src/config/config");
 
 const PORT = config.port;
-
 /**
  * Start the server
  */
