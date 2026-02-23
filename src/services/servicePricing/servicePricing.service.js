@@ -108,7 +108,7 @@ class ServicePricingService extends DualDatabaseService {
    */
   async createMultipleWithVariants(
     servicePricingDataList = [],
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -119,7 +119,7 @@ class ServicePricingService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating ${servicePricingDataList.length} Service Pricing records with variants in both databases...`,
+          `🔄 Creating ${servicePricingDataList.length} Service Pricing records with variants in both databases...`
         );
 
         const results = [];
@@ -133,7 +133,7 @@ class ServicePricingService extends DualDatabaseService {
             transaction: transaction1,
           });
           console.log(
-            `✅ Created Service Pricing in DB1 with ID: ${servicePricing1.id}`,
+            `✅ Created Service Pricing in DB1 with ID: ${servicePricing1.id}`
           );
 
           // 2. Create Service Pricing in DB2 with same ID
@@ -145,7 +145,7 @@ class ServicePricingService extends DualDatabaseService {
             transaction: transaction2,
           });
           console.log(
-            `✅ Created Service Pricing in DB2 with ID: ${servicePricing1.id}`,
+            `✅ Created Service Pricing in DB2 with ID: ${servicePricing1.id}`
           );
 
           // 3. Prepare variants data with foreign key
@@ -176,7 +176,7 @@ class ServicePricingService extends DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records with variants successfully created`,
+          `✅ ${servicePricingDataList.length} Service Pricing records with variants successfully created`
         );
 
         return results;
@@ -217,7 +217,7 @@ class ServicePricingService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`,
+          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`
         );
 
         return results;
@@ -225,14 +225,14 @@ class ServicePricingService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating Service Pricing with variants:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to create Service Pricing with variants: ${error.message}`,
+        `Failed to create Service Pricing with variants: ${error.message}`
       );
     }
   }
@@ -250,7 +250,7 @@ class ServicePricingService extends DualDatabaseService {
     id,
     servicePricingData,
     variantsData = [],
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -263,15 +263,21 @@ class ServicePricingService extends DualDatabaseService {
         console.log(`🔄 Updating Service Pricing ID ${id} with variants...`);
 
         // 1. Update Service Pricing in both databases
-        const [updatedRows1] = await this.Model1.update(servicePricingData, {
-          where: { id },
-          transaction: transaction1,
-        });
+        const [updatedRows1] = await this.Model1.update(
+          { ...servicePricingData, status: "pending" },
+          {
+            where: { id },
+            transaction: transaction1,
+          }
+        );
 
-        const [updatedRows2] = await this.Model2.update(servicePricingData, {
-          where: { id },
-          transaction: transaction2,
-        });
+        const [updatedRows2] = await this.Model2.update(
+          { ...servicePricingData, status: "pending" },
+          {
+            where: { id },
+            transaction: transaction2,
+          }
+        );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
           throw new Error(`Service Pricing with ID ${id} not found`);
@@ -354,14 +360,14 @@ class ServicePricingService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating Service Pricing with variants:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to update Service Pricing with variants: ${error.message}`,
+        `Failed to update Service Pricing with variants: ${error.message}`
       );
     }
   }

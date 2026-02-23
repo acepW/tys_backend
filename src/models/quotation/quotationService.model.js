@@ -65,6 +65,7 @@ module.exports = (sequelize) => {
       },
       is_selected_contract: {
         allowNull: false,
+        defaultValue: false,
         type: DataTypes.BOOLEAN,
         comment: "Status for knowing this service is created contract",
       },

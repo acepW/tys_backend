@@ -368,8 +368,8 @@ class QuotationController {
   async approve(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      const { is_double_database = true } = req.body || {};
+      const isDoubleDatabase = is_double_database;
 
       // Check if quotation exists
       const existing = await quotationService.findById(
@@ -399,8 +399,8 @@ class QuotationController {
   async reject(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      const { is_double_database = true } = req.body || {};
+      const isDoubleDatabase = is_double_database;
 
       // Check if quotation exists
       const existing = await quotationService.findById(

@@ -20,6 +20,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Description is BAB for Mandarin",
       },
+      index: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Index for clause",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

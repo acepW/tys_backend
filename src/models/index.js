@@ -9,6 +9,7 @@ const DivisionModel = require("./division.model");
 const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 const ClauseModel = require("./masterClause/clause.model");
 const ClausePointModel = require("./masterClause/clausePoint.model");
+const UserModel = require("./user.model");
 
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
@@ -47,6 +48,7 @@ const initializeModels = (sequelize) => {
     FlowProcess: FlowProcessModel(sequelize),
     Clause: ClauseModel(sequelize),
     ClausePoint: ClausePointModel(sequelize),
+    User: UserModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),

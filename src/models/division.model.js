@@ -35,7 +35,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
@@ -47,6 +47,14 @@ module.exports = (sequelize) => {
     Division.hasMany(models.ServicePricing, {
       foreignKey: "id_division",
       as: "service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Division has many Users
+    Division.hasMany(models.User, {
+      foreignKey: "id_division",
+      as: "users",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

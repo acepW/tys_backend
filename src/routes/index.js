@@ -13,6 +13,7 @@ const customerRoutes = require("./customer.route");
 const divisionRoutes = require("./division.route");
 const flowProcessRoutes = require("./flowProcess.route");
 const clauseRoute = require("./clause.route");
+const userRoute = require("./user.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
@@ -35,6 +36,7 @@ router.use("/customers", customerRoutes);
 router.use("/divisions", divisionRoutes);
 router.use("/flow-process", flowProcessRoutes);
 router.use("/clauses", clauseRoute);
+router.use("/users", userRoute);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
@@ -60,6 +62,7 @@ router.get("/", (req, res) => {
       divisions: "/api/divisions",
       flowProcess: "/api/flow-process",
       clauses: "/api/clauses",
+      users: "/api/users",
 
       //service pricing
       servicePricing: "/api/service-pricing",

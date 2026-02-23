@@ -8,8 +8,13 @@ class ServicePricingController {
    */
   async getAll(req, res) {
     try {
-      const { is_double_database, id_category, status, search } = req.query;
-      const isDoubleDatabase = is_double_database !== "false";
+      const {
+        is_double_database = true,
+        id_category,
+        status,
+        search,
+      } = req.query;
+      const isDoubleDatabase = is_double_database;
 
       let obj = {};
       if (search) {
@@ -44,7 +49,7 @@ class ServicePricingController {
   async getById(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database } = req.query;
+      const { is_double_database = true } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
       const servicePricing = await servicePricingService.getById(
@@ -183,8 +188,9 @@ class ServicePricingController {
   async approve(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      const { is_double_database = true } = req.body || {};
+      const isDoubleDatabase = is_double_database;
+      console.log(1);
 
       // Check if service pricing exists
       const existing = await servicePricingService.findById(
@@ -192,15 +198,17 @@ class ServicePricingController {
         {},
         isDoubleDatabase
       );
+      console.log(2);
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
       }
-
+      console.log(3);
       const result = await servicePricingService.update(
         id,
         { status: "approved" },
         isDoubleDatabase
       );
+      console.log(4);
 
       return successResponse(
         res,
@@ -218,8 +226,8 @@ class ServicePricingController {
   async reject(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      const { is_double_database = true } = req.body || {};
+      const isDoubleDatabase = is_double_database;
 
       // Check if service pricing exists
       const existing = await servicePricingService.findById(

@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
+const cookieParser = require("cookie-parser");
 
 const app = express();
 
@@ -11,10 +12,11 @@ app.use(
     origin: "*", // Configure sesuai kebutuhan production
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  }),
+  })
 );
 
 app.use(express.json());
+app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
