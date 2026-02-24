@@ -30,6 +30,9 @@ router.patch("/approve-customer/:id", contractController.approveByCustomer);
 // PATCH routes
 router.patch("/reject-customer/:id", contractController.rejectByCustomer);
 
+// PATCH routes
+router.patch("/open-payment/:id_payment", contractController.openPayment);
+
 // DELETE routes
 router.delete("/:id", contractController.delete);
 

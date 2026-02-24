@@ -75,11 +75,16 @@ module.exports = (sequelize) => {
           "approved",
           "sending to customer",
           "approve by customer",
-          "reject by customer"
+          "reject by customer",
         ),
         allowNull: false,
         defaultValue: "pending",
         comment: "Status of Contract",
+      },
+      contract_to: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        comment: "Contract to (example:contract_to : 1)",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -121,7 +126,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations
@@ -170,6 +175,14 @@ module.exports = (sequelize) => {
     Contract.hasMany(models.ContractVerificationProgress, {
       foreignKey: "id_contract",
       as: "verification_progress",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Contract has many Contract Payment
+    Contract.hasMany(models.ContractPayment, {
+      foreignKey: "id_contract",
+      as: "contract_payment",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

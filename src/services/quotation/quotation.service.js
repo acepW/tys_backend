@@ -73,6 +73,10 @@ class QuotationService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.QuotationPayment,
+          as: "quotation_payment",
+        },
       ],
     };
 
@@ -145,6 +149,22 @@ class QuotationService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.QuotationPayment,
+          as: "quotation_payment",
+          include: [
+            {
+              model: dbModels.QuotationPaymentList,
+              as: "quotation_payment_list",
+              include: [
+                {
+                  model: dbModels.QuotationPaymentService,
+                  as: "quotation_payment_services",
+                },
+              ],
+            },
+          ],
+        },
       ],
     };
 
@@ -161,7 +181,7 @@ class QuotationService extends DualDatabaseService {
   async createWithNested(
     quotationData,
     categoriesData = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -172,7 +192,7 @@ class QuotationService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating Quotation with nested relations in both databases...`
+          `🔄 Creating Quotation with nested relations in both databases...`,
         );
         console.log(`📋 Categories to create: ${categoriesData.length}`);
 
@@ -195,17 +215,17 @@ class QuotationService extends DualDatabaseService {
         // 3. Process Quotation Categories
         if (categoriesData && categoriesData.length > 0) {
           console.log(
-            `🔄 Starting to sync ${categoriesData.length} categories...`
+            `🔄 Starting to sync ${categoriesData.length} categories...`,
           );
           const syncedCategories = await this._syncQuotationCategories(
             quotation1.id,
             categoriesData,
             transaction1,
             transaction2,
-            isDoubleDatabase
+            isDoubleDatabase,
           );
           console.log(
-            `✅ Categories sync completed: ${syncedCategories.length} categories processed`
+            `✅ Categories sync completed: ${syncedCategories.length} categories processed`,
           );
         } else {
           console.log(`ℹ️ No categories to sync`);
@@ -234,7 +254,7 @@ class QuotationService extends DualDatabaseService {
             categoriesData,
             transaction1,
             null,
-            false
+            false,
           );
         }
 
@@ -247,7 +267,7 @@ class QuotationService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating Quotation with nested relations:`,
-        error.message
+        error.message,
       );
       console.error(`❌ Error stack:`, error.stack);
 
@@ -270,7 +290,7 @@ class QuotationService extends DualDatabaseService {
     id,
     quotationData,
     categoriesData = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -305,7 +325,7 @@ class QuotationService extends DualDatabaseService {
           categoriesData,
           transaction1,
           transaction2,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
 
         // Commit both transactions
@@ -334,7 +354,7 @@ class QuotationService extends DualDatabaseService {
           categoriesData,
           transaction1,
           null,
-          false
+          false,
         );
 
         await transaction1.commit();
@@ -346,13 +366,344 @@ class QuotationService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating Quotation with nested relations:`,
-        error.message
+        error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(`Failed to update Quotation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Sync payments (array) with nested payment lists and payment services
+   * Logic: no id = create, has id = update, missing from data = delete
+   * @param {Number} quotationId
+   * @param {Array} paymentsData - Array of payment with nested lists & services
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Array} Payments with nested relations
+   */
+  async syncPayment(quotationId, paymentsData = [], isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+
+      console.log(
+        `🔄 Syncing ${paymentsData.length} Payment(s) for Quotation ID: ${quotationId}...`,
+      );
+
+      // ── 1. Sync QuotationPayment (array) via syncChildRecords ───────
+      const preparedPayments = paymentsData.map((payment) => {
+        const { payment_list, ...paymentData } = payment;
+        return { ...paymentData, id_quotation: quotationId };
+      });
+
+      const paymentsResult = await syncChildRecords({
+        Model1: models.db1.QuotationPayment,
+        Model2: isDoubleDatabase ? models.db2.QuotationPayment : null,
+        foreignKey: "id_quotation",
+        parentId: quotationId,
+        newData: preparedPayments,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      });
+
+      const syncedPayments = [
+        ...(paymentsResult.created || []),
+        ...(paymentsResult.updated || []),
+      ];
+
+      console.log(
+        `📦 Synced ${syncedPayments.length} payment(s) ` +
+          `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`,
+      );
+
+      // Cleanup lists & services milik payment yang dihapus
+      const keepPaymentIds = syncedPayments.map((p) => p.id);
+      const existingPayments = await models.db1.QuotationPayment.findAll({
+        where: { id_quotation: quotationId },
+        attributes: ["id"],
+        transaction: transaction1,
+      });
+      const deletedPaymentIds = existingPayments
+        .map((p) => p.id)
+        .filter((id) => !keepPaymentIds.includes(id));
+
+      if (deletedPaymentIds.length > 0) {
+        console.log(
+          `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`,
+        );
+
+        // Ambil list ids yang akan ikut terhapus
+        const listsToDelete = await models.db1.QuotationPaymentList.findAll({
+          where: { id_quotation_payment: deletedPaymentIds },
+          attributes: ["id"],
+          transaction: transaction1,
+        });
+        const deletedListIds = listsToDelete.map((l) => l.id);
+
+        // Hapus services dulu (terdalam)
+        if (deletedListIds.length > 0) {
+          await models.db1.QuotationPaymentService.destroy({
+            where: { id_quotation_payment_list: deletedListIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationPaymentService.destroy({
+              where: { id_quotation_payment_list: deletedListIds },
+              transaction: transaction2,
+            });
+          }
+        }
+
+        // Hapus lists
+        await models.db1.QuotationPaymentList.destroy({
+          where: { id_quotation_payment: deletedPaymentIds },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.QuotationPaymentList.destroy({
+            where: { id_quotation_payment: deletedPaymentIds },
+            transaction: transaction2,
+          });
+        }
+
+        console.log(`   ✓ Cleaned up lists and services for deleted payments`);
+      }
+
+      // ── 2. Map paymentsData → syncedPayments ────────────────────────
+      const paymentMapping = new Map();
+      let paymentCreatedIndex = 0;
+
+      for (let i = 0; i < paymentsData.length; i++) {
+        const paymentData = paymentsData[i];
+
+        if (paymentData.id) {
+          const synced = syncedPayments.find((sp) => sp.id === paymentData.id);
+          if (synced) paymentMapping.set(i, synced);
+        } else {
+          const createdPayments = paymentsResult.created || [];
+          if (paymentCreatedIndex < createdPayments.length) {
+            paymentMapping.set(i, createdPayments[paymentCreatedIndex]);
+            paymentCreatedIndex++;
+          }
+        }
+      }
+
+      // ── 3. Sync QuotationPaymentList per payment ────────────────────
+      for (let i = 0; i < paymentsData.length; i++) {
+        const paymentData = paymentsData[i];
+        const syncedPayment = paymentMapping.get(i);
+
+        if (!syncedPayment?.id) {
+          console.warn(`⚠️ Payment at index ${i} was not synced properly`);
+          continue;
+        }
+
+        const paymentId = syncedPayment.id;
+        const paymentListData = paymentData.payment_list || [];
+
+        console.log(
+          `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`,
+        );
+
+        if (paymentListData.length > 0) {
+          const preparedLists = paymentListData.map((list) => {
+            const { services, ...listData } = list;
+            return { ...listData, id_quotation_payment: paymentId };
+          });
+
+          const listsResult = await syncChildRecords({
+            Model1: models.db1.QuotationPaymentList,
+            Model2: isDoubleDatabase ? models.db2.QuotationPaymentList : null,
+            foreignKey: "id_quotation_payment",
+            parentId: paymentId,
+            newData: preparedLists,
+            transaction1,
+            transaction2,
+            isDoubleDatabase,
+          });
+
+          const syncedLists = [
+            ...(listsResult.created || []),
+            ...(listsResult.updated || []),
+          ];
+
+          console.log(
+            `✅ Synced ${syncedLists.length} list(s) for Payment ID: ${paymentId} ` +
+              `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`,
+          );
+
+          // Cleanup services milik list yang dihapus
+          const keepListIds = syncedLists.map((l) => l.id);
+          const existingLists = await models.db1.QuotationPaymentList.findAll({
+            where: { id_quotation_payment: paymentId },
+            attributes: ["id"],
+            transaction: transaction1,
+          });
+          const deletedListIds = existingLists
+            .map((l) => l.id)
+            .filter((id) => !keepListIds.includes(id));
+
+          if (deletedListIds.length > 0) {
+            await models.db1.QuotationPaymentService.destroy({
+              where: { id_quotation_payment_list: deletedListIds },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationPaymentService.destroy({
+                where: { id_quotation_payment_list: deletedListIds },
+                transaction: transaction2,
+              });
+            }
+
+            console.log(
+              `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`,
+            );
+          }
+
+          // ── 4. Map paymentListData → syncedLists ───────────────────
+          const listMapping = new Map();
+          let listCreatedIndex = 0;
+
+          for (let j = 0; j < paymentListData.length; j++) {
+            const listData = paymentListData[j];
+
+            if (listData.id) {
+              const synced = syncedLists.find((sl) => sl.id === listData.id);
+              if (synced) listMapping.set(j, synced);
+            } else {
+              const createdLists = listsResult.created || [];
+              if (listCreatedIndex < createdLists.length) {
+                listMapping.set(j, createdLists[listCreatedIndex]);
+                listCreatedIndex++;
+              }
+            }
+          }
+
+          // ── 5. Sync QuotationPaymentService per list ───────────────
+          for (let j = 0; j < paymentListData.length; j++) {
+            const listData = paymentListData[j];
+            const syncedList = listMapping.get(j);
+
+            if (!syncedList?.id) {
+              console.warn(
+                `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`,
+              );
+              continue;
+            }
+
+            const listId = syncedList.id;
+            const services = listData.services || [];
+
+            if (services.length > 0) {
+              const preparedServices = services.map((svc) => ({
+                ...svc,
+                id_quotation_payment: paymentId,
+                id_quotation_payment_list: listId,
+              }));
+
+              const servicesResult = await syncChildRecords({
+                Model1: models.db1.QuotationPaymentService,
+                Model2: isDoubleDatabase
+                  ? models.db2.QuotationPaymentService
+                  : null,
+                foreignKey: "id_quotation_payment_list",
+                parentId: listId,
+                newData: preparedServices,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+
+              const syncedCount =
+                (servicesResult.created?.length || 0) +
+                (servicesResult.updated?.length || 0);
+
+              console.log(
+                `✅ Synced ${syncedCount} service(s) for PaymentList ID: ${listId} ` +
+                  `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
+              );
+            } else {
+              // Tidak ada services → hapus semua yang ada
+              await models.db1.QuotationPaymentService.destroy({
+                where: { id_quotation_payment_list: listId },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationPaymentService.destroy({
+                  where: { id_quotation_payment_list: listId },
+                  transaction: transaction2,
+                });
+              }
+
+              console.log(
+                `🗑️ Cleared all services for PaymentList ID: ${listId}`,
+              );
+            }
+          }
+        } else {
+          // Tidak ada list → hapus semua list & services yang ada
+          const existingLists = await models.db1.QuotationPaymentList.findAll({
+            where: { id_quotation_payment: paymentId },
+            attributes: ["id"],
+            transaction: transaction1,
+          });
+          const existingListIds = existingLists.map((l) => l.id);
+
+          if (existingListIds.length > 0) {
+            await models.db1.QuotationPaymentService.destroy({
+              where: { id_quotation_payment_list: existingListIds },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationPaymentService.destroy({
+                where: { id_quotation_payment_list: existingListIds },
+                transaction: transaction2,
+              });
+            }
+
+            await models.db1.QuotationPaymentList.destroy({
+              where: { id_quotation_payment: paymentId },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationPaymentList.destroy({
+                where: { id_quotation_payment: paymentId },
+                transaction: transaction2,
+              });
+            }
+
+            console.log(
+              `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`,
+            );
+          }
+        }
+      }
+
+      // ── Commit ──────────────────────────────────────────────────────
+      await transaction1.commit();
+      if (isDoubleDatabase) await transaction2.commit();
+
+      console.log(`✅ Payment sync completed for Quotation ID: ${quotationId}`);
+
+      return await this.getById(quotationId, {}, isDoubleDatabase);
+    } catch (error) {
+      console.error(`❌ Error syncing Payment:`, error.message);
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+      throw new Error(`Failed to sync Payment: ${error.message}`);
     }
   }
 
@@ -365,7 +716,7 @@ class QuotationService extends DualDatabaseService {
     categoriesData,
     transaction1,
     transaction2,
-    isDoubleDatabase
+    isDoubleDatabase,
   ) {
     // Prepare categories data
     const preparedCategories = categoriesData.map((cat) => {
@@ -395,7 +746,7 @@ class QuotationService extends DualDatabaseService {
     ];
 
     console.log(
-      `📦 Synced ${syncedCategories.length} categories (${categoriesResult.summary.totalCreated} created, ${categoriesResult.summary.totalUpdated} updated)`
+      `📦 Synced ${syncedCategories.length} categories (${categoriesResult.summary.totalCreated} created, ${categoriesResult.summary.totalUpdated} updated)`,
     );
 
     // Get IDs of categories that will be kept
@@ -410,13 +761,13 @@ class QuotationService extends DualDatabaseService {
 
     const existingCategoryIds = existingCategories.map((cat) => cat.id);
     const deletedCategoryIds = existingCategoryIds.filter(
-      (id) => !keepCategoryIds.includes(id)
+      (id) => !keepCategoryIds.includes(id),
     );
 
     // Delete child records for categories that will be deleted
     if (deletedCategoryIds.length > 0) {
       console.log(
-        `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`
+        `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`,
       );
 
       // Get products that belong to categories being deleted
@@ -442,7 +793,7 @@ class QuotationService extends DualDatabaseService {
           });
         }
         console.log(
-          `   ✓ Deleted fields for ${productIdsToDelete.length} products`
+          `   ✓ Deleted fields for ${productIdsToDelete.length} products`,
         );
       }
 
@@ -473,7 +824,7 @@ class QuotationService extends DualDatabaseService {
       }
 
       console.log(
-        `   ✓ Cleaned up products and services for deleted categories`
+        `   ✓ Cleaned up products and services for deleted categories`,
       );
     }
 
@@ -489,7 +840,7 @@ class QuotationService extends DualDatabaseService {
       if (categoryData.id) {
         // Find in synced categories by ID
         const syncedCategory = syncedCategories.find(
-          (sc) => sc.id === categoryData.id
+          (sc) => sc.id === categoryData.id,
         );
         if (syncedCategory) {
           categoryMapping.set(i, syncedCategory);
@@ -529,7 +880,7 @@ class QuotationService extends DualDatabaseService {
         }));
 
         console.log(
-          `📝 Syncing ${servicesData.length} services for category ${categoryId}`
+          `📝 Syncing ${servicesData.length} services for category ${categoryId}`,
         );
 
         const servicesResult = await syncChildRecords({
@@ -547,7 +898,7 @@ class QuotationService extends DualDatabaseService {
           (servicesResult.created?.length || 0) +
           (servicesResult.updated?.length || 0);
         console.log(
-          `✅ Synced ${syncedServicesCount} services for category ${categoryId}`
+          `✅ Synced ${syncedServicesCount} services for category ${categoryId}`,
         );
       } else {
         // If no services provided, delete all existing services
@@ -579,7 +930,7 @@ class QuotationService extends DualDatabaseService {
         });
 
         console.log(
-          `📦 Syncing ${productsData.length} products for category ${categoryId}`
+          `📦 Syncing ${productsData.length} products for category ${categoryId}`,
         );
 
         // Get existing products to identify which will be deleted
@@ -594,13 +945,13 @@ class QuotationService extends DualDatabaseService {
           .map((p) => p.id);
         const existingProductIds = existingProducts.map((p) => p.id);
         const deletedProductIds = existingProductIds.filter(
-          (id) => !keepProductIds.includes(id)
+          (id) => !keepProductIds.includes(id),
         );
 
         // Delete fields for products that will be deleted
         if (deletedProductIds.length > 0) {
           console.log(
-            `🗑️ Deleting fields for ${deletedProductIds.length} products...`
+            `🗑️ Deleting fields for ${deletedProductIds.length} products...`,
           );
 
           await models.db1.QuotationProductField.destroy({
@@ -634,7 +985,7 @@ class QuotationService extends DualDatabaseService {
         ];
 
         console.log(
-          `✅ Synced ${syncedProducts.length} products for category ${categoryId}`
+          `✅ Synced ${syncedProducts.length} products for category ${categoryId}`,
         );
 
         const productMapping = new Map();
@@ -645,7 +996,7 @@ class QuotationService extends DualDatabaseService {
 
           if (productData.id) {
             const syncedProduct = syncedProducts.find(
-              (sp) => sp.id === productData.id
+              (sp) => sp.id === productData.id,
             );
             if (syncedProduct) {
               productMapping.set(j, syncedProduct);
@@ -666,7 +1017,7 @@ class QuotationService extends DualDatabaseService {
 
           if (!syncedProduct || !syncedProduct.id) {
             console.warn(
-              `⚠️ Product at index ${j} in category ${categoryId} was not synced properly`
+              `⚠️ Product at index ${j} in category ${categoryId} was not synced properly`,
             );
             continue;
           }
@@ -684,7 +1035,7 @@ class QuotationService extends DualDatabaseService {
             }));
 
             console.log(
-              `🔧 Syncing ${fieldsData.length} fields for product ${productId}`
+              `🔧 Syncing ${fieldsData.length} fields for product ${productId}`,
             );
 
             const fieldsResult = await syncChildRecords({
@@ -704,7 +1055,7 @@ class QuotationService extends DualDatabaseService {
               (fieldsResult.created?.length || 0) +
               (fieldsResult.updated?.length || 0);
             console.log(
-              `✅ Synced ${syncedFieldsCount} fields for product ${productId}`
+              `✅ Synced ${syncedFieldsCount} fields for product ${productId}`,
             );
           } else {
             // If no fields provided, delete all existing fields

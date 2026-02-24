@@ -9,10 +9,11 @@ const app = express();
 // Middleware
 app.use(
   cors({
-    origin: "*", // Configure sesuai kebutuhan production
+    credentials: true,
+    origin: true, // Configure sesuai kebutuhan production
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 app.use(express.json());

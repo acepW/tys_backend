@@ -4,6 +4,7 @@ const DualDatabaseService = require("../dualDatabase.service");
 
 const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
+const { where } = require("sequelize");
 
 class ContractService extends DualDatabaseService {
   constructor() {
@@ -96,6 +97,26 @@ class ContractService extends DualDatabaseService {
           model: dbModels.ContractVerificationProgress,
           as: "verification_progress",
           separate: true,
+        },
+        {
+          model: dbModels.ContractPayment,
+          as: "contract_payment",
+        },
+        {
+          model: dbModels.ContractPayment,
+          as: "contract_payment",
+          include: [
+            {
+              model: dbModels.ContractPaymentList,
+              as: "contract_payment_list",
+              include: [
+                {
+                  model: dbModels.ContractPaymentService,
+                  as: "contract_payment_services",
+                },
+              ],
+            },
+          ],
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -200,6 +221,22 @@ class ContractService extends DualDatabaseService {
           model: dbModels.ContractVerificationProgress,
           as: "verification_progress",
         },
+        {
+          model: dbModels.ContractPayment,
+          as: "contract_payment",
+          include: [
+            {
+              model: dbModels.ContractPaymentList,
+              as: "contract_payment_list",
+              include: [
+                {
+                  model: dbModels.ContractPaymentService,
+                  as: "contract_payment_services",
+                },
+              ],
+            },
+          ],
+        },
       ],
     };
 
@@ -218,7 +255,7 @@ class ContractService extends DualDatabaseService {
     contractData,
     services = [],
     clauses = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -229,7 +266,7 @@ class ContractService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating Contract with all relations in both databases...`
+          `🔄 Creating Contract with all relations in both databases...`,
         );
 
         // 1. Create Contract in DB1
@@ -266,7 +303,7 @@ class ContractService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${servicesResult.created?.length || 0} Contract Services`
+          `✅ Synced ${servicesResult.created?.length || 0} Contract Services`,
         );
 
         // 4. Update QuotationService is_selected_contract = true
@@ -277,14 +314,14 @@ class ContractService extends DualDatabaseService {
               {
                 where: { id: service.id_quotation_service },
                 transaction: transaction1,
-              }
+              },
             );
             await models.db2.QuotationService.update(
               { is_selected_contract: true },
               {
                 where: { id: service.id_quotation_service },
                 transaction: transaction2,
-              }
+              },
             );
           }
         }
@@ -303,7 +340,7 @@ class ContractService extends DualDatabaseService {
 
           const clause1 = await models.db1.ContractClause.create(
             clauseDataToCreate,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
           const clauseDataWithId = {
@@ -331,7 +368,7 @@ class ContractService extends DualDatabaseService {
 
             const point1 = await models.db1.ContractClausePoint.create(
               pointDataToCreate,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
             const pointDataWithId = {
@@ -366,7 +403,7 @@ class ContractService extends DualDatabaseService {
             console.log(
               `✅ Synced ${
                 pointLogsResult.created?.length || 0
-              } Clause Logs for Clause Point ${point1.id}`
+              } Clause Logs for Clause Point ${point1.id}`,
             );
 
             clausePointsResult.push({
@@ -397,7 +434,7 @@ class ContractService extends DualDatabaseService {
           console.log(
             `✅ Synced ${
               clauseLogsResult.created?.length || 0
-            } Clause-level Logs for Clause ${clause1.id}`
+            } Clause-level Logs for Clause ${clause1.id}`,
           );
 
           clausesResult.push({
@@ -416,7 +453,7 @@ class ContractService extends DualDatabaseService {
 
         const progress1 = await models.db1.ContractVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         const progressDataWithId = {
@@ -427,12 +464,135 @@ class ContractService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          }
+          },
         );
 
         console.log(
-          `✅ Created ContractVerificationProgress with status "created"`
+          `✅ Created ContractVerificationProgress with status "created"`,
         );
+
+        const dataPaymentQuotation1 = await models.db1.QuotationPayment.findAll(
+          {
+            where: { id_quotation: contractData.id_quotation },
+            include: [
+              {
+                model: models.db1.QuotationPaymentList,
+                as: "quotation_payment_list",
+                include: [
+                  {
+                    model: models.db1.QuotationPaymentService,
+                    as: "quotation_payment_services",
+                  },
+                ],
+              },
+            ],
+          },
+        );
+
+        // 7. Process Contract Payments
+        const paymentsResult = [];
+        for (const paymentRaw of dataPaymentQuotation1) {
+          const paymentData = paymentRaw.toJSON(); // tambahkan ini
+          const { quotation_payment_list = [], ...payment } = paymentData;
+
+          // Create ContractPayment
+          const paymentDataToCreate = {
+            id_contract: contract1.id,
+            payment_time_indo: payment.payment_time_indo,
+            payment_time_mandarin: payment.payment_time_mandarin,
+            total_payment_idr: payment.total_payment_idr,
+            total_payment_rmb: payment.total_payment_rmb,
+            currency_type: payment.currency_type,
+            payment_to: payment.payment_to,
+            is_active: payment.is_active,
+          };
+
+          console.log(paymentDataToCreate);
+
+          const payment1 = await models.db1.ContractPayment.create(
+            paymentDataToCreate,
+            { transaction: transaction1 },
+          );
+
+          const paymentDataWithId = {
+            ...paymentDataToCreate,
+            id: payment1.id,
+          };
+          await models.db2.ContractPayment.create(paymentDataWithId, {
+            transaction: transaction2,
+          });
+
+          console.log(`✅ Created ContractPayment with ID: ${payment1.id}`);
+
+          // Process Payment Lists
+          const paymentListsResult = [];
+          for (const listData of quotation_payment_list) {
+            const { quotation_payment_services = [], ...list } = listData;
+
+            // Create ContractPaymentList
+            const listDataToCreate = {
+              id_contract_payment: payment1.id,
+              service_name_indo: list.service_name_indo,
+              service_name_mandarin: list.service_name_mandarin,
+              price_idr: list.price_idr,
+              price_rmb: list.price_rmb,
+              payment_type: list.payment_type,
+              is_active: list.is_active,
+            };
+
+            const list1 = await models.db1.ContractPaymentList.create(
+              listDataToCreate,
+              { transaction: transaction1 },
+            );
+
+            const listDataWithId = {
+              ...listDataToCreate,
+              id: list1.id,
+            };
+            await models.db2.ContractPaymentList.create(listDataWithId, {
+              transaction: transaction2,
+            });
+
+            console.log(`✅ Created ContractPaymentList with ID: ${list1.id}`);
+
+            // Sync ContractPaymentServices for this list
+            const paymentServicesData = quotation_payment_services.map(
+              (service) => ({
+                id_contract_payment: payment1.id,
+                id_contract_payment_list: list1.id,
+                id_quotation_service: service.id_quotation_service,
+                is_active: service.is_active,
+              }),
+            );
+
+            const paymentServicesResult = await syncChildRecords({
+              Model1: models.db1.ContractPaymentService,
+              Model2: models.db2.ContractPaymentService,
+              foreignKey: "id_contract_payment_list",
+              parentId: list1.id,
+              newData: paymentServicesData,
+              transaction1,
+              transaction2,
+              isDoubleDatabase,
+            });
+
+            console.log(
+              `✅ Synced ${paymentServicesResult.created?.length || 0} ContractPaymentServices for List ${list1.id}`,
+            );
+
+            paymentListsResult.push({
+              payment_list: list1.toJSON(),
+              payment_services: paymentServicesResult,
+            });
+          }
+
+          paymentsResult.push({
+            payment: payment1.toJSON(),
+            payment_lists: paymentListsResult,
+          });
+        }
+
+        console.log(`✅ Processed ${paymentsResult.length} Contract Payments`);
 
         // Commit both transactions
         await transaction1.commit();
@@ -443,6 +603,7 @@ class ContractService extends DualDatabaseService {
           contract: contract1.toJSON(),
           services: servicesResult,
           clauses: clausesResult,
+          payments: paymentsResult,
           verification_progress: progress1.toJSON(),
         };
       } else {
@@ -478,7 +639,7 @@ class ContractService extends DualDatabaseService {
               {
                 where: { id: service.id_quotation_service },
                 transaction: transaction1,
-              }
+              },
             );
           }
         }
@@ -495,7 +656,7 @@ class ContractService extends DualDatabaseService {
 
           const createdClause = await models.db1.ContractClause.create(
             clauseDataToCreate,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
           // Process Clause Points with their own clause_logs
@@ -510,7 +671,7 @@ class ContractService extends DualDatabaseService {
 
             const createdPoint = await models.db1.ContractClausePoint.create(
               pointDataToCreate,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
             // Sync Clause Logs for this Clause Point
@@ -571,7 +732,7 @@ class ContractService extends DualDatabaseService {
 
         const progress = await models.db1.ContractVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         await transaction1.commit();
@@ -608,7 +769,7 @@ class ContractService extends DualDatabaseService {
     contractData,
     services = [],
     clauses = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -665,14 +826,14 @@ class ContractService extends DualDatabaseService {
               {
                 where: { id: service.id_quotation_service },
                 transaction: transaction1,
-              }
+              },
             );
             await models.db2.QuotationService.update(
               { is_selected_contract: true },
               {
                 where: { id: service.id_quotation_service },
                 transaction: transaction2,
-              }
+              },
             );
           }
         }
@@ -695,7 +856,7 @@ class ContractService extends DualDatabaseService {
 
         // Delete clauses that are not in the new data
         const clauseIdsToDelete = existingClauseIds.filter(
-          (id) => !clauseIdsToKeep.includes(id)
+          (id) => !clauseIdsToKeep.includes(id),
         );
 
         for (const clauseId of clauseIdsToDelete) {
@@ -743,7 +904,7 @@ class ContractService extends DualDatabaseService {
 
           const clause1 = await models.db1.ContractClause.create(
             clauseDataToCreate,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
           const clauseDataWithId = {
@@ -768,7 +929,7 @@ class ContractService extends DualDatabaseService {
 
             const point1 = await models.db1.ContractClausePoint.create(
               pointDataToCreate,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
             const pointDataWithId = {
@@ -864,7 +1025,7 @@ class ContractService extends DualDatabaseService {
 
           // Delete points that are not in the new data
           const pointIdsToDelete = existingPointIds.filter(
-            (id) => !pointIdsToKeep.includes(id)
+            (id) => !pointIdsToKeep.includes(id),
           );
 
           for (const pointId of pointIdsToDelete) {
@@ -904,7 +1065,7 @@ class ContractService extends DualDatabaseService {
 
             const point1 = await models.db1.ContractClausePoint.create(
               pointDataToCreate,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
             const pointDataWithId = {
@@ -994,7 +1155,7 @@ class ContractService extends DualDatabaseService {
             foreignKey: "id_contract_clause",
             parentId: clauseId,
             newData: clauseLogsData.filter(
-              (log) => log.id_contract_clause_point === null
+              (log) => log.id_contract_clause_point === null,
             ),
             transaction1,
             transaction2,
@@ -1055,7 +1216,7 @@ class ContractService extends DualDatabaseService {
               {
                 where: { id: service.id_quotation_service },
                 transaction: transaction1,
-              }
+              },
             );
           }
         }
@@ -1075,7 +1236,7 @@ class ContractService extends DualDatabaseService {
         const clauseIdsToKeep = clausesToUpdate.map((c) => c.id);
 
         const clauseIdsToDelete = existingClauseIds.filter(
-          (id) => !clauseIdsToKeep.includes(id)
+          (id) => !clauseIdsToKeep.includes(id),
         );
 
         for (const clauseId of clauseIdsToDelete) {
@@ -1106,7 +1267,7 @@ class ContractService extends DualDatabaseService {
 
           const createdClause = await models.db1.ContractClause.create(
             clauseDataToCreate,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
           // Process Clause Points with their own clause_logs
@@ -1121,7 +1282,7 @@ class ContractService extends DualDatabaseService {
 
             const createdPoint = await models.db1.ContractClausePoint.create(
               pointDataToCreate,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
             // Sync Clause Logs for this Clause Point
@@ -1202,7 +1363,7 @@ class ContractService extends DualDatabaseService {
 
           // Delete points that are not in the new data
           const pointIdsToDelete = existingPointIds.filter(
-            (id) => !pointIdsToKeep.includes(id)
+            (id) => !pointIdsToKeep.includes(id),
           );
 
           for (const pointId of pointIdsToDelete) {
@@ -1232,7 +1393,7 @@ class ContractService extends DualDatabaseService {
 
             const createdPoint = await models.db1.ContractClausePoint.create(
               pointDataToCreate,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
             // Sync Clause Logs for this new Clause Point
@@ -1309,7 +1470,7 @@ class ContractService extends DualDatabaseService {
             foreignKey: "id_contract_clause",
             parentId: clauseId,
             newData: clauseLogsData.filter(
-              (log) => log.id_contract_clause_point === null
+              (log) => log.id_contract_clause_point === null,
             ),
             transaction1,
             transaction2: null,
@@ -1353,7 +1514,7 @@ class ContractService extends DualDatabaseService {
       "submited",
       note,
       note,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -1371,7 +1532,7 @@ class ContractService extends DualDatabaseService {
       "approved",
       note || "Contract approved",
       note,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -1389,7 +1550,7 @@ class ContractService extends DualDatabaseService {
       "rejected",
       note || "Contract rejected",
       note,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -1407,7 +1568,7 @@ class ContractService extends DualDatabaseService {
       "sending to customer",
       note || "Contract sent to customer",
       note,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -1425,7 +1586,7 @@ class ContractService extends DualDatabaseService {
       "approve by customer",
       note || "Contract approved by customer",
       note,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -1443,7 +1604,7 @@ class ContractService extends DualDatabaseService {
       "reject by customer",
       note || "Contract rejected by customer",
       note,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -1463,7 +1624,7 @@ class ContractService extends DualDatabaseService {
     progressStatus,
     progressNote,
     contractNote = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -1474,7 +1635,7 @@ class ContractService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Changing Contract ID ${id} status to "${contractStatus}"...`
+          `🔄 Changing Contract ID ${id} status to "${contractStatus}"...`,
         );
 
         // Prepare update data
@@ -1509,7 +1670,7 @@ class ContractService extends DualDatabaseService {
 
         const progress1 = await models.db1.ContractVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         const progressDataWithId = {
@@ -1520,18 +1681,18 @@ class ContractService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          }
+          },
         );
 
         console.log(
-          `✅ Created ContractVerificationProgress with status "${progressStatus}"`
+          `✅ Created ContractVerificationProgress with status "${progressStatus}"`,
         );
 
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ Contract status successfully changed to "${contractStatus}"`
+          `✅ Contract status successfully changed to "${contractStatus}"`,
         );
 
         // Get updated contract
@@ -1568,7 +1729,7 @@ class ContractService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ Contract status changed to "${contractStatus}" in DB1 only`
+          `✅ Contract status changed to "${contractStatus}" in DB1 only`,
         );
 
         const updated = await this.getById(id, {}, isDoubleDatabase);

@@ -21,6 +21,9 @@ const QuotationCategoryModel = require("./quotation/quotationCategory.model");
 const QuotationServiceModel = require("./quotation/quotationService.model");
 const QuotationProductModel = require("./quotation/quotationProduct.model");
 const QuotationProductFieldModel = require("./quotation/quotationProductField.model");
+const QuotationPaymentModel = require("./quotation/quotationPayment.model");
+const QuotationPaymentListModel = require("./quotation/quotationPaymentList.model");
+const QuotationPaymentServiceModel = require("./quotation/quotationPaymentService.model");
 
 //contract
 const ContractModel = require("./contract/contract.model");
@@ -29,6 +32,9 @@ const ContractVerificationProgressModel = require("./contract/contactVerificatio
 const ContractClauseModel = require("./contract/contractClause.model");
 const ContractClausePointModel = require("./contract/contractClausePoint.model");
 const ContractClauseLogModel = require("./contract/contractClauseLog.model");
+const ContractPaymentModel = require("./contract/contractPayment.model");
+const ContractPaymentListModel = require("./contract/contractPaymentList.model");
+const ContractPaymentServiceModel = require("./contract/contractPaymentService.model");
 
 /**
  * Initialize all models for a given sequelize instance
@@ -60,6 +66,9 @@ const initializeModels = (sequelize) => {
     QuotationService: QuotationServiceModel(sequelize),
     QuotationProduct: QuotationProductModel(sequelize),
     QuotationProductField: QuotationProductFieldModel(sequelize),
+    QuotationPayment: QuotationPaymentModel(sequelize),
+    QuotationPaymentList: QuotationPaymentListModel(sequelize),
+    QuotationPaymentService: QuotationPaymentServiceModel(sequelize),
 
     //contract
     Contract: ContractModel(sequelize),
@@ -68,6 +77,9 @@ const initializeModels = (sequelize) => {
     ContractClause: ContractClauseModel(sequelize),
     ContractClausePoint: ContractClausePointModel(sequelize),
     ContractClauseLog: ContractClauseLogModel(sequelize),
+    ContractPayment: ContractPaymentModel(sequelize),
+    ContractPaymentList: ContractPaymentListModel(sequelize),
+    ContractPaymentService: ContractPaymentServiceModel(sequelize),
   };
 
   // Setup associations for all models

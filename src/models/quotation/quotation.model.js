@@ -86,7 +86,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations
@@ -119,6 +119,14 @@ module.exports = (sequelize) => {
     Quotation.hasMany(models.Contract, {
       foreignKey: "id_quotation",
       as: "contracts",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Quotation has many Quotation payment
+    Quotation.hasMany(models.QuotationPayment, {
+      foreignKey: "id_quotation",
+      as: "quotation_payment",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

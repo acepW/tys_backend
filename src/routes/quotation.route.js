@@ -12,6 +12,9 @@ router.post("/", QuotationController.create);
 // PUT routes
 router.put("/:id", QuotationController.update);
 
+//PATCH payment
+router.patch("/payment/:id", QuotationController.syncPayment);
+
 // DELETE routes
 router.delete("/:id", QuotationController.delete);
 

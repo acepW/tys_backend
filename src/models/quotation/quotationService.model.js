@@ -93,7 +93,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations
@@ -118,6 +118,22 @@ module.exports = (sequelize) => {
     QuotationService.hasOne(models.ServicePricing, {
       foreignKey: "id_quotation_service",
       as: "contract_service",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // QuotationService has many Quotation Payment Services
+    QuotationService.hasMany(models.QuotationPaymentService, {
+      foreignKey: "id_quotation_service",
+      as: "quotation_payment_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // QuotationService has many Contract Payment Services
+    QuotationService.hasMany(models.ContractPaymentService, {
+      foreignKey: "id_quotation_service",
+      as: "contract_payment_services",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
