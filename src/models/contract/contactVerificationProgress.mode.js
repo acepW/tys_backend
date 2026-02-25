@@ -26,7 +26,7 @@ module.exports = (sequelize) => {
       },
       note: {
         type: DataTypes.TEXT("long"),
-        allowNull: false,
+        allowNull: true,
         comment: "Description is BAB for Mandarin",
       },
       status: {

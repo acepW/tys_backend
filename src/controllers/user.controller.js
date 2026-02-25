@@ -95,8 +95,8 @@ class UserController {
     try {
       res.clearCookie(COOKIE_NAME, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: true,
+        sameSite: "None",
       });
 
       return successResponse(res, null, "Logout successful");
