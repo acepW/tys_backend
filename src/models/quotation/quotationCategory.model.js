@@ -45,15 +45,15 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
+          name: "idx_id_quotation",
+          fields: ["id_quotation"],
+        },
+        {
           name: "idx_id_category",
           fields: ["id_category"],
         },
-        {
-          name: "idx_is_active",
-          fields: ["is_active"],
-        },
       ],
-    }
+    },
   );
 
   // Define associations

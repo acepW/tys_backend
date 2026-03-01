@@ -1,39 +1,56 @@
 const express = require("express");
 const router = express.Router();
 const contractController = require("../controllers/contarct.controller");
+const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
-router.get("/", contractController.getAll);
-router.get("/:id", contractController.getById);
+router.get("/", authenticate, contractController.getAll);
+router.get("/:id", authenticate, contractController.getById);
 
 // POST routes
-router.post("/", contractController.create);
+router.post("/", authenticate, contractController.create);
 
 // PUT routes
-router.put("/:id", contractController.update);
+router.put("/:id", authenticate, contractController.update);
 
 // PATCH routes
-router.patch("/submit/:id", contractController.submit);
+router.patch("/submit/:id", authenticate, contractController.submit);
 
 // PATCH routes
-router.patch("/approve/:id", contractController.approve);
+router.patch("/approve/:id", authenticate, contractController.approve);
 
 // PATCH routes
-router.patch("/reject/:id", contractController.reject);
+router.patch("/reject/:id", authenticate, contractController.reject);
 
 // PATCH routes
-router.patch("/send-to-customer/:id", contractController.sendToCustomer);
+router.patch(
+  "/send-to-customer/:id",
+  authenticate,
+  contractController.sendToCustomer,
+);
 
 // PATCH routes
-router.patch("/approve-customer/:id", contractController.approveByCustomer);
+router.patch(
+  "/approve-customer/:id",
+  authenticate,
+  contractController.approveByCustomer,
+);
 
 // PATCH routes
-router.patch("/reject-customer/:id", contractController.rejectByCustomer);
+router.patch(
+  "/reject-customer/:id",
+  authenticate,
+  contractController.rejectByCustomer,
+);
 
 // PATCH routes
-router.patch("/open-payment/:id_payment", contractController.openPayment);
+router.patch(
+  "/open-payment/:id_payment",
+  authenticate,
+  contractController.openPayment,
+);
 
 // DELETE routes
-router.delete("/:id", contractController.delete);
+router.delete("/:id", authenticate, contractController.delete);
 
 module.exports = router;

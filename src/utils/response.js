@@ -7,13 +7,23 @@
  * @returns {Object} JSON response
  */
 const successResponse = (res, data, message = "Success", statusCode = 200) => {
-  return res.status(statusCode).json({
+  // Cek apakah data mengandung pagination
+  const isPaginated = data && data.pagination && data.data;
+
+  const response = {
     success: true,
     code: statusCode,
     message,
-    data,
+    ...(isPaginated
+      ? {
+          pagination: data.pagination,
+          data: data.data,
+        }
+      : { data }),
     timestamp: new Date().toISOString(),
-  });
+  };
+
+  return res.status(statusCode).json(response);
 };
 
 /**

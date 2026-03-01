@@ -7,13 +7,12 @@ class ServicePricingService extends DualDatabaseService {
     super("ServicePricing");
   }
 
-  /**
-   * Get all service pricing with relations
-   * @param {Object} options - Query options
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Array} Service pricing with relations
-   */
-  async getAllWithRelations(options = {}, isDoubleDatabase = true) {
+  async getAllWithRelations(
+    options = {},
+    page = null,
+    limit = null,
+    isDoubleDatabase = true,
+  ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
     const queryOptions = {
@@ -47,10 +46,45 @@ class ServicePricingService extends DualDatabaseService {
           as: "division",
           attributes: ["id", "division_name"],
         },
+        {
+          model: dbModels.User,
+          as: "user_create",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_approve",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_reject",
+          attributes: ["id", "name", "email"],
+        },
       ],
     };
 
-    return await this.findAll(queryOptions, isDoubleDatabase);
+    //if page and limit not set, use normal findAll
+    if (!page || !limit) {
+      return await this.findAll(queryOptions, isDoubleDatabase);
+    }
+
+    //if page and limit are set, use pagination
+    const offset = (page - 1) * limit;
+    const { count, rows } = await this.findAndCountAll(
+      { ...queryOptions, limit, offset },
+      isDoubleDatabase,
+    );
+
+    return {
+      data: rows,
+      pagination: {
+        total_data: count,
+        total_page: Math.ceil(count / limit),
+        current_page: page,
+        per_page: limit,
+      },
+    };
   }
 
   /**
@@ -93,6 +127,21 @@ class ServicePricingService extends DualDatabaseService {
           as: "division",
           attributes: ["id", "division_name"],
         },
+        {
+          model: dbModels.User,
+          as: "user_create",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_approve",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_reject",
+          attributes: ["id", "name", "email"],
+        },
       ],
     };
 
@@ -108,7 +157,7 @@ class ServicePricingService extends DualDatabaseService {
    */
   async createMultipleWithVariants(
     servicePricingDataList = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -119,7 +168,7 @@ class ServicePricingService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating ${servicePricingDataList.length} Service Pricing records with variants in both databases...`
+          `🔄 Creating ${servicePricingDataList.length} Service Pricing records with variants in both databases...`,
         );
 
         const results = [];
@@ -133,7 +182,7 @@ class ServicePricingService extends DualDatabaseService {
             transaction: transaction1,
           });
           console.log(
-            `✅ Created Service Pricing in DB1 with ID: ${servicePricing1.id}`
+            `✅ Created Service Pricing in DB1 with ID: ${servicePricing1.id}`,
           );
 
           // 2. Create Service Pricing in DB2 with same ID
@@ -145,7 +194,7 @@ class ServicePricingService extends DualDatabaseService {
             transaction: transaction2,
           });
           console.log(
-            `✅ Created Service Pricing in DB2 with ID: ${servicePricing1.id}`
+            `✅ Created Service Pricing in DB2 with ID: ${servicePricing1.id}`,
           );
 
           // 3. Prepare variants data with foreign key
@@ -176,7 +225,7 @@ class ServicePricingService extends DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records with variants successfully created`
+          `✅ ${servicePricingDataList.length} Service Pricing records with variants successfully created`,
         );
 
         return results;
@@ -217,7 +266,7 @@ class ServicePricingService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`
+          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`,
         );
 
         return results;
@@ -225,14 +274,14 @@ class ServicePricingService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating Service Pricing with variants:`,
-        error.message
+        error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to create Service Pricing with variants: ${error.message}`
+        `Failed to create Service Pricing with variants: ${error.message}`,
       );
     }
   }
@@ -250,7 +299,7 @@ class ServicePricingService extends DualDatabaseService {
     id,
     servicePricingData,
     variantsData = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -268,7 +317,7 @@ class ServicePricingService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction1,
-          }
+          },
         );
 
         const [updatedRows2] = await this.Model2.update(
@@ -276,7 +325,7 @@ class ServicePricingService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction2,
-          }
+          },
         );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
@@ -360,14 +409,14 @@ class ServicePricingService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating Service Pricing with variants:`,
-        error.message
+        error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to update Service Pricing with variants: ${error.message}`
+        `Failed to update Service Pricing with variants: ${error.message}`,
       );
     }
   }

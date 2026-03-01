@@ -64,10 +64,6 @@ module.exports = (sequelize) => {
           name: "idx_id_quotation",
           fields: ["id_quotation"],
         },
-        {
-          name: "idx_is_active",
-          fields: ["is_active"],
-        },
       ],
     },
   );

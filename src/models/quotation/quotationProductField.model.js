@@ -62,7 +62,13 @@ module.exports = (sequelize) => {
       tableName: "quotation_product_field",
       timestamps: true,
       underscored: true,
-    }
+      indexes: [
+        {
+          name: "idx_id_quotation_product",
+          fields: ["id_quotation_product"],
+        },
+      ],
+    },
   );
 
   // Define associations

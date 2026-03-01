@@ -16,6 +16,8 @@ class QuotationController {
         search,
         date_from,
         date_to,
+        page,
+        limit,
       } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
@@ -50,6 +52,8 @@ class QuotationController {
 
       const quotations = await quotationService.getAllWithRelations(
         { where: obj },
+        parseInt(page),
+        parseInt(limit),
         isDoubleDatabase,
       );
 
@@ -261,6 +265,7 @@ class QuotationController {
       const preparedQuotationData = {
         ...quotationData,
         status: quotationData.status || "pending",
+        id_user_create: req.user.id,
         is_active:
           quotationData.is_active !== undefined
             ? quotationData.is_active
@@ -509,7 +514,7 @@ class QuotationController {
 
       const result = await quotationService.update(
         id,
-        { status: "approved" },
+        { status: "approved", id_user_approve: req.user.id },
         isDoubleDatabase,
       );
 
@@ -540,7 +545,7 @@ class QuotationController {
 
       const result = await quotationService.update(
         id,
-        { status: "rejected" },
+        { status: "rejected", id_user_reject: req.user.id },
         isDoubleDatabase,
       );
 

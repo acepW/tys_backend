@@ -13,7 +13,7 @@ class CompanyController {
       return successResponse(
         res,
         companies,
-        "Companies retrieved successfully"
+        "Companies retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -26,14 +26,13 @@ class CompanyController {
   async getActive(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const companies = await companyService.getActiveCompanies(
-        isDoubleDatabase
-      );
+      const companies =
+        await companyService.getActiveCompanies(isDoubleDatabase);
 
       return successResponse(
         res,
         companies,
-        "Active companies retrieved successfully"
+        "Active companies retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -74,7 +73,7 @@ class CompanyController {
 
       const companies = await companyService.searchByName(
         query,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, companies, "Companies found successfully");
@@ -93,7 +92,8 @@ class CompanyController {
         address,
         contact,
         email,
-        tax,
+        tax_ppn,
+        tax_pph_23,
         initial_company,
         director_name,
         main_note,
@@ -109,12 +109,19 @@ class CompanyController {
         wechat_header_contract,
         wa_header_contract,
         email_header_contract,
+        company_name_header_invoice,
+        address_header_invoice,
+        wechat_header_invoice,
+        wa_header_invoice,
+        email_header_invoice,
         bank_name_rmb,
         account_name_rmb,
         account_no_rmb,
+        swift_no_rmb,
         bank_name_idr,
         account_name_idr,
         account_no_idr,
+        swift_no_idr,
         is_active,
         is_double_database,
       } = req.body;
@@ -130,7 +137,7 @@ class CompanyController {
         const emailExists = await companyService.checkEmailExists(
           req.body.email,
           null,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
 
         if (emailExists) {
@@ -143,7 +150,8 @@ class CompanyController {
         address: address,
         contact: contact,
         email: email,
-        tax: tax !== undefined ? tax : false,
+        tax_ppn: tax_ppn !== undefined ? tax_ppn : false,
+        tax_pph_23: tax_pph_23 !== undefined ? tax_pph_23 : false,
         initial_company: initial_company,
         director_name: director_name,
         main_note: main_note,
@@ -159,12 +167,19 @@ class CompanyController {
         wechat_header_contract: wechat_header_contract,
         wa_header_contract: wa_header_contract,
         email_header_contract: email_header_contract,
+        company_name_header_invoice: company_name_header_invoice,
+        address_header_invoice: address_header_invoice,
+        wechat_header_invoice: wechat_header_invoice,
+        wa_header_invoice: wa_header_invoice,
+        email_header_invoice: email_header_invoice,
         bank_name_rmb: bank_name_rmb,
         account_name_rmb: account_name_rmb,
         account_no_rmb: account_no_rmb,
+        swift_no_rmb: swift_no_rmb,
         bank_name_idr: bank_name_idr,
         account_name_idr: account_name_idr,
         account_no_idr: account_no_idr,
+        swift_no_idr: swift_no_idr,
         is_active: is_active !== undefined ? is_active : true,
       };
 
@@ -187,7 +202,8 @@ class CompanyController {
         address,
         contact,
         email,
-        tax,
+        tax_ppn,
+        tax_pph_23,
         initial_company,
         director_name,
         main_note,
@@ -203,12 +219,19 @@ class CompanyController {
         wechat_header_contract,
         wa_header_contract,
         email_header_contract,
+        company_name_header_invoice,
+        address_header_invoice,
+        wechat_header_invoice,
+        wa_header_invoice,
+        email_header_invoice,
         bank_name_rmb,
         account_name_rmb,
         account_no_rmb,
+        swift_no_rmb,
         bank_name_idr,
         account_name_idr,
         account_no_idr,
+        swift_no_idr,
         is_active,
         is_double_database,
       } = req.body;
@@ -225,7 +248,7 @@ class CompanyController {
         const emailExists = await companyService.checkEmailExists(
           req.body.email,
           id,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
 
         if (emailExists) {
@@ -238,7 +261,8 @@ class CompanyController {
       if (address !== undefined) data.address = address;
       if (contact !== undefined) data.contact = contact;
       if (email !== undefined) data.email = email;
-      if (tax !== undefined) data.tax = tax;
+      if (tax_ppn !== undefined) data.tax_ppn = tax_ppn;
+      if (tax_pph_23 !== undefined) data.tax_pph_23 = tax_pph_23;
       if (initial_company !== undefined) data.initial_company = initial_company;
       if (director_name !== undefined) data.director_name = director_name;
       if (main_note !== undefined) data.main_note = main_note;
@@ -265,14 +289,26 @@ class CompanyController {
         data.wa_header_contract = wa_header_contract;
       if (email_header_contract !== undefined)
         data.email_header_contract = email_header_contract;
+      if (company_name_header_invoice !== undefined)
+        data.company_name_header_invoice = company_name_header_invoice;
+      if (address_header_invoice !== undefined)
+        data.address_header_invoice = address_header_invoice;
+      if (wechat_header_invoice !== undefined)
+        data.wechat_header_invoice = wechat_header_invoice;
+      if (wa_header_invoice !== undefined)
+        data.wa_header_invoice = wa_header_invoice;
+      if (email_header_invoice !== undefined)
+        data.email_header_invoice = email_header_invoice;
       if (bank_name_rmb !== undefined) data.bank_name_rmb = bank_name_rmb;
       if (account_name_rmb !== undefined)
         data.account_name_rmb = account_name_rmb;
       if (account_no_rmb !== undefined) data.account_no_rmb = account_no_rmb;
+      if (swift_no_rmb !== undefined) data.swift_no_rmb = swift_no_rmb;
       if (bank_name_idr !== undefined) data.bank_name_idr = bank_name_idr;
       if (account_name_idr !== undefined)
         data.account_name_idr = account_name_idr;
       if (account_no_idr !== undefined) data.account_no_idr = account_no_idr;
+      if (swift_no_idr !== undefined) data.swift_no_idr = swift_no_idr;
       if (is_active !== undefined) data.is_active = is_active;
 
       const company = await companyService.update(id, data, isDoubleDatabase);

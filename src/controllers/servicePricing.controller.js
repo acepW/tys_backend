@@ -13,6 +13,8 @@ class ServicePricingController {
         id_category,
         status,
         search,
+        page,
+        limit,
       } = req.query;
       const isDoubleDatabase = is_double_database;
 
@@ -30,13 +32,15 @@ class ServicePricingController {
 
       const servicePricing = await servicePricingService.getAllWithRelations(
         { where: obj },
-        isDoubleDatabase
+        parseInt(page),
+        parseInt(limit),
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         servicePricing,
-        "Service pricing retrieved successfully"
+        "Service pricing retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -55,7 +59,7 @@ class ServicePricingController {
       const servicePricing = await servicePricingService.getById(
         id,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       if (!servicePricing) {
@@ -65,7 +69,7 @@ class ServicePricingController {
       return successResponse(
         res,
         servicePricing,
-        "Service pricing retrieved successfully"
+        "Service pricing retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -97,7 +101,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `product_name_indo is required for item at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -105,7 +109,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `product_name_mandarin is required for item at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -114,7 +118,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `variants must be an array for item at index ${i}`,
-            400
+            400,
           );
         }
       }
@@ -122,19 +126,20 @@ class ServicePricingController {
       // Prepare data with is_active default
       const servicePricingDataList = service_pricing_list.map((item) => ({
         ...item,
+        id_user_create: req.user.id,
         is_active: item.is_active !== undefined ? item.is_active : true,
       }));
 
       const result = await servicePricingService.createMultipleWithVariants(
         servicePricingDataList,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
         "Service pricing created successfully",
-        201
+        201,
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -154,7 +159,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -169,13 +174,13 @@ class ServicePricingController {
         id,
         servicePricingData,
         variants || [],
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing updated successfully"
+        "Service pricing updated successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -190,30 +195,26 @@ class ServicePricingController {
       const { id } = req.params;
       const { is_double_database = true } = req.body || {};
       const isDoubleDatabase = is_double_database;
-      console.log(1);
 
       // Check if service pricing exists
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
-      console.log(2);
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
       }
-      console.log(3);
       const result = await servicePricingService.update(
         id,
-        { status: "approved" },
-        isDoubleDatabase
+        { status: "approved", id_user_approve: req.user.id },
+        isDoubleDatabase,
       );
-      console.log(4);
 
       return successResponse(
         res,
         result,
-        "Service pricing approved successfully"
+        "Service pricing approved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -233,7 +234,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -241,14 +242,14 @@ class ServicePricingController {
 
       const result = await servicePricingService.update(
         id,
-        { status: "rejected" },
-        isDoubleDatabase
+        { status: "rejected", id_user_reject: req.user.id },
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing rejected successfully"
+        "Service pricing rejected successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -268,7 +269,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);

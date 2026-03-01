@@ -19,6 +19,15 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to contracts table",
       },
+      id_user: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Foreign key to users table",
+      },
       status: {
         type: DataTypes.ENUM(""),
         allowNull: false,
@@ -38,7 +47,7 @@ module.exports = (sequelize) => {
           "approved",
           "sending to customer",
           "approve by customer",
-          "reject by customer"
+          "reject by customer",
         ),
         allowNull: false,
         comment: "Status of Contract Progress",
@@ -54,7 +63,17 @@ module.exports = (sequelize) => {
       tableName: "contract_verification_progress",
       timestamps: true,
       underscored: true,
-    }
+      indexes: [
+        {
+          name: "idx_id_contract",
+          fields: ["id_contract"],
+        },
+        {
+          name: "idx_id_user",
+          fields: ["id_user"],
+        },
+      ],
+    },
   );
 
   // Define associations (untuk future development)
@@ -66,6 +85,14 @@ module.exports = (sequelize) => {
     ContractVerificationProgress.belongsTo(models.Contract, {
       foreignKey: "id_contract",
       as: "contract",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Contract Verification Progress belongs to User
+    ContractVerificationProgress.belongsTo(models.User, {
+      foreignKey: "id_user",
+      as: "user",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

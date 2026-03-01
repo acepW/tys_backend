@@ -531,6 +531,34 @@ class DualDatabaseService {
   }
 
   /**
+   * Get all and count records (no transaction needed for read operations)
+   */
+  async findAndCountAll(options = {}, isDoubleDatabase = true) {
+    try {
+      const Model = isDoubleDatabase ? this.Model1 : this.Model2;
+      const dbName = isDoubleDatabase ? "DB1" : "DB2";
+
+      // Pisah where dari options untuk query count
+      const { limit, offset, order, include, ...countOptions } = options;
+
+      // Jalankan count dan findAll secara paralel
+      const [count, rows] = await Promise.all([
+        Model.count(countOptions),
+        Model.findAll(options),
+      ]);
+
+      console.log(`✅ Found ${count} ${this.modelName}(s) from ${dbName}`);
+
+      return {
+        count,
+        rows: rows.map((r) => r.toJSON()),
+      };
+    } catch (error) {
+      console.error(`❌ Error finding ${this.modelName}:`, error.message);
+      throw new Error(`Error finding ${this.modelName}: ${error.message}`);
+    }
+  }
+  /**
    * Get single record by ID (no transaction needed for read operations)
    */
   async findById(id, options = {}, isDoubleDatabase = true) {

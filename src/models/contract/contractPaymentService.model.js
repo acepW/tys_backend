@@ -60,10 +60,6 @@ module.exports = (sequelize) => {
           name: "idx_id_quotation_service",
           fields: ["id_quotation_service"],
         },
-        {
-          name: "idx_is_active",
-          fields: ["is_active"],
-        },
       ],
     },
   );

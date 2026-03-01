@@ -121,9 +121,43 @@ const syncDatabases = async (options = { alter: true }) => {
   }
 };
 
+/**
+ * Sync specific model by name
+ * @param {string} modelName - Name of the model (e.g., 'Contract', 'User')
+ * @param {string} dbTarget - Target database: 'db1', 'db2', or 'both' (default: 'both')
+ * @param {Object} options - Sequelize sync options
+ */
+const syncModel = async (
+  modelName,
+  dbTarget = "both",
+  options = { alter: true },
+) => {
+  try {
+    console.log(`🔄 Syncing model: ${modelName}...`);
+
+    if (dbTarget === "db1" || dbTarget === "both") {
+      if (!models.db1[modelName])
+        throw new Error(`Model "${modelName}" not found in db1`);
+      await models.db1[modelName].sync(options);
+      console.log(`✅ [DB1] Model "${modelName}" synced successfully`);
+    }
+
+    if (dbTarget === "db2" || dbTarget === "both") {
+      if (!models.db2[modelName])
+        throw new Error(`Model "${modelName}" not found in db2`);
+      await models.db2[modelName].sync(options);
+      console.log(`✅ [DB2] Model "${modelName}" synced successfully`);
+    }
+  } catch (error) {
+    console.error(`❌ Error syncing model "${modelName}":`, error.message);
+    throw error;
+  }
+};
+
 module.exports = {
   models,
   db1,
   db2,
   syncDatabases,
+  syncModel,
 };

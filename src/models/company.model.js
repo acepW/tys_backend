@@ -35,10 +35,15 @@ module.exports = (sequelize) => {
         },
         comment: "Company email address",
       },
-      tax: {
+      tax_ppn: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
-        comment: "Tax applicable flag",
+        comment: "Tax ppn applicable flag",
+      },
+      tax_pph_23: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax pph 23 applicable flag",
       },
       initial_company: {
         type: DataTypes.STRING(20),
@@ -115,6 +120,31 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Email header for contract",
       },
+      company_name_header_invoice: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Company name header for invoice",
+      },
+      address_header_invoice: {
+        type: DataTypes.STRING(300),
+        allowNull: true,
+        comment: "Address header for invoice",
+      },
+      wechat_header_invoice: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "WeChat header for invoice",
+      },
+      wa_header_invoice: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "WhatsApp header for invoice",
+      },
+      email_header_invoice: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Email header for invoice",
+      },
       bank_name_rmb: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -130,6 +160,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Account no for RMB transactions",
       },
+      swift_no_rmb: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "SWIFT code for RMB transactions",
+      },
       bank_name_idr: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -144,6 +179,11 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(100),
         allowNull: true,
         comment: "Account no for IDR transactions",
+      },
+      swift_no_idr: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "SWIFT code for IDR transactions",
       },
 
       is_active: {
@@ -170,7 +210,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)

@@ -40,6 +40,7 @@ module.exports = (sequelize) => {
       date: {
         type: DataTypes.DATE,
         allowNull: false,
+        defaultValue: DataTypes.NOW,
         comment: "Date of Contract",
       },
       contract_no: {
@@ -119,12 +120,11 @@ module.exports = (sequelize) => {
         },
         {
           name: "idx_contract_title_indo",
-          fields: ["contract_title_indo"],
+          fields: [{ name: "contract_title_indo", length: 100 }],
         },
-        {
-          name: "idx_is_active",
-          fields: ["is_active"],
-        },
+        // Composite Index
+        { name: "idx_company_active", fields: ["id_company", "is_active"] },
+        { name: "idx_status_active", fields: ["status", "is_active"] },
       ],
     },
   );

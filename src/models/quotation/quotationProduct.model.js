@@ -39,12 +39,8 @@ module.exports = (sequelize) => {
           name: "idx_id_quotation_category",
           fields: ["id_quotation_category"],
         },
-        {
-          name: "idx_is_active",
-          fields: ["is_active"],
-        },
       ],
-    }
+    },
   );
 
   // Define associations

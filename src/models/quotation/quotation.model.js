@@ -28,9 +28,37 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to companies table",
       },
+      id_user_create: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Foreign key to users table",
+      },
+      id_user_approve: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Id user who approve the service pricing",
+      },
+      id_user_reject: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Id user who reject the service pricing",
+      },
       date: {
         type: DataTypes.DATE,
         allowNull: false,
+        defaultValue: DataTypes.NOW,
         comment: "Date of quotation",
       },
       quotation_no: {
@@ -79,11 +107,24 @@ module.exports = (sequelize) => {
         },
         {
           name: "idx_quotation_title_indo",
-          fields: ["quotation_title_indo"],
+          fields: [{ name: "quotation_title_indo", length: 100 }],
         },
         {
-          name: "idx_is_active",
-          fields: ["is_active"],
+          name: "idx_id_user_create",
+          fields: ["id_user_create"],
+        },
+        {
+          name: "idx_id_user_approve",
+          fields: ["id_user_approve"],
+        },
+        {
+          name: "idx_id_user_reject",
+          fields: ["id_user_reject"],
+        },
+        // Composite index
+        {
+          name: "idx_company_active",
+          fields: ["id_company", "is_active"],
         },
       ],
     },
@@ -127,6 +168,30 @@ module.exports = (sequelize) => {
     Quotation.hasMany(models.QuotationPayment, {
       foreignKey: "id_quotation",
       as: "quotation_payment",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Quotation belongs to user
+    Quotation.belongsTo(models.User, {
+      foreignKey: "id_user_create",
+      as: "user_create",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Quotation belongs to user
+    Quotation.belongsTo(models.User, {
+      foreignKey: "id_user_approve",
+      as: "user_approve",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Quotation belongs to user
+    Quotation.belongsTo(models.User, {
+      foreignKey: "id_user_reject",
+      as: "user_reject",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

@@ -28,6 +28,33 @@ module.exports = (sequelize) => {
         },
         comment: "Id division from division",
       },
+      id_user_create: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Id user who created the service pricing",
+      },
+      id_user_approve: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Id user who approve the service pricing",
+      },
+      id_user_reject: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Id user who reject the service pricing",
+      },
       product_name_indo: {
         type: DataTypes.STRING(500),
         allowNull: false,
@@ -74,24 +101,43 @@ module.exports = (sequelize) => {
       timestamps: true,
       underscored: true,
       indexes: [
+        // Prefix index untuk string panjang
         {
           name: "idx_product_name_indo",
-          fields: ["product_name_indo"],
+          fields: [{ name: "product_name_indo", length: 100 }],
         },
         {
           name: "idx_product_name_mandarin",
-          fields: ["product_name_mandarin"],
+          fields: [{ name: "product_name_mandarin", length: 100 }],
+        },
+        // FK indexes
+        {
+          name: "idx_id_division", // tambahan yang kurang
+          fields: ["id_division"],
         },
         {
-          name: "idx_id_category",
-          fields: ["id_category"],
+          name: "idx_id_user_create",
+          fields: ["id_user_create"],
         },
         {
-          name: "idx_is_active",
-          fields: ["is_active"],
+          name: "idx_id_user_approve",
+          fields: ["id_user_approve"],
+        },
+        {
+          name: "idx_id_user_reject",
+          fields: ["id_user_reject"],
+        },
+        // Composite index (lebih efisien dari is_active standalone)
+        {
+          name: "idx_category_active",
+          fields: ["id_category", "is_active"],
+        },
+        {
+          name: "idx_division_active",
+          fields: ["id_division", "is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
@@ -135,6 +181,30 @@ module.exports = (sequelize) => {
     ServicePricing.hasMany(models.QuotationService, {
       foreignKey: "id_service_pricing",
       as: "quotation_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Service Pricing belongs to user
+    ServicePricing.belongsTo(models.User, {
+      foreignKey: "id_user_create",
+      as: "user_create",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Service Pricing belongs to user
+    ServicePricing.belongsTo(models.User, {
+      foreignKey: "id_user_approve",
+      as: "user_approve",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Service Pricing belongs to user
+    ServicePricing.belongsTo(models.User, {
+      foreignKey: "id_user_reject",
+      as: "user_reject",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

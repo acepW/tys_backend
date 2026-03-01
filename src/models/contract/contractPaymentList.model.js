@@ -59,10 +59,6 @@ module.exports = (sequelize) => {
           name: "idx_id_contract_payment",
           fields: ["id_contract_payment"],
         },
-        {
-          name: "idx_is_active",
-          fields: ["is_active"],
-        },
       ],
     },
   );

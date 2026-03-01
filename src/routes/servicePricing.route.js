@@ -1,24 +1,25 @@
 const express = require("express");
 const router = express.Router();
 const ServicePriceController = require("../controllers/servicePricing.controller");
+const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
-router.get("/", ServicePriceController.getAll);
-router.get("/:id", ServicePriceController.getById);
+router.get("/", authenticate, ServicePriceController.getAll);
+router.get("/:id", authenticate, ServicePriceController.getById);
 
 // POST routes
-router.post("/", ServicePriceController.create);
+router.post("/", authenticate, ServicePriceController.create);
 
 // PUT routes
-router.put("/:id", ServicePriceController.update);
+router.put("/:id", authenticate, ServicePriceController.update);
 
 // DELETE routes
-router.delete("/:id", ServicePriceController.delete);
+router.delete("/:id", authenticate, ServicePriceController.delete);
 
 //PATCH approve
-router.patch("/approve/:id", ServicePriceController.approve);
+router.patch("/approve/:id", authenticate, ServicePriceController.approve);
 
 //PATCH reject
-router.patch("/reject/:id", ServicePriceController.reject);
+router.patch("/reject/:id", authenticate, ServicePriceController.reject);
 
 module.exports = router;

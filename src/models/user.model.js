@@ -71,7 +71,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
@@ -79,10 +79,66 @@ module.exports = (sequelize) => {
     // Contoh: Users dapat memiliki relasi dengan Order, dll
     // Users.hasMany(models.Order, { ... });
 
-    //Users has many Service Pricing
+    //Users belongs to Division
     Users.belongsTo(models.Division, {
       foreignKey: "id_division",
       as: "division",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Service Pricing
+    Users.hasMany(models.ServicePricing, {
+      foreignKey: "id_user_create",
+      as: "created_service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Service Pricing
+    Users.hasMany(models.ServicePricing, {
+      foreignKey: "id_user_approve",
+      as: "approved_service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Service Pricing
+    Users.hasMany(models.ServicePricing, {
+      foreignKey: "id_user_reject",
+      as: "rejected_service_pricing",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Quotation
+    Users.hasMany(models.Quotation, {
+      foreignKey: "id_user_create",
+      as: "created_quotation",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Quotation
+    Users.hasMany(models.Quotation, {
+      foreignKey: "id_user_approve",
+      as: "approved_quotation",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Quotation
+    Users.hasMany(models.Quotation, {
+      foreignKey: "id_user_reject",
+      as: "rejected_quotation",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Contract Verification Progress
+    Users.hasMany(models.ContractVerificationProgress, {
+      foreignKey: "id_user",
+      as: "verification_progress",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

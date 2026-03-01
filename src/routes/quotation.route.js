@@ -1,27 +1,28 @@
 const express = require("express");
 const router = express.Router();
 const QuotationController = require("../controllers/quotation.controller");
+const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
-router.get("/", QuotationController.getAll);
-router.get("/:id", QuotationController.getById);
+router.get("/", authenticate, QuotationController.getAll);
+router.get("/:id", authenticate, QuotationController.getById);
 
 // POST routes
-router.post("/", QuotationController.create);
+router.post("/", authenticate, QuotationController.create);
 
 // PUT routes
-router.put("/:id", QuotationController.update);
+router.put("/:id", authenticate, QuotationController.update);
 
 //PATCH payment
-router.patch("/payment/:id", QuotationController.syncPayment);
+router.patch("/payment/:id", authenticate, QuotationController.syncPayment);
 
 // DELETE routes
-router.delete("/:id", QuotationController.delete);
+router.delete("/:id", authenticate, QuotationController.delete);
 
 //PATCH approve
-router.patch("/approve/:id", QuotationController.approve);
+router.patch("/approve/:id", authenticate, QuotationController.approve);
 
 //PATCH reject
-router.patch("/reject/:id", QuotationController.reject);
+router.patch("/reject/:id", authenticate, QuotationController.reject);
 
 module.exports = router;

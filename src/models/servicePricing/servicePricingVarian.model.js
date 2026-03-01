@@ -49,6 +49,13 @@ module.exports = (sequelize) => {
       tableName: "service_pricing_variant",
       timestamps: true,
       underscored: true,
+      indexes: [
+        // Prefix index untuk string panjang
+        {
+          name: "idx_id_service_pricing",
+          fields: ["id_service_pricing"],
+        },
+      ],
     },
   );
 

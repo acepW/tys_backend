@@ -16,6 +16,8 @@ class ContractController {
         status,
         contract_type,
         search,
+        page,
+        limit,
       } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
@@ -36,13 +38,15 @@ class ContractController {
 
       const contracts = await contractService.getAllWithRelations(
         { where: obj },
-        isDoubleDatabase
+        parseInt(page),
+        parseInt(limit),
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         contracts,
-        "Contracts retrieved successfully"
+        "Contracts retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -127,7 +131,7 @@ class ContractController {
             return errorResponse(
               res,
               `description_indo is required for clause at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -135,7 +139,7 @@ class ContractController {
             return errorResponse(
               res,
               `description_mandarin is required for clause at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -143,7 +147,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_point must be an array for clause at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -151,7 +155,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_logs must be an array for clause at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -164,7 +168,7 @@ class ContractController {
                 return errorResponse(
                   res,
                   `clause_logs must be an array for clause_point at clause index ${i}, point index ${j}`,
-                  400
+                  400,
                 );
               }
             }
@@ -185,7 +189,8 @@ class ContractController {
         contractDataToCreate,
         services || [],
         clauses || [],
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract created successfully", 201);
@@ -229,7 +234,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_point must be an array for clause at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -237,7 +242,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_logs must be an array for clause at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -250,7 +255,7 @@ class ContractController {
                 return errorResponse(
                   res,
                   `clause_logs must be an array for clause_point at clause index ${i}, point index ${j}`,
-                  400
+                  400,
                 );
               }
             }
@@ -263,7 +268,7 @@ class ContractController {
         contractData,
         services || [],
         clauses || [],
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract updated successfully");
@@ -290,7 +295,8 @@ class ContractController {
       const result = await contractService.submitContract(
         id,
         note,
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract submitted successfully");
@@ -317,7 +323,8 @@ class ContractController {
       const result = await contractService.approveContract(
         id,
         note,
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract approved successfully");
@@ -348,7 +355,8 @@ class ContractController {
       const result = await contractService.rejectContract(
         id,
         note,
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract rejected successfully");
@@ -375,13 +383,14 @@ class ContractController {
       const result = await contractService.sendToCustomer(
         id,
         note,
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Contract sent to customer successfully"
+        "Contract sent to customer successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -406,13 +415,14 @@ class ContractController {
       const result = await contractService.approveByCustomer(
         id,
         note,
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Contract approved by customer successfully"
+        "Contract approved by customer successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -441,13 +451,14 @@ class ContractController {
       const result = await contractService.rejectByCustomer(
         id,
         note,
-        isDoubleDatabase
+        req.user.id,
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Contract rejected by customer successfully"
+        "Contract rejected by customer successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -467,7 +478,7 @@ class ContractController {
       const existing = await paymentService.findById(
         id_payment,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!existing) {
         return errorResponse(res, "Payment not found", 404);
@@ -476,7 +487,7 @@ class ContractController {
       const result = await paymentService.update(
         id_payment,
         { is_open: true },
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Payment opened successfully");

@@ -39,7 +39,8 @@ module.exports = (sequelize) => {
       tableName: "contract_clause",
       timestamps: true,
       underscored: true,
-    }
+      index: [{ name: "idx_id_contract", fields: ["id_contract"] }],
+    },
   );
 
   // Define associations (untuk future development)
