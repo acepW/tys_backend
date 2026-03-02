@@ -24,6 +24,9 @@ const quotationRoutes = require("./quotation.route");
 //contract
 const contactRoutes = require("./contract.route");
 
+//invoice
+const invoiceRoutes = require("./invoice.route");
+
 // Use routes
 //sync
 router.use("/sync", syncRoutes);
@@ -46,6 +49,9 @@ router.use("/quotations", quotationRoutes);
 
 //contract
 router.use("/contracts", contactRoutes);
+
+//invoice
+router.use("/invoices", invoiceRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -72,6 +78,9 @@ router.get("/", (req, res) => {
 
       //contract
       contract: "api/contracts",
+
+      //invoice
+      invoice: "api/invoices",
     },
   });
 });

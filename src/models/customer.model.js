@@ -79,7 +79,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
@@ -99,6 +99,14 @@ module.exports = (sequelize) => {
     Customer.belongsTo(models.Contract, {
       foreignKey: "id_customer",
       as: "contracts",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Customer has many Invoices
+    Customer.belongsTo(models.Invoice, {
+      foreignKey: "id_customer",
+      as: "invoices",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

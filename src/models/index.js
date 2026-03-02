@@ -36,6 +36,10 @@ const ContractPaymentModel = require("./contract/contractPayment.model");
 const ContractPaymentListModel = require("./contract/contractPaymentList.model");
 const ContractPaymentServiceModel = require("./contract/contractPaymentService.model");
 
+//invoice
+const InvoiceModel = require("./invoice/invoice.model");
+const InvoiceServiceModel = require("./invoice/invoiceService.model");
+
 /**
  * Initialize all models for a given sequelize instance
  * @param {Sequelize} sequelize - Sequelize instance
@@ -80,6 +84,10 @@ const initializeModels = (sequelize) => {
     ContractPayment: ContractPaymentModel(sequelize),
     ContractPaymentList: ContractPaymentListModel(sequelize),
     ContractPaymentService: ContractPaymentServiceModel(sequelize),
+
+    //invoice
+    Invoice: InvoiceModel(sequelize),
+    InvoiceService: InvoiceServiceModel(sequelize),
   };
 
   // Setup associations for all models

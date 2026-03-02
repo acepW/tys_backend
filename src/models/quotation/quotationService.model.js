@@ -133,6 +133,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // QuotationService has many Invoice Services
+    QuotationService.hasMany(models.InvoiceService, {
+      foreignKey: "id_quotation_service",
+      as: "invoice_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return QuotationService;

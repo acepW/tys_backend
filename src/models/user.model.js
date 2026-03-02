@@ -142,6 +142,30 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //Users has many Invoice
+    Users.hasMany(models.Invoice, {
+      foreignKey: "id_user_create",
+      as: "created_invoice",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Invoice
+    Users.hasMany(models.Invoice, {
+      foreignKey: "id_user_approve",
+      as: "approved_invoice",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Invoice
+    Users.hasMany(models.Invoice, {
+      foreignKey: "id_user_reject",
+      as: "rejected_invoice",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Users;

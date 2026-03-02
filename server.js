@@ -20,7 +20,7 @@ const startServer = async () => {
     //await syncDatabases();
 
     //sync database by table name
-    //await syncModel("User");
+    //await syncModel("Invoice");
     console.log("");
 
     // Start Express server

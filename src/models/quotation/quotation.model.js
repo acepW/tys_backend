@@ -172,6 +172,14 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    // Quotation has many Invoice
+    Quotation.hasMany(models.Invoice, {
+      foreignKey: "id_quotation",
+      as: "invoices",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     //Quotation belongs to user
     Quotation.belongsTo(models.User, {
       foreignKey: "id_user_create",
