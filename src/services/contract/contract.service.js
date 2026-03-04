@@ -112,10 +112,7 @@ class ContractService extends DualDatabaseService {
             },
           ],
         },
-        {
-          model: dbModels.ContractPayment,
-          as: "contract_payment",
-        },
+
         {
           model: dbModels.ContractPayment,
           as: "contract_payment",
@@ -129,6 +126,11 @@ class ContractService extends DualDatabaseService {
                   as: "contract_payment_services",
                 },
               ],
+            },
+            {
+              model: dbModels.Invoice,
+              as: "invoices",
+              attributes: ["id", "invoice_no"],
             },
           ],
         },
@@ -283,6 +285,11 @@ class ContractService extends DualDatabaseService {
                   as: "contract_payment_services",
                 },
               ],
+            },
+            {
+              model: dbModels.Invoice,
+              as: "invoices",
+              attributes: ["id", "invoice_no"],
             },
           ],
         },
