@@ -88,7 +88,7 @@ module.exports = (sequelize) => {
     // Customer.hasMany(models.Order, { ... });
 
     // Customer has many quotations
-    Customer.belongsTo(models.Quotation, {
+    Customer.hasMany(models.Quotation, {
       foreignKey: "id_customer",
       as: "quotations",
       onDelete: "RESTRICT",
@@ -96,7 +96,7 @@ module.exports = (sequelize) => {
     });
 
     // Customer has many contracts
-    Customer.belongsTo(models.Contract, {
+    Customer.hasMany(models.Contract, {
       foreignKey: "id_customer",
       as: "contracts",
       onDelete: "RESTRICT",
@@ -104,7 +104,7 @@ module.exports = (sequelize) => {
     });
 
     // Customer has many Invoices
-    Customer.belongsTo(models.Invoice, {
+    Customer.hasMany(models.Invoice, {
       foreignKey: "id_customer",
       as: "invoices",
       onDelete: "RESTRICT",
