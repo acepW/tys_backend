@@ -105,6 +105,11 @@ class InvoiceService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.DebitNote,
+          as: "debit_notes",
+          separate: true,
+        },
       ],
       order: [["createdAt", "DESC"]],
     };
@@ -197,6 +202,43 @@ class InvoiceService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+            },
+          ],
+        },
+        {
+          model: dbModels.DebitNote,
+          as: "debit_notes",
+          separate: true,
+          include: [
+            {
+              model: dbModels.Company,
+              as: "company",
+              attributes: ["id", "company_name"],
+            },
+            {
+              model: dbModels.Customer,
+              as: "customer",
+              attributes: ["id", "company_name"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_create",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_approve",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_reject",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.DebitNoteItem,
+              as: "debit_note_items",
+              separate: true,
             },
           ],
         },
