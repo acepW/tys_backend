@@ -166,6 +166,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //Users has many Invoice Verification Progress
+    Users.hasMany(models.InvoiceVerificationProgress, {
+      foreignKey: "id_user",
+      as: "invoice_verification_progress",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Users;

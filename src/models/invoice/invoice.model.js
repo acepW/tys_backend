@@ -88,6 +88,11 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.NOW,
         comment: "Date of Invoice",
       },
+      due_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Due date of Invoice",
+      },
       invoice_no: {
         type: DataTypes.STRING(100),
         allowNull: false,
@@ -134,7 +139,13 @@ module.exports = (sequelize) => {
         comment: "Note for rejection",
       },
       status: {
-        type: DataTypes.ENUM("pending", "rejected", "approved"),
+        type: DataTypes.ENUM(
+          "pending",
+          "on verification",
+          "rejected",
+          "approved",
+          "paid off",
+        ),
         allowNull: false,
         defaultValue: "pending",
         comment: "Status of Invoice",
@@ -251,6 +262,14 @@ module.exports = (sequelize) => {
     Invoice.hasMany(models.InvoiceService, {
       foreignKey: "id_invoice",
       as: "invoice_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Invoice has many Invoice Verification Progress
+    Invoice.hasMany(models.InvoiceVerificationProgress, {
+      foreignKey: "id_invoice",
+      as: "verification_progress",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

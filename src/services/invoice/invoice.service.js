@@ -54,6 +54,7 @@ class InvoiceService extends DualDatabaseService {
             "payment_time_mandarin",
             "total_payment_idr",
             "total_payment_rmb",
+            "payment_to",
           ],
         },
         {
@@ -89,6 +90,18 @@ class InvoiceService extends DualDatabaseService {
             {
               model: dbModels.QuotationService,
               as: "quotation_service",
+            },
+          ],
+        },
+        {
+          model: dbModels.InvoiceVerificationProgress,
+          as: "verification_progress",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
             },
           ],
         },
@@ -175,6 +188,18 @@ class InvoiceService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.InvoiceVerificationProgress,
+          as: "verification_progress",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+            },
+          ],
+        },
       ],
     };
 
@@ -191,6 +216,7 @@ class InvoiceService extends DualDatabaseService {
   async createWithRelations(
     invoiceData,
     invoiceServices = [],
+    id_user_create,
     isDoubleDatabase = true,
   ) {
     let transaction1 = null;
@@ -237,6 +263,34 @@ class InvoiceService extends DualDatabaseService {
           `✅ Synced ${servicesResult.created?.length || 0} Invoice Services`,
         );
 
+        // 4. Create initial InvoiceVerificationProgress with status "created"
+        const progressData = {
+          id_invoice: invoice1.id,
+          id_user: id_user_create,
+          status: "created",
+          note: "Invoice created",
+        };
+
+        const progress1 = await models.db1.InvoiceVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.InvoiceVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ Created ContractVerificationProgress with status "created"`,
+        );
+
         await transaction1.commit();
         await transaction2.commit();
         console.log(`✅ Invoice with all relations successfully created`);
@@ -244,6 +298,7 @@ class InvoiceService extends DualDatabaseService {
         return {
           invoice: invoice1.toJSON(),
           invoice_services: servicesResult,
+          verification_progress: progress1.toJSON(),
         };
       } else {
         // Single database (DB1 only)
@@ -269,12 +324,30 @@ class InvoiceService extends DualDatabaseService {
           isDoubleDatabase: false,
         });
 
+        // 4. Create initial InvoiceVerificationProgress with status "created"
+        const progressData = {
+          id_invoice: invoice1.id,
+          id_user: id_user_create,
+          status: "created",
+          note: "Invoice created",
+        };
+
+        const progress = await models.db1.InvoiceVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        console.log(
+          `✅ Created InvoiceVerificationProgress with status "created"`,
+        );
+
         await transaction1.commit();
         console.log(`✅ Invoice created in DB1 only`);
 
         return {
           invoice: invoice.toJSON(),
           invoice_services: servicesResult,
+          verification_progress: progress.toJSON(),
         };
       }
     } catch (error) {
@@ -393,16 +466,38 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
+   * Submit invoice - change status to "on verification" and add progress
+   * @param {Number} id - Invoice ID
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated invoice
+   */
+  async submitInvoice(id, note, id_user, isDoubleDatabase = true) {
+    return await this._changeStatusWithProgress(
+      id,
+      "on verification",
+      "submitted",
+      note || "Invoice submitted",
+      note,
+      id_user,
+      isDoubleDatabase,
+    );
+  }
+
+  /**
    * Approve invoice
    * @param {Number} id - Invoice ID
    * @param {Number} id_user - User ID who approves
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
-  async approveInvoice(id, id_user, isDoubleDatabase = true) {
-    return await this._changeStatus(
+  async approveInvoice(id, note, id_user, isDoubleDatabase = true) {
+    return await this._changeStatusWithProgress(
       id,
-      { status: "approved", id_user_approve: id_user },
+      "approved",
+      "approved",
+      note || "Invoice approved",
+      note,
+      id_user,
       isDoubleDatabase,
     );
   }
@@ -414,18 +509,55 @@ class InvoiceService extends DualDatabaseService {
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
-  async rejectInvoice(id, id_user, note_reject, isDoubleDatabase = true) {
-    return await this._changeStatus(
+  async rejectInvoice(id, note, id_user, isDoubleDatabase = true) {
+    return await this._changeStatusWithProgress(
       id,
-      { status: "rejected", id_user_reject: id_user, note_reject },
+      "rejected",
+      "rejected",
+      note || "Invoice rejected",
+      note,
+      id_user,
       isDoubleDatabase,
     );
   }
 
   /**
-   * Internal method to change invoice status
+   * Pay invoice - change status to "paid off" and add progress
+   * @param {Number} id - Invoice ID
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated invoice
    */
-  async _changeStatus(id, updateData, isDoubleDatabase = true) {
+  async payInvoice(id, note, id_user, isDoubleDatabase = true) {
+    return await this._changeStatusWithProgress(
+      id,
+      "paid off",
+      "paid off",
+      note || "Invoice paid off",
+      note,
+      id_user,
+      isDoubleDatabase,
+    );
+  }
+
+  /**
+   * Internal method to change invoice status and add verification progress
+   * @param {Number} id - Invoice ID
+   * @param {String} invoiceStatus - New invoice status
+   * @param {String} progressStatus - Verification progress status
+   * @param {String} progressNote - Note for progress
+   * @param {String} invoiceNote - Note to update in invoice (optional)
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated invoice
+   */
+  async _changeStatusWithProgress(
+    id,
+    invoiceStatus,
+    progressStatus,
+    progressNote,
+    invoiceNote = null,
+    id_user,
+    isDoubleDatabase = true,
+  ) {
     let transaction1 = null;
     let transaction2 = null;
 
@@ -434,34 +566,117 @@ class InvoiceService extends DualDatabaseService {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
-        await this.Model1.update(updateData, {
+        console.log(
+          `🔄 Changing Contract ID ${id} status to "${invoiceStatus}"...`,
+        );
+
+        // Prepare update data
+        const updateData = { status: invoiceStatus };
+        if (invoiceNote) {
+          updateData.note = invoiceNote;
+        }
+
+        // 1. Update Invoice status in both databases
+        const [updatedRows1] = await this.Model1.update(updateData, {
           where: { id },
           transaction: transaction1,
         });
 
-        await this.Model2.update(updateData, {
+        const [updatedRows2] = await this.Model2.update(updateData, {
           where: { id },
           transaction: transaction2,
         });
 
+        if (updatedRows1 === 0 && updatedRows2 === 0) {
+          throw new Error(`Contract with ID ${id} not found`);
+        }
+
+        console.log(`✅ Updated Contract status in both databases`);
+
+        // 2. Create InvoiceVerificationProgress
+        const progressData = {
+          id_invoice: id,
+          id_user: id_user,
+          status: progressStatus,
+          note: progressNote,
+        };
+
+        const progress1 = await models.db1.InvoiceVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.InvoiceVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ Created ContractVerificationProgress with status "${progressStatus}"`,
+        );
+
+        // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
+        console.log(
+          `✅ Contract status successfully changed to "${invoiceStatus}"`,
+        );
+
+        // Get updated contract
+        const updated = await this.getById(id, {}, isDoubleDatabase);
+
+        return updated;
       } else {
+        // Single database (DB1 only)
         transaction1 = await db1.transaction();
 
-        await this.Model1.update(updateData, {
+        const updateData = { status: invoiceStatus };
+        if (invoiceNote) {
+          updateData.note = invoiceNote;
+        }
+
+        const [updatedRows] = await this.Model1.update(updateData, {
           where: { id },
           transaction: transaction1,
         });
 
-        await transaction1.commit();
-      }
+        if (updatedRows === 0) {
+          throw new Error(`Contract with ID ${id} not found`);
+        }
 
-      return await this.getById(id, {}, isDoubleDatabase);
+        const progressData = {
+          id_invoice: id,
+          id_user: id_user,
+          status: progressStatus,
+          note: progressNote,
+        };
+
+        await models.db1.InvoiceVerificationProgress.create(progressData, {
+          transaction: transaction1,
+        });
+
+        await transaction1.commit();
+        console.log(
+          `✅ Contract status changed to "${invoiceStatus}" in DB1 only`,
+        );
+
+        const updated = await this.getById(id, {}, isDoubleDatabase);
+
+        return updated;
+      }
     } catch (error) {
+      console.error(`❌ Error changing Contract status:`, error.message);
+
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
-      throw new Error(`Failed to change Invoice status: ${error.message}`);
+
+      throw new Error(`Failed to change Contract status: ${error.message}`);
     }
   }
 }

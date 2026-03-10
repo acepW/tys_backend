@@ -16,10 +16,16 @@ router.put("/:id", authenticate, InvoiceController.update);
 // DELETE routes
 router.delete("/:id", authenticate, InvoiceController.delete);
 
+//PATCH submit
+router.patch("/submit/:id", authenticate, InvoiceController.submit);
+
 //PATCH approve
 router.patch("/approve/:id", authenticate, InvoiceController.approve);
 
 //PATCH reject
 router.patch("/reject/:id", authenticate, InvoiceController.reject);
+
+//PATCH pay
+router.patch("/pay/:id", authenticate, InvoiceController.pay);
 
 module.exports = router;

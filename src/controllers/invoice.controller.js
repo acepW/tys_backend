@@ -123,6 +123,7 @@ class InvoiceController {
       const result = await invoiceService.createWithRelations(
         invoiceDataToCreate,
         invoice_services || [],
+        req.user.id,
         isDoubleDatabase,
       );
 
@@ -166,12 +167,39 @@ class InvoiceController {
   }
 
   /**
+   * Submit invoice
+   */
+  async submit(req, res) {
+    try {
+      const { id } = req.params;
+      const { is_double_database = true, note } = req.body || {};
+      const isDoubleDatabase = is_double_database;
+
+      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
+      if (!existing) {
+        return errorResponse(res, "Invoice not found", 404);
+      }
+
+      const result = await invoiceService.submitInvoice(
+        id,
+        note,
+        req.user.id,
+        isDoubleDatabase,
+      );
+
+      return successResponse(res, result, "Invoice submitted successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Approve invoice
    */
   async approve(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true } = req.body || {};
+      const { is_double_database = true, note } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
@@ -181,6 +209,7 @@ class InvoiceController {
 
       const result = await invoiceService.approveInvoice(
         id,
+        note,
         req.user.id,
         isDoubleDatabase,
       );
@@ -197,7 +226,7 @@ class InvoiceController {
   async reject(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true, note_reject } = req.body || {};
+      const { is_double_database = true, note } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
@@ -207,12 +236,39 @@ class InvoiceController {
 
       const result = await invoiceService.rejectInvoice(
         id,
+        note,
         req.user.id,
-        note_reject,
         isDoubleDatabase,
       );
 
       return successResponse(res, result, "Invoice rejected successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
+   * Pay invoice
+   */
+  async pay(req, res) {
+    try {
+      const { id } = req.params;
+      const { is_double_database = true, note } = req.body || {};
+      const isDoubleDatabase = is_double_database;
+
+      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
+      if (!existing) {
+        return errorResponse(res, "Invoice not found", 404);
+      }
+
+      const result = await invoiceService.payInvoice(
+        id,
+        note,
+        req.user.id,
+        isDoubleDatabase,
+      );
+
+      return successResponse(res, result, "Invoice paid successfully");
     } catch (error) {
       return errorResponse(res, error.message);
     }

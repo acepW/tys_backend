@@ -39,6 +39,7 @@ const ContractPaymentServiceModel = require("./contract/contractPaymentService.m
 //invoice
 const InvoiceModel = require("./invoice/invoice.model");
 const InvoiceServiceModel = require("./invoice/invoiceService.model");
+const InvoiceVerificationProgress = require("./invoice/invoiceVerificationProgress.model");
 
 /**
  * Initialize all models for a given sequelize instance
@@ -88,6 +89,7 @@ const initializeModels = (sequelize) => {
     //invoice
     Invoice: InvoiceModel(sequelize),
     InvoiceService: InvoiceServiceModel(sequelize),
+    InvoiceVerificationProgress: InvoiceVerificationProgress(sequelize),
   };
 
   // Setup associations for all models
