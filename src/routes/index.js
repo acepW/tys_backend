@@ -27,6 +27,9 @@ const contactRoutes = require("./contract.route");
 //invoice
 const invoiceRoutes = require("./invoice.route");
 
+//debit note
+const debitNoteRoutes = require("./debitNote.route");
+
 // Use routes
 //sync
 router.use("/sync", syncRoutes);
@@ -52,6 +55,9 @@ router.use("/contracts", contactRoutes);
 
 //invoice
 router.use("/invoices", invoiceRoutes);
+
+//debit note
+router.use("/debit-notes", debitNoteRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -81,6 +87,9 @@ router.get("/", (req, res) => {
 
       //invoice
       invoice: "api/invoices",
+
+      //debit note
+      debitNote: "/api/debit-notes",
     },
   });
 });

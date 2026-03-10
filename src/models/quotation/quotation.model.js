@@ -203,6 +203,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // Quotation has many Debit Note
+    Quotation.hasMany(models.DebitNote, {
+      foreignKey: "id_quotation",
+      as: "debit_notes",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Quotation;

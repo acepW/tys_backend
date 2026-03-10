@@ -1,14 +1,14 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const Invoice = sequelize.define(
-    "Invoice",
+  const DebitNote = sequelize.define(
+    "DebitNote",
     {
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
-        comment: "Primary key for Invoice",
+        comment: "Primary key for DebitNote",
       },
       id_quotation: {
         type: DataTypes.INTEGER,
@@ -28,14 +28,14 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to contracts table",
       },
-      id_contract_payment: {
+      id_invoice: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "contract_payment",
+          model: "invoices",
           key: "id",
         },
-        comment: "Foreign key to contracts_payment table",
+        comment: "Foreign key to invoice table",
       },
       id_company: {
         type: DataTypes.INTEGER,
@@ -86,17 +86,12 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: DataTypes.NOW,
-        comment: "Date of Invoice",
+        comment: "Date of DebitNote",
       },
-      due_date: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        comment: "Due date of Invoice",
-      },
-      invoice_no: {
+      debit_note_no: {
         type: DataTypes.STRING(100),
         allowNull: false,
-        comment: "No of Invoice",
+        comment: "No of Debit Note",
       },
       tax_ppn: {
         type: DataTypes.BOOLEAN,
@@ -133,31 +128,20 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Note for verification",
       },
-      note_reject: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: "Note for rejection",
-      },
       status: {
-        type: DataTypes.ENUM(
-          "pending",
-          "on verification",
-          "rejected",
-          "approved",
-          "paid off",
-        ),
+        type: DataTypes.ENUM("pending", "rejected", "approved"),
         allowNull: false,
         defaultValue: "pending",
-        comment: "Status of Invoice",
+        comment: "Status of DebitNote",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of Invoice (active/inactive)",
+        comment: "Status of DebitNote (active/inactive)",
       },
     },
     {
-      tableName: "invoices",
+      tableName: "debit_notes",
       timestamps: true,
       underscored: true,
       indexes: [
@@ -168,6 +152,10 @@ module.exports = (sequelize) => {
         {
           name: "idx_id_contract",
           fields: ["id_contract"],
+        },
+        {
+          name: "idx_id_invoice",
+          fields: ["id_invoice"],
         },
         {
           name: "idx_id_company",
@@ -182,8 +170,8 @@ module.exports = (sequelize) => {
           fields: ["date"],
         },
         {
-          name: "idx_invoice_no",
-          fields: ["invoice_no"],
+          name: "idx_debit_note_no",
+          fields: ["debit_note_no"],
         },
         // Composite Index
         { name: "idx_company_active", fields: ["id_company", "is_active"] },
@@ -193,95 +181,79 @@ module.exports = (sequelize) => {
   );
 
   // Define associations
-  Invoice.associate = (models) => {
-    // Invoice belongs to Quotation
-    Invoice.belongsTo(models.Quotation, {
+  DebitNote.associate = (models) => {
+    // DebitNote belongs to Quotation
+    DebitNote.belongsTo(models.Quotation, {
       foreignKey: "id_quotation",
       as: "quotation",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // Invoice belongs to Contract
-    Invoice.belongsTo(models.Contract, {
+    // DebitNote belongs to Contract
+    DebitNote.belongsTo(models.Contract, {
       foreignKey: "id_contract",
       as: "contract",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // Invoice belongs to Contract Payment
-    Invoice.belongsTo(models.ContractPayment, {
-      foreignKey: "id_contract_payment",
-      as: "contract_payment",
+    // DebitNote belongs to invoice
+    DebitNote.belongsTo(models.Invoice, {
+      foreignKey: "id_invoice",
+      as: "invoice",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // Invoice belongs to Company
-    Invoice.belongsTo(models.Company, {
+    // DebitNote belongs to Company
+    DebitNote.belongsTo(models.Company, {
       foreignKey: "id_company",
       as: "company",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // Invoice belongs to Customer
-    Invoice.belongsTo(models.Customer, {
+    // DebitNote belongs to Customer
+    DebitNote.belongsTo(models.Customer, {
       foreignKey: "id_customer",
       as: "customer",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    //Invoice belongs to user
-    Invoice.belongsTo(models.User, {
+    //DebitNote belongs to user
+    DebitNote.belongsTo(models.User, {
       foreignKey: "id_user_create",
       as: "user_create",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    //Invoice belongs to user
-    Invoice.belongsTo(models.User, {
+    //DebitNote belongs to user
+    DebitNote.belongsTo(models.User, {
       foreignKey: "id_user_approve",
       as: "user_approve",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    //Invoice belongs to user
-    Invoice.belongsTo(models.User, {
+    //DebitNote belongs to user
+    DebitNote.belongsTo(models.User, {
       foreignKey: "id_user_reject",
       as: "user_reject",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // Invoice has many Invoice Services
-    Invoice.hasMany(models.InvoiceService, {
-      foreignKey: "id_invoice",
-      as: "invoice_services",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // Invoice has many Invoice Verification Progress
-    Invoice.hasMany(models.InvoiceVerificationProgress, {
-      foreignKey: "id_invoice",
-      as: "verification_progress",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // Invoice has many Debit Note
-    Invoice.hasMany(models.DebitNote, {
-      foreignKey: "id_invoice",
-      as: "debit_notes",
+    //Debit Note has many debit notes item
+    DebitNote.hasMany(models.DebitNoteItem, {
+      foreignKey: "id_debit_note",
+      as: "debit_note_items",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
   };
 
-  return Invoice;
+  return DebitNote;
 };

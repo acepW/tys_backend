@@ -41,6 +41,10 @@ const InvoiceModel = require("./invoice/invoice.model");
 const InvoiceServiceModel = require("./invoice/invoiceService.model");
 const InvoiceVerificationProgress = require("./invoice/invoiceVerificationProgress.model");
 
+//debit note
+const DebitNoteModel = require("./debitNote/debitNote.model");
+const DebitNoteItemModel = require("./debitNote/debitNoteItem.model");
+
 /**
  * Initialize all models for a given sequelize instance
  * @param {Sequelize} sequelize - Sequelize instance
@@ -90,6 +94,10 @@ const initializeModels = (sequelize) => {
     Invoice: InvoiceModel(sequelize),
     InvoiceService: InvoiceServiceModel(sequelize),
     InvoiceVerificationProgress: InvoiceVerificationProgress(sequelize),
+
+    //debit note
+    DebitNote: DebitNoteModel(sequelize),
+    DebitNoteItem: DebitNoteItemModel(sequelize),
   };
 
   // Setup associations for all models

@@ -194,6 +194,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // Contract has many Debit Note
+    Contract.hasMany(models.DebitNote, {
+      foreignKey: "id_contract",
+      as: "debit_notes",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Contract;

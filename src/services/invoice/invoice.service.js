@@ -576,6 +576,14 @@ class InvoiceService extends DualDatabaseService {
           updateData.note = invoiceNote;
         }
 
+        if (invoiceStatus == "approved") {
+          updateData.id_user_approve = id_user;
+        }
+
+        if (invoiceStatus == "rejected") {
+          updateData.id_user_reject = id_user;
+        }
+
         // 1. Update Invoice status in both databases
         const [updatedRows1] = await this.Model1.update(updateData, {
           where: { id },
@@ -639,6 +647,14 @@ class InvoiceService extends DualDatabaseService {
         const updateData = { status: invoiceStatus };
         if (invoiceNote) {
           updateData.note = invoiceNote;
+        }
+
+        if (invoiceStatus == "approved") {
+          updateData.id_user_approve = id_user;
+        }
+
+        if (invoiceStatus == "rejected") {
+          updateData.id_user_reject = id_user;
         }
 
         const [updatedRows] = await this.Model1.update(updateData, {
