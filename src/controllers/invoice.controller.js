@@ -248,6 +248,65 @@ class InvoiceController {
   }
 
   /**
+   * signing invoice
+   */
+  async signing(req, res) {
+    try {
+      const { id } = req.params;
+      const { is_double_database = true, note } = req.body || {};
+      const isDoubleDatabase = is_double_database;
+
+      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
+      if (!existing) {
+        return errorResponse(res, "Invoice not found", 404);
+      }
+
+      const result = await invoiceService.signingPaymentInvoice(
+        id,
+        note,
+        req.user.id,
+        isDoubleDatabase,
+      );
+
+      return successResponse(res, result, "Invoice signing successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
+   * waitingForPayment invoice
+   */
+  async waitingForPayment(req, res) {
+    try {
+      const { id } = req.params;
+      const { is_double_database = true, note, file_invoice } = req.body || {};
+      const isDoubleDatabase = is_double_database;
+
+      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
+      if (!existing) {
+        return errorResponse(res, "Invoice not found", 404);
+      }
+
+      const result = await invoiceService.waitingPaymentInvoice(
+        id,
+        note,
+        req.user.id,
+        isDoubleDatabase,
+        file_invoice,
+      );
+
+      return successResponse(
+        res,
+        result,
+        "Invoice waiting for payment successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Pay invoice
    */
   async pay(req, res) {

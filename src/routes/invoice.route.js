@@ -25,6 +25,16 @@ router.patch("/approve/:id", authenticate, InvoiceController.approve);
 //PATCH reject
 router.patch("/reject/:id", authenticate, InvoiceController.reject);
 
+//PATCH signing
+router.patch("/signing/:id", authenticate, InvoiceController.signing);
+
+//PATCH waiting for payment
+router.patch(
+  "/waiting-for-payment/:id",
+  authenticate,
+  InvoiceController.waitingForPayment,
+);
+
 //PATCH pay
 router.patch("/pay/:id", authenticate, InvoiceController.pay);
 

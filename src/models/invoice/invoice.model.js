@@ -133,6 +133,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Note for verification",
       },
+      file_invoice: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "File for upload invoice",
+      },
       note_reject: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -144,7 +149,9 @@ module.exports = (sequelize) => {
           "on verification",
           "rejected",
           "approved",
-          "paid off",
+          "signing",
+          "waiting for payment",
+          "paid",
         ),
         allowNull: false,
         defaultValue: "pending",

@@ -522,6 +522,51 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
+   * waiting for payment invoice
+   * @param {Number} id - Invoice ID
+   * @param {Number} id_user - User ID who approves
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated invoice
+   */
+  async waitingPaymentInvoice(
+    id,
+    note,
+    file_invoice,
+    id_user,
+    isDoubleDatabase = true,
+  ) {
+    return await this._changeStatusWithProgress(
+      id,
+      "waiting for payment",
+      "waiting for payment",
+      note || "Invoice is waiting for payment",
+      note,
+      id_user,
+      isDoubleDatabase,
+      file_invoice,
+    );
+  }
+
+  /**
+   * signing for payment invoice
+   * @param {Number} id - Invoice ID
+   * @param {Number} id_user - User ID who signing
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated invoice
+   */
+  async signingPaymentInvoice(id, note, id_user, isDoubleDatabase = true) {
+    return await this._changeStatusWithProgress(
+      id,
+      "signing",
+      "signing",
+      note || "Invoice is signing",
+      note,
+      id_user,
+      isDoubleDatabase,
+    );
+  }
+
+  /**
    * Pay invoice - change status to "paid off" and add progress
    * @param {Number} id - Invoice ID
    * @param {Boolean} isDoubleDatabase
@@ -530,9 +575,9 @@ class InvoiceService extends DualDatabaseService {
   async payInvoice(id, note, id_user, isDoubleDatabase = true) {
     return await this._changeStatusWithProgress(
       id,
-      "paid off",
-      "paid off",
-      note || "Invoice paid off",
+      "paid",
+      "paid",
+      note || "Invoice paid",
       note,
       id_user,
       isDoubleDatabase,
@@ -557,6 +602,7 @@ class InvoiceService extends DualDatabaseService {
     invoiceNote = null,
     id_user,
     isDoubleDatabase = true,
+    file_invoice,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -582,6 +628,10 @@ class InvoiceService extends DualDatabaseService {
 
         if (invoiceStatus == "rejected") {
           updateData.id_user_reject = id_user;
+        }
+
+        if (invoiceStatus == "signing for payment") {
+          updateData.file_invoice = file_invoice;
         }
 
         // 1. Update Invoice status in both databases
