@@ -208,6 +208,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //Service Pricing has many Project Plan
+    ServicePricing.hasMany(models.ProjectPlan, {
+      foreignKey: "id_service_pricing",
+      as: "project_plans",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return ServicePricing;

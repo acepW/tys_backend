@@ -17,6 +17,7 @@ const userRoute = require("./user.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
+const projectPlanRoutes = require("./projectPlan.route");
 
 //Quotation
 const quotationRoutes = require("./quotation.route");
@@ -46,6 +47,7 @@ router.use("/users", userRoute);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
+router.use("/project-plans", projectPlanRoutes);
 
 //quotation
 router.use("/quotations", quotationRoutes);
@@ -78,6 +80,7 @@ router.get("/", (req, res) => {
 
       //service pricing
       servicePricing: "/api/service-pricing",
+      projectPlans: "/api/project-plans",
 
       //quotation
       quotation: "api/quotations",

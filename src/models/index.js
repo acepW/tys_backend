@@ -14,6 +14,8 @@ const UserModel = require("./user.model");
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
 const ServicePricingVariantModel = require("./servicePricing/servicePricingVarian.model");
+const ProjectPlanModel = require("./servicePricing/projectPlan.model");
+const ProjectPlanPointModel = require("./servicePricing/projectPlanPoint.model");
 
 //quotations
 const QuotationModel = require("./quotation/quotation.model");
@@ -68,6 +70,8 @@ const initializeModels = (sequelize) => {
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
     ServicePricingVariant: ServicePricingVariantModel(sequelize),
+    ProjectPlan: ProjectPlanModel(sequelize),
+    ProjectPlanPoint: ProjectPlanPointModel(sequelize),
 
     //quotation
     Quotation: QuotationModel(sequelize),
