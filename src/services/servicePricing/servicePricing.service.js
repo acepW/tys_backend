@@ -49,6 +49,12 @@ class ServicePricingService extends DualDatabaseService {
         {
           model: dbModels.ProjectPlan,
           as: "project_plans",
+          include: [
+            {
+              model: dbModels.ProjectPlanPoint,
+              as: "project_plan_points",
+            },
+          ],
         },
         {
           model: dbModels.User,
