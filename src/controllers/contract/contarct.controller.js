@@ -1,6 +1,6 @@
-const contractService = require("../services/contract/contract.service");
-const paymentService = require("../services/contract/contractPayment.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const contractService = require("../../services/contract/contract.service");
+const paymentService = require("../../services/contract/contractPayment.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class ContractController {

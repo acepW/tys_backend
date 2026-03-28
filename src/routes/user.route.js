@@ -12,7 +12,7 @@ router.get("/auth/me", authenticate, userController.getMe);
 router.patch(
   "/auth/change-password",
   authenticate,
-  userController.changePassword
+  userController.changePassword,
 );
 
 // ─────────────────────────────────────────────
@@ -25,19 +25,19 @@ router.post(
   "/",
   authenticate,
   //authorize("admin"),
-  userController.create
+  userController.create,
 );
 router.put(
   "/:id",
   authenticate,
   //authorize("admin"),
-  userController.update
+  userController.update,
 );
 router.delete(
   "/:id",
   // authenticate,
   // authorize("admin"),
-  userController.delete
+  userController.delete,
 );
 
 module.exports = router;

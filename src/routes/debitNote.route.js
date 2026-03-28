@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const DebitNoteController = require("../controllers/debitNote.controller");
+const DebitNoteController = require("../controllers/debitNote/debitNote.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes

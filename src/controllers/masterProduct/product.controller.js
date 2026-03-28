@@ -1,8 +1,8 @@
-const productService = require("../services/masterProduct/product.service");
-const productFieldService = require("../services/masterProduct/productField.service");
-const categoryService = require("../services/category.service");
-const servicePricingService = require("../services/servicePricing/servicePricing.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const productService = require("../../services/masterProduct/product.service");
+const productFieldService = require("../../services/masterProduct/productField.service");
+const categoryService = require("../../services/category.service");
+const servicePricingService = require("../../services/servicePricing/servicePricing.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 
 class ProductController {
   /**

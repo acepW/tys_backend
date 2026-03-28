@@ -20,22 +20,16 @@ module.exports = (sequelize) => {
         comment: "Foreign key for Project Plan",
       },
 
-      activity_name_indo: {
-        type: DataTypes.STRING(500),
+      file_description_indo: {
+        type: DataTypes.STRING(1000),
         allowNull: false,
-        comment: "Activity name in Indonesian",
+        comment: "File description in Indonesian",
       },
-      activity_name_mandarin: {
-        type: DataTypes.STRING(500),
+      file_description_mandarin: {
+        type: DataTypes.STRING(1000),
         allowNull: false,
-        comment: "Activity name in Mandarin",
+        comment: "File description in Mandarin",
       },
-      duration: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        comment: "Duration",
-      },
-
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

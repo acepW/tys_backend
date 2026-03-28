@@ -1,5 +1,5 @@
-const servicePricingService = require("../services/servicePricing/servicePricing.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const servicePricingService = require("../../services/servicePricing/servicePricing.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class ServicePricingController {

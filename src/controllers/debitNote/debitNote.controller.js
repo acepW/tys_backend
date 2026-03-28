@@ -1,5 +1,5 @@
-const debitNoteService = require("../services/debitNote/debitNote.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const debitNoteService = require("../../services/debitNote/debitNote.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class DebitNoteController {

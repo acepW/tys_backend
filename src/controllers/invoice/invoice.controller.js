@@ -1,5 +1,5 @@
-const invoiceService = require("../services/invoice/invoice.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const invoiceService = require("../../services/invoice/invoice.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class InvoiceController {

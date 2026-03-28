@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const QuotationController = require("../controllers/quotation.controller");
+const QuotationController = require("../controllers/quotation/quotation.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes

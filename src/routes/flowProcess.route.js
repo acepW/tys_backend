@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const FlowProcessController = require("../controllers/flowProcess.controller");
+const FlowProcessController = require("../controllers/masterFlowProcess/flowProcess.controller");
 
 // GET routes
 router.get("/", FlowProcessController.getAll);

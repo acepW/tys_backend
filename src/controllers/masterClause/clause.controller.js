@@ -1,5 +1,5 @@
-const clauseService = require("../services/masterClause/clause.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const clauseService = require("../../services/masterClause/clause.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class ClauseController {
@@ -28,7 +28,7 @@ class ClauseController {
 
       const clauses = await clauseService.getAllWithRelations(
         { where: obj },
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, clauses, "Clauses retrieved successfully");
@@ -111,7 +111,7 @@ class ClauseController {
           return errorResponse(
             res,
             `description_indo is required for clause at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -119,7 +119,7 @@ class ClauseController {
           return errorResponse(
             res,
             `description_mandarin is required for clause at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -128,7 +128,7 @@ class ClauseController {
           return errorResponse(
             res,
             `clause_points must be an array for clause at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -141,7 +141,7 @@ class ClauseController {
               return errorResponse(
                 res,
                 `description_indo is required for clause_point at clause index ${i}, point index ${j}`,
-                400
+                400,
               );
             }
 
@@ -149,7 +149,7 @@ class ClauseController {
               return errorResponse(
                 res,
                 `description_mandarin is required for clause_point at clause index ${i}, point index ${j}`,
-                400
+                400,
               );
             }
           }
@@ -168,7 +168,7 @@ class ClauseController {
 
       const result = await clauseService.upsertMultipleWithClausePoints(
         clauseDataList,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       // Count operations
@@ -179,7 +179,7 @@ class ClauseController {
         res,
         result,
         `Clauses processed successfully (${created} created, ${updated} updated)`,
-        201
+        201,
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -227,7 +227,7 @@ class ClauseController {
       const result = await clauseService.update(
         id,
         { is_active: !existing.is_active },
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
@@ -235,7 +235,7 @@ class ClauseController {
         result,
         `Clause ${
           existing.is_active ? "deactivated" : "activated"
-        } successfully`
+        } successfully`,
       );
     } catch (error) {
       return errorResponse(res, error.message);

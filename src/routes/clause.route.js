@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const clauseController = require("../controllers/clause.controller");
+const clauseController = require("../controllers/masterClause/clause.controller");
 
 // GET routes
 router.get("/", clauseController.getAll);

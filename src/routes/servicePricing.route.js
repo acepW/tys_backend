@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const ServicePriceController = require("../controllers/servicePricing.controller");
+const ServicePriceController = require("../controllers/servicePricing/servicePricing.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes

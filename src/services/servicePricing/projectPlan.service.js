@@ -32,9 +32,8 @@ class ProjectPlanService extends DualDatabaseService {
           separate: true,
           attributes: [
             "id",
-            "activity_name_indo",
-            "activity_name_mandarin",
-            "duration",
+            "file_description_indo",
+            "file_description_mandarin",
             "is_active",
           ],
         },
@@ -85,9 +84,8 @@ class ProjectPlanService extends DualDatabaseService {
           as: "project_plan_points",
           attributes: [
             "id",
-            "activity_name_indo",
-            "activity_name_mandarin",
-            "duration",
+            "file_description_indo",
+            "file_description_mandarin",
             "is_active",
           ],
         },

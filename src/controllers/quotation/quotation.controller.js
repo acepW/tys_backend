@@ -1,5 +1,5 @@
-const quotationService = require("../services/quotation/quotation.service");
-const { successResponse, errorResponse } = require("../utils/response");
+const quotationService = require("../../services/quotation/quotation.service");
+const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class QuotationController {
