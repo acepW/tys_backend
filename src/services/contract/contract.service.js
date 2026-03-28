@@ -1751,6 +1751,26 @@ class ContractService extends DualDatabaseService {
           },
         );
 
+        if (contractStatus == "approve by customer") {
+          const contractService1 = await models.db1.ContractService.update(
+            { is_can_processed: true },
+            {
+              where: { id_contract: id },
+              transaction: transaction1,
+            },
+          );
+
+          const contractServiceDataWithId = {
+            is_can_processed: true,
+            id: contractService1.id,
+          };
+          await models.db2.ContractService.update(contractServiceDataWithId, {
+            where: { id_contract: id },
+            transaction: transaction2,
+          });
+          console.log(`✅ Change ContractService is_can_processed to true`);
+        }
+
         console.log(
           `✅ Created ContractVerificationProgress with status "${progressStatus}"`,
         );
@@ -1794,6 +1814,20 @@ class ContractService extends DualDatabaseService {
         await models.db1.ContractVerificationProgress.create(progressData, {
           transaction: transaction1,
         });
+
+        if (contractStatus == "approve by customer") {
+          await models.db1.ContractService.update(
+            { is_can_processed: true },
+            {
+              where: { id_contract: id },
+              transaction: transaction1,
+            },
+          );
+
+          console.log(
+            `✅ Change ContractService is_can_processed to true in DB1 only`,
+          );
+        }
 
         await transaction1.commit();
         console.log(
