@@ -28,6 +28,16 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to quotation service table",
       },
+      status: {
+        type: DataTypes.ENUM("unprocessed", "processed", "done"),
+        defaultValue: "unprocessed",
+        comment: "Status for service division",
+      },
+      is_can_processed: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "For indicator is data can process by service division",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -65,6 +75,14 @@ module.exports = (sequelize) => {
     ContractService.belongsTo(models.Contract, {
       foreignKey: "id_contract",
       as: "contract",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // ContractService has many ContractProjectPlan
+    ContractService.hasMany(models.ContractProjectPlan, {
+      foreignKey: "id_contract_service",
+      as: "contract_project_plans",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

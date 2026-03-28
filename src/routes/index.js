@@ -24,6 +24,8 @@ const quotationRoutes = require("./quotation.route");
 
 //contract
 const contactRoutes = require("./contract.route");
+const contactServiceRoutes = require("./contractService.route");
+const contactProjectPlanRoutes = require("./contractProjectPlan.route");
 
 //invoice
 const invoiceRoutes = require("./invoice.route");
@@ -54,6 +56,8 @@ router.use("/quotations", quotationRoutes);
 
 //contract
 router.use("/contracts", contactRoutes);
+router.use("/contracts-services", contactServiceRoutes);
+router.use("/contracts/project-plans", contactProjectPlanRoutes);
 
 //invoice
 router.use("/invoices", invoiceRoutes);
@@ -87,6 +91,8 @@ router.get("/", (req, res) => {
 
       //contract
       contract: "api/contracts",
+      contractService: "api/contracts-services",
+      contractProjectPlan: "api/contracts/project-plans",
 
       //invoice
       invoice: "api/invoices",

@@ -198,6 +198,30 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //Users has many contract plan (started)
+    Users.hasMany(models.ContractProjectPlan, {
+      foreignKey: "id_user_started",
+      as: "started_contract_plans",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many contract plan (stopped)
+    Users.hasMany(models.ContractProjectPlan, {
+      foreignKey: "id_user_stopped",
+      as: "stopped_contract_plans",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many contract plan point
+    Users.hasMany(models.ContractProjectPlanPoint, {
+      foreignKey: "id_user",
+      as: "contract_plan_points",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Users;

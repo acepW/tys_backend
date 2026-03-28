@@ -37,6 +37,8 @@ const ContractClauseLogModel = require("./contract/contractClauseLog.model");
 const ContractPaymentModel = require("./contract/contractPayment.model");
 const ContractPaymentListModel = require("./contract/contractPaymentList.model");
 const ContractPaymentServiceModel = require("./contract/contractPaymentService.model");
+const ContractProjectPlanModel = require("./contract/contractProjectPlan.model");
+const ContractProjectPlanPointModel = require("./contract/contractProjectPlanPoint.model");
 
 //invoice
 const InvoiceModel = require("./invoice/invoice.model");
@@ -93,6 +95,8 @@ const initializeModels = (sequelize) => {
     ContractPayment: ContractPaymentModel(sequelize),
     ContractPaymentList: ContractPaymentListModel(sequelize),
     ContractPaymentService: ContractPaymentServiceModel(sequelize),
+    ContractProjectPlan: ContractProjectPlanModel(sequelize),
+    ContractProjectPlanPoint: ContractProjectPlanPointModel(sequelize),
 
     //invoice
     Invoice: InvoiceModel(sequelize),
