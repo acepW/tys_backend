@@ -56,6 +56,16 @@ class ContractService extends DualDatabaseService {
               model: dbModels.QuotationService,
               as: "quotation_service",
             },
+            {
+              model: dbModels.ContractProjectPlan,
+              as: "contract_project_plans",
+              include: [
+                {
+                  model: dbModels.ContractProjectPlanPoint,
+                  as: "contract_project_plan_points",
+                },
+              ],
+            },
           ],
         },
         {
@@ -217,6 +227,16 @@ class ContractService extends DualDatabaseService {
             {
               model: dbModels.QuotationService,
               as: "quotation_service",
+            },
+            {
+              model: dbModels.ContractProjectPlan,
+              as: "contract_project_plans",
+              include: [
+                {
+                  model: dbModels.ContractProjectPlanPoint,
+                  as: "contract_project_plan_points",
+                },
+              ],
             },
           ],
         },

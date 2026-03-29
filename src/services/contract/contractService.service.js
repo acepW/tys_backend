@@ -121,39 +121,73 @@ class ContractService extends DualDatabaseService {
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Contract with relations
    */
-  async getById(id, options = {}, isDoubleDatabase = true) {
+  async getById(
+    id,
+    options = {},
+    optionsContract = {},
+    isDoubleDatabase = true,
+  ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
     const queryOptions = {
       ...options,
       include: [
         {
-          model: dbModels.ContractService,
-          as: "services",
-          separate: true,
+          model: dbModels.Contract,
+          as: "contract",
+          ...optionsContract,
+          attributes: [
+            "id",
+            "id_company",
+            "id_customer",
+            "date",
+            "contract_no",
+            "contract_title_indo",
+            "contract_title_mandarin",
+            "contract_type",
+            "note",
+          ],
           include: [
             {
-              model: dbModels.QuotationService,
-              as: "quotation_service",
+              model: dbModels.Company,
+              as: "company",
+            },
+            {
+              model: dbModels.Customer,
+              as: "customer",
+            },
+          ],
+        },
+        {
+          model: dbModels.QuotationService,
+          as: "quotation_service",
+          include: [
+            {
+              model: dbModels.ServicePricing,
+              as: "service_pricing",
+              attributes: ["id", "processing_time"],
               include: [
                 {
-                  model: dbModels.ServicePricing,
-                  as: "service_pricing",
-                  attributes: ["id"],
+                  model: dbModels.ProjectPlan,
+                  as: "project_plans",
                   include: [
                     {
-                      model: dbModels.ProjectPlan,
-                      as: "project_plans",
-                      include: [
-                        {
-                          model: dbModels.ProjectPlanPoint,
-                          as: "project_plan_points",
-                        },
-                      ],
+                      model: dbModels.ProjectPlanPoint,
+                      as: "project_plan_points",
                     },
                   ],
                 },
               ],
+            },
+          ],
+        },
+        {
+          model: dbModels.ContractProjectPlan,
+          as: "contract_project_plans",
+          include: [
+            {
+              model: dbModels.ContractProjectPlanPoint,
+              as: "contract_project_plan_points",
             },
           ],
         },

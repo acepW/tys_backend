@@ -61,7 +61,12 @@ class ContractServiceController {
       const { is_double_database } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
-      const contract = await contractService.getById(id, {}, isDoubleDatabase);
+      const contract = await contractService.getById(
+        id,
+        {},
+        {},
+        isDoubleDatabase,
+      );
 
       if (!contract) {
         return errorResponse(res, "Contract not found", 404);
