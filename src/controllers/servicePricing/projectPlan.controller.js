@@ -286,26 +286,18 @@ class ProjectPlanController {
           for (let j = 0; j < item.project_plan_points.length; j++) {
             const point = item.project_plan_points[j];
 
-            if (!point.activity_name_indo) {
+            if (!point.file_description_indo) {
               return errorResponse(
                 res,
-                `activity_name_indo is required for project_plan_points at index ${j} in item ${i}`,
+                `file_description_indo is required for project_plan_points at index ${j} in item ${i}`,
                 400,
               );
             }
 
-            if (!point.activity_name_mandarin) {
+            if (!point.file_description_mandarin) {
               return errorResponse(
                 res,
-                `activity_name_mandarin is required for project_plan_points at index ${j} in item ${i}`,
-                400,
-              );
-            }
-
-            if (point.duration === undefined || point.duration === null) {
-              return errorResponse(
-                res,
-                `duration is required for project_plan_points at index ${j} in item ${i}`,
+                `file_description_mandarin is required for project_plan_points at index ${j} in item ${i}`,
                 400,
               );
             }
