@@ -85,6 +85,16 @@ class ContractService extends DualDatabaseService {
               model: dbModels.ContractProjectPlanPoint,
               as: "contract_project_plan_points",
             },
+            {
+              model: dbModels.User,
+              as: "user_started",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_stopped",
+              attributes: ["id", "name", "email"],
+            },
           ],
         },
       ],
@@ -188,6 +198,16 @@ class ContractService extends DualDatabaseService {
             {
               model: dbModels.ContractProjectPlanPoint,
               as: "contract_project_plan_points",
+            },
+            {
+              model: dbModels.User,
+              as: "user_started",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_stopped",
+              attributes: ["id", "name", "email"],
             },
           ],
         },

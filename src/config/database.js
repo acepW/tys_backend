@@ -11,6 +11,9 @@ const db1 = new Sequelize(
     port: process.env.DB1_PORT,
     dialect: "mysql",
     logging: process.env.NODE_ENV === "development" ? console.log : false,
+    dialectOptions: {
+      decimalNumbers: true,
+    },
     pool: {
       max: 5,
       min: 0,
@@ -21,7 +24,7 @@ const db1 = new Sequelize(
       timestamps: true,
       underscored: true,
     },
-  }
+  },
 );
 
 // Database 2 Configuration (Secondary)
@@ -49,7 +52,7 @@ const db2 = new Sequelize(
       charset: "utf8mb4",
       collate: "utf8mb4_unicode_ci",
     },
-  }
+  },
 );
 
 // Test database connections

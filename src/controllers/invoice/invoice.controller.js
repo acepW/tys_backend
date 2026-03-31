@@ -312,7 +312,15 @@ class InvoiceController {
   async pay(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true, note } = req.body || {};
+      const {
+        is_double_database = true,
+        note,
+        payment_date,
+        payment_amount,
+        payment_method,
+        proof_of_payment,
+        payment_for,
+      } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
@@ -323,6 +331,11 @@ class InvoiceController {
       const result = await invoiceService.payInvoice(
         id,
         note,
+        payment_date,
+        payment_amount,
+        payment_method,
+        proof_of_payment,
+        payment_for,
         req.user.id,
         isDoubleDatabase,
       );

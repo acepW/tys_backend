@@ -143,6 +143,31 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Note for rejection",
       },
+      payment_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Payment date of Invoice",
+      },
+      payment_amount: {
+        type: DataTypes.DECIMAL(15, 0),
+        allowNull: true,
+        comment: "Payment amount of Invoice",
+      },
+      payment_method: {
+        type: DataTypes.ENUM("transfer", "cash"),
+        allowNull: true,
+        comment: "Payment method of Invoice",
+      },
+      proof_of_payment: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Proof of payment for Invoice",
+      },
+      payment_for: {
+        type: DataTypes.ENUM("all", "invoice", "debit_note"),
+        allowNull: true,
+        comment: "Payment for Invoice",
+      },
       status: {
         type: DataTypes.ENUM(
           "pending",

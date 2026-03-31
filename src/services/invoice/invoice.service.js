@@ -614,7 +614,17 @@ class InvoiceService extends DualDatabaseService {
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
-  async payInvoice(id, note, id_user, isDoubleDatabase = true) {
+  async payInvoice(
+    id,
+    note,
+    payment_date,
+    payment_amount,
+    payment_method,
+    proof_of_payment,
+    payment_for,
+    id_user,
+    isDoubleDatabase = true,
+  ) {
     return await this._changeStatusWithProgress(
       id,
       "paid",
@@ -623,6 +633,12 @@ class InvoiceService extends DualDatabaseService {
       note,
       id_user,
       isDoubleDatabase,
+      null,
+      payment_date,
+      payment_amount,
+      payment_method,
+      proof_of_payment,
+      payment_for,
     );
   }
 
@@ -645,6 +661,11 @@ class InvoiceService extends DualDatabaseService {
     id_user,
     isDoubleDatabase = true,
     file_invoice,
+    payment_date,
+    payment_amount,
+    payment_method,
+    proof_of_payment,
+    payment_for,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -674,6 +695,14 @@ class InvoiceService extends DualDatabaseService {
 
         if (invoiceStatus == "signing for payment") {
           updateData.file_invoice = file_invoice;
+        }
+
+        if (invoiceStatus == "paid") {
+          updateData.payment_date = payment_date;
+          updateData.payment_amount = payment_amount;
+          updateData.payment_method = payment_method;
+          updateData.proof_of_payment = proof_of_payment;
+          updateData.payment_for = payment_for;
         }
 
         // 1. Update Invoice status in both databases

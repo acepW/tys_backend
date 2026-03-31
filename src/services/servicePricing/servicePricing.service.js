@@ -138,6 +138,16 @@ class ServicePricingService extends DualDatabaseService {
           attributes: ["id", "division_name"],
         },
         {
+          model: dbModels.ProjectPlan,
+          as: "project_plans",
+          include: [
+            {
+              model: dbModels.ProjectPlanPoint,
+              as: "project_plan_points",
+            },
+          ],
+        },
+        {
           model: dbModels.User,
           as: "user_create",
           attributes: ["id", "name", "email"],

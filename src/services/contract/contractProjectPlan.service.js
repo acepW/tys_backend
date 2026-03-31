@@ -45,6 +45,16 @@ class ContractProjectPlanService extends DualDatabaseService {
           as: "contract_service",
           attributes: ["id", "status"],
         },
+        {
+          model: dbModels.User,
+          as: "user_started",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_stopped",
+          attributes: ["id", "name", "email"],
+        },
       ],
     };
 
@@ -99,6 +109,16 @@ class ContractProjectPlanService extends DualDatabaseService {
           model: dbModels.ContractService,
           as: "contract_service",
           attributes: ["id", "status"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_started",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_stopped",
+          attributes: ["id", "name", "email"],
         },
       ],
     };
