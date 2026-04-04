@@ -63,6 +63,28 @@ class ContractService extends DualDatabaseService {
                 {
                   model: dbModels.ContractProjectPlanPoint,
                   as: "contract_project_plan_points",
+                  include: [
+                    {
+                      model: dbModels.User,
+                      as: "user",
+                      attributes: ["id", "name", "email"],
+                    },
+                  ],
+                },
+                {
+                  model: dbModels.ContractProjectPlanCost,
+                  as: "contract_project_plan_costs",
+                  include: [
+                    {
+                      model: dbModels.User,
+                      as: "user",
+                      attributes: ["id", "name", "email"],
+                    },
+                  ],
+                },
+                {
+                  model: dbModels.PaymentRequest,
+                  as: "payment_requests",
                 },
                 {
                   model: dbModels.User,
@@ -245,6 +267,28 @@ class ContractService extends DualDatabaseService {
                 {
                   model: dbModels.ContractProjectPlanPoint,
                   as: "contract_project_plan_points",
+                  include: [
+                    {
+                      model: dbModels.User,
+                      as: "user",
+                      attributes: ["id", "name", "email"],
+                    },
+                  ],
+                },
+                {
+                  model: dbModels.ContractProjectPlanCost,
+                  as: "contract_project_plan_costs",
+                  include: [
+                    {
+                      model: dbModels.User,
+                      as: "user",
+                      attributes: ["id", "name", "email"],
+                    },
+                  ],
+                },
+                {
+                  model: dbModels.PaymentRequest,
+                  as: "payment_requests",
                 },
                 {
                   model: dbModels.User,

@@ -10,6 +10,15 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for DebitNote",
       },
+      id_payment_request: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "payment_requests",
+          key: "id",
+        },
+        comment: "Foreign key to payment_requests table",
+      },
       id_quotation: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -30,7 +39,7 @@ module.exports = (sequelize) => {
       },
       id_invoice: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "invoices",
           key: "id",
@@ -146,6 +155,10 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
+          name: "idx_id_payment_request",
+          fields: ["id_payment_request"],
+        },
+        {
           name: "idx_id_quotation",
           fields: ["id_quotation"],
         },
@@ -182,6 +195,13 @@ module.exports = (sequelize) => {
 
   // Define associations
   DebitNote.associate = (models) => {
+    // DebitNote belongs to PaymentRequest
+    DebitNote.belongsTo(models.PaymentRequest, {
+      foreignKey: "id_payment_request",
+      as: "payment_request",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
     // DebitNote belongs to Quotation
     DebitNote.belongsTo(models.Quotation, {
       foreignKey: "id_quotation",

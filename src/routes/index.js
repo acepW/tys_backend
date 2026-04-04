@@ -33,6 +33,12 @@ const invoiceRoutes = require("./invoice.route");
 //debit note
 const debitNoteRoutes = require("./debitNote.route");
 
+//payment request
+const paymentRequestRoutes = require("./paymentRequest.route");
+
+//report
+const reportInvoiceRoutes = require("./reportInvoice.route");
+
 // Use routes
 //sync
 router.use("/sync", syncRoutes);
@@ -64,6 +70,12 @@ router.use("/invoices", invoiceRoutes);
 
 //debit note
 router.use("/debit-notes", debitNoteRoutes);
+
+//payment request
+router.use("/payment-requests", paymentRequestRoutes);
+
+//report
+router.use("/report-invoices", reportInvoiceRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -99,6 +111,12 @@ router.get("/", (req, res) => {
 
       //debit note
       debitNote: "/api/debit-notes",
+
+      //payment request
+      paymentRequest: "/api/payment-requests",
+
+      //report
+      reportInvoice: "/api/report-invoices",
     },
   });
 });

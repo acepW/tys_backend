@@ -478,6 +478,50 @@ class ContractProjectPlanController {
     }
   }
 
+  // Fill a contract project plan cost — updates is_checked, remarks, and file.
+  // Route: PATCH /contract-project-plans/costs/:cost_id/fill
+  // Request body:
+  // {
+  //   "is_checked": true,
+  //   "remarks": "Looks good",
+  //   "file": "uploads/document.pdf"
+  // }
+
+  async inputContractProjectPlanCost(req, res) {
+    try {
+      const { cost_id } = req.params;
+      const { is_double_database = true, is_checked, remarks, file } = req.body;
+      const isDoubleDatabase = is_double_database;
+
+      if (
+        is_checked === undefined &&
+        remarks === undefined &&
+        file === undefined
+      ) {
+        return errorResponse(
+          res,
+          "At least one of is_checked, remarks, or file is required",
+          400,
+        );
+      }
+
+      const result =
+        await contractProjectPlanService.inputContractProjectPlanCost(
+          cost_id,
+          { is_checked, remarks, file, id_user: req.user.id },
+          isDoubleDatabase,
+        );
+
+      return successResponse(
+        res,
+        result,
+        "Contract project plan cost updated successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
   /**
    * Delete contract project plan
    */

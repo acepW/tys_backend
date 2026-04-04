@@ -30,6 +30,13 @@ class ContractProjectPlanService extends DualDatabaseService {
           model: dbModels.ContractProjectPlanPoint,
           as: "contract_project_plan_points",
           separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+            },
+          ],
           attributes: [
             "id",
             "file_description_indo",
@@ -39,6 +46,32 @@ class ContractProjectPlanService extends DualDatabaseService {
             "file",
             "is_active",
           ],
+        },
+        {
+          model: dbModels.ContractProjectPlanCost,
+          as: "contract_project_plan_costs",
+          attributes: [
+            "id",
+            "cost_description_indo",
+            "cost_description_mandarin",
+            "price_idr",
+            "price_rmb",
+            "is_checked",
+            "remarks",
+            "file",
+            "is_active",
+          ],
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+            },
+          ],
+        },
+        {
+          model: dbModels.PaymentRequest,
+          as: "payment_requests",
         },
         {
           model: dbModels.ContractService,
@@ -95,6 +128,14 @@ class ContractProjectPlanService extends DualDatabaseService {
         {
           model: dbModels.ContractProjectPlanPoint,
           as: "contract_project_plan_points",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+            },
+          ],
           attributes: [
             "id",
             "file_description_indo",
@@ -104,6 +145,32 @@ class ContractProjectPlanService extends DualDatabaseService {
             "file",
             "is_active",
           ],
+        },
+        {
+          model: dbModels.ContractProjectPlanCost,
+          as: "contract_project_plan_costs",
+          attributes: [
+            "id",
+            "cost_description_indo",
+            "cost_description_mandarin",
+            "price_idr",
+            "price_rmb",
+            "is_checked",
+            "remarks",
+            "file",
+            "is_active",
+          ],
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+            },
+          ],
+        },
+        {
+          model: dbModels.PaymentRequest,
+          as: "payment_requests",
         },
         {
           model: dbModels.ContractService,
@@ -154,6 +221,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         for (const item of contractProjectPlanDataList) {
           const {
             contract_project_plan_points = [],
+            contract_project_plan_costs = [],
             ...contractProjectPlanData
           } = item;
 
@@ -196,9 +264,28 @@ class ContractProjectPlanService extends DualDatabaseService {
             isDoubleDatabase,
           });
 
+          // 5. Prepare costs data with foreign key
+          const costsData = contract_project_plan_costs.map((cost) => ({
+            ...cost,
+            id_contract_project_plan: contractProjectPlan1.id,
+          }));
+
+          // 6. Sync Contract Project Plan Costs
+          const costsResult = await syncChildRecords({
+            Model1: models.db1.ContractProjectPlanCost,
+            Model2: models.db2.ContractProjectPlanCost,
+            foreignKey: "id_contract_project_plan",
+            parentId: contractProjectPlan1.id,
+            newData: costsData,
+            transaction1,
+            transaction2,
+            isDoubleDatabase,
+          });
+
           results.push({
             contract_project_plan: contractProjectPlan1.toJSON(),
             contract_project_plan_points: pointsResult,
+            contract_project_plan_costs: costsResult,
           });
         }
 
@@ -218,6 +305,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         for (const item of contractProjectPlanDataList) {
           const {
             contract_project_plan_points = [],
+            contract_project_plan_costs = [],
             ...contractProjectPlanData
           } = item;
 
@@ -242,9 +330,26 @@ class ContractProjectPlanService extends DualDatabaseService {
             isDoubleDatabase: false,
           });
 
+          const costsData = contract_project_plan_costs.map((cost) => ({
+            ...cost,
+            id_contract_project_plan: contractProjectPlan.id,
+          }));
+
+          const costsResult = await syncChildRecords({
+            Model1: models.db1.ContractProjectPlanCost,
+            Model2: null,
+            foreignKey: "id_contract_project_plan",
+            parentId: contractProjectPlan.id,
+            newData: costsData,
+            transaction1,
+            transaction2: null,
+            isDoubleDatabase,
+          });
+
           results.push({
             contract_project_plan: contractProjectPlan.toJSON(),
             contract_project_plan_points: pointsResult,
+            contract_project_plan_costs: costsResult,
           });
         }
 
@@ -296,7 +401,6 @@ class ContractProjectPlanService extends DualDatabaseService {
           `🔄 Syncing Contract Project Plans for ContractService ID ${idContractService} in both databases...`,
         );
 
-        // 1. Fetch existing plan IDs for this contract service
         const existingPlans = await this.Model1.findAll({
           where: { id_contract_service: idContractService },
           attributes: ["id"],
@@ -304,23 +408,30 @@ class ContractProjectPlanService extends DualDatabaseService {
         });
         const existingIds = existingPlans.map((p) => p.id);
 
-        // Determine incoming IDs (only those that already exist)
         const incomingIds = contractProjectPlanDataList
           .filter((item) => item.id)
           .map((item) => item.id);
 
-        // IDs to delete = existing but not in incoming list
         const idsToDelete = existingIds.filter(
           (id) => !incomingIds.includes(id),
         );
 
-        // 2. Delete removed plans (and their points)
         if (idsToDelete.length > 0) {
           await models.db1.ContractProjectPlanPoint.destroy({
             where: { id_contract_project_plan: idsToDelete },
             transaction: transaction1,
           });
           await models.db2.ContractProjectPlanPoint.destroy({
+            where: { id_contract_project_plan: idsToDelete },
+            transaction: transaction2,
+          });
+
+          // ✅ Delete costs
+          await models.db1.ContractProjectPlanCost.destroy({
+            where: { id_contract_project_plan: idsToDelete },
+            transaction: transaction1,
+          });
+          await models.db2.ContractProjectPlanCost.destroy({
             where: { id_contract_project_plan: idsToDelete },
             transaction: transaction2,
           });
@@ -341,9 +452,14 @@ class ContractProjectPlanService extends DualDatabaseService {
 
         const results = [];
 
-        // 3. Loop through incoming list: update or create
         for (const item of contractProjectPlanDataList) {
-          const { id, contract_project_plan_points = [], ...planData } = item;
+          // ✅ Destructure contract_project_plan_costs
+          const {
+            id,
+            contract_project_plan_points = [],
+            contract_project_plan_costs = [],
+            ...planData
+          } = item;
 
           planData.id_contract_service = idContractService;
 
@@ -372,7 +488,7 @@ class ContractProjectPlanService extends DualDatabaseService {
             console.log(`✅ Created Contract Project Plan ID ${planId}`);
           }
 
-          // 4. Sync points for this plan
+          // Sync points
           const pointsWithFk = contract_project_plan_points.map((point) => ({
             ...point,
             id_contract_project_plan: planId,
@@ -389,6 +505,23 @@ class ContractProjectPlanService extends DualDatabaseService {
             isDoubleDatabase,
           });
 
+          // ✅ Sync costs
+          const costsWithFk = contract_project_plan_costs.map((cost) => ({
+            ...cost,
+            id_contract_project_plan: planId,
+          }));
+
+          await syncChildRecords({
+            Model1: models.db1.ContractProjectPlanCost,
+            Model2: models.db2.ContractProjectPlanCost,
+            foreignKey: "id_contract_project_plan",
+            parentId: planId,
+            newData: costsWithFk,
+            transaction1,
+            transaction2,
+            isDoubleDatabase,
+          });
+
           results.push(planId);
         }
 
@@ -398,13 +531,17 @@ class ContractProjectPlanService extends DualDatabaseService {
           `✅ Contract Project Plans synced for ContractService ID ${idContractService}`,
         );
 
-        // Fetch and return final state
         const finalRecords = await this.Model1.findAll({
           where: { id_contract_service: idContractService },
           include: [
             {
               model: models.db1.ContractProjectPlanPoint,
               as: "contract_project_plan_points",
+            },
+            // ✅ Include costs di final fetch
+            {
+              model: models.db1.ContractProjectPlanCost,
+              as: "contract_project_plan_costs",
             },
           ],
         });
@@ -438,6 +575,13 @@ class ContractProjectPlanService extends DualDatabaseService {
             where: { id_contract_project_plan: idsToDelete },
             transaction: transaction1,
           });
+
+          // ✅ Delete costs
+          await models.db1.ContractProjectPlanCost.destroy({
+            where: { id_contract_project_plan: idsToDelete },
+            transaction: transaction1,
+          });
+
           await this.Model1.destroy({
             where: { id: idsToDelete },
             transaction: transaction1,
@@ -448,7 +592,13 @@ class ContractProjectPlanService extends DualDatabaseService {
         }
 
         for (const item of contractProjectPlanDataList) {
-          const { id, contract_project_plan_points = [], ...planData } = item;
+          // ✅ Destructure contract_project_plan_costs
+          const {
+            id,
+            contract_project_plan_points = [],
+            contract_project_plan_costs = [],
+            ...planData
+          } = item;
 
           planData.id_contract_service = idContractService;
 
@@ -484,6 +634,23 @@ class ContractProjectPlanService extends DualDatabaseService {
             transaction2: null,
             isDoubleDatabase: false,
           });
+
+          // ✅ Sync costs
+          const costsWithFk = contract_project_plan_costs.map((cost) => ({
+            ...cost,
+            id_contract_project_plan: planId,
+          }));
+
+          await syncChildRecords({
+            Model1: models.db1.ContractProjectPlanCost,
+            Model2: null,
+            foreignKey: "id_contract_project_plan",
+            parentId: planId,
+            newData: costsWithFk,
+            transaction1,
+            transaction2: null,
+            isDoubleDatabase: false,
+          });
         }
 
         await transaction1.commit();
@@ -497,6 +664,11 @@ class ContractProjectPlanService extends DualDatabaseService {
             {
               model: models.db1.ContractProjectPlanPoint,
               as: "contract_project_plan_points",
+            },
+            // ✅ Include costs di final fetch
+            {
+              model: models.db1.ContractProjectPlanCost,
+              as: "contract_project_plan_costs",
             },
           ],
         });
@@ -825,6 +997,90 @@ class ContractProjectPlanService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating Contract Project Plan Point ID ${pointId}:`,
+        error.message,
+      );
+
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+
+      throw new Error(
+        `Failed to update Contract Project Plan Point: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Fill contract project plan cost — updates is_checked, remarks, and file by cost ID.
+   *
+   * @param {Number} costId - ContractProjectPlanCost ID
+   * @param {Object} data - { is_checked, remarks, file, id_user }
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated cost
+   */
+  async inputContractProjectPlanCost(
+    costId,
+    data = {},
+    isDoubleDatabase = true,
+  ) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      if (isDoubleDatabase) {
+        transaction1 = await db1.transaction();
+        transaction2 = await db2.transaction();
+      } else {
+        transaction1 = await db1.transaction();
+      }
+
+      // 1. Fetch the cost to verify it exists
+      const cost = await models.db1.ContractProjectPlanCost.findByPk(costId, {
+        transaction: transaction1,
+      });
+
+      if (!cost) {
+        throw new Error(
+          `Contract Project Plan Cost with ID ${costId} not found`,
+        );
+      }
+
+      const updateData = {};
+      if (data.is_checked !== undefined)
+        updateData.is_checked = data.is_checked;
+      if (data.remarks !== undefined) updateData.remarks = data.remarks;
+      if (data.file !== undefined) updateData.file = data.file;
+      if (data.id_user !== undefined) updateData.id_user = data.id_user;
+
+      // 2. Update in DB1
+      await models.db1.ContractProjectPlanCost.update(updateData, {
+        where: { id: costId },
+        transaction: transaction1,
+      });
+
+      // 3. Update in DB2 if double database
+      if (isDoubleDatabase) {
+        await models.db2.ContractProjectPlanCost.update(updateData, {
+          where: { id: costId },
+          transaction: transaction2,
+        });
+      }
+
+      console.log(`✅ Updated Contract Project Plan Cost ID ${costId}`);
+
+      if (isDoubleDatabase) {
+        await transaction1.commit();
+        await transaction2.commit();
+      } else {
+        await transaction1.commit();
+      }
+
+      // Return updated cost
+      const updatedCost =
+        await models.db1.ContractProjectPlanCost.findByPk(costId);
+      return updatedCost ? updatedCost.toJSON() : null;
+    } catch (error) {
+      console.error(
+        `❌ Error updating Contract Project Plan Cost ID ${costId}:`,
         error.message,
       );
 

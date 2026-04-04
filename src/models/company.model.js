@@ -249,6 +249,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // Company has many Payment Request
+    Company.hasMany(models.PaymentRequest, {
+      foreignKey: "id_company",
+      as: "payment_requests",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Company;

@@ -222,6 +222,22 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //Users has many contract plan cost
+    Users.hasMany(models.ContractProjectPlanCost, {
+      foreignKey: "id_user",
+      as: "contract_plan_costs",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Payment Request Verification Progress
+    Users.hasMany(models.PaymentRequestVerificationProgress, {
+      foreignKey: "id_user",
+      as: "payment_request_verification_progress",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Users;

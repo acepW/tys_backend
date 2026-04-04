@@ -16,6 +16,7 @@ const ServicePricingModel = require("./servicePricing/servicePricing.model");
 const ServicePricingVariantModel = require("./servicePricing/servicePricingVarian.model");
 const ProjectPlanModel = require("./servicePricing/projectPlan.model");
 const ProjectPlanPointModel = require("./servicePricing/projectPlanPoint.model");
+const ProjectPlanCostModel = require("./servicePricing/projectPlanCost.model");
 
 //quotations
 const QuotationModel = require("./quotation/quotation.model");
@@ -39,6 +40,7 @@ const ContractPaymentListModel = require("./contract/contractPaymentList.model")
 const ContractPaymentServiceModel = require("./contract/contractPaymentService.model");
 const ContractProjectPlanModel = require("./contract/contractProjectPlan.model");
 const ContractProjectPlanPointModel = require("./contract/contractProjectPlanPoint.model");
+const ContractProjectPlanCostModel = require("./contract/contractProjectPlanCost.model");
 
 //invoice
 const InvoiceModel = require("./invoice/invoice.model");
@@ -48,6 +50,10 @@ const InvoiceVerificationProgress = require("./invoice/invoiceVerificationProgre
 //debit note
 const DebitNoteModel = require("./debitNote/debitNote.model");
 const DebitNoteItemModel = require("./debitNote/debitNoteItem.model");
+
+//payment request
+const PaymentRequestModel = require("./paymentRequest/paymentRequest.model");
+const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymentRequestVerificationProgress.model");
 
 /**
  * Initialize all models for a given sequelize instance
@@ -74,6 +80,7 @@ const initializeModels = (sequelize) => {
     ServicePricingVariant: ServicePricingVariantModel(sequelize),
     ProjectPlan: ProjectPlanModel(sequelize),
     ProjectPlanPoint: ProjectPlanPointModel(sequelize),
+    ProjectPlanCost: ProjectPlanCostModel(sequelize),
 
     //quotation
     Quotation: QuotationModel(sequelize),
@@ -97,6 +104,7 @@ const initializeModels = (sequelize) => {
     ContractPaymentService: ContractPaymentServiceModel(sequelize),
     ContractProjectPlan: ContractProjectPlanModel(sequelize),
     ContractProjectPlanPoint: ContractProjectPlanPointModel(sequelize),
+    ContractProjectPlanCost: ContractProjectPlanCostModel(sequelize),
 
     //invoice
     Invoice: InvoiceModel(sequelize),
@@ -106,6 +114,11 @@ const initializeModels = (sequelize) => {
     //debit note
     DebitNote: DebitNoteModel(sequelize),
     DebitNoteItem: DebitNoteItemModel(sequelize),
+
+    //payment request
+    PaymentRequest: PaymentRequestModel(sequelize),
+    PaymentRequestVerificationProgress:
+      PaymentRequestVerificationProgressModel(sequelize),
   };
 
   // Setup associations for all models

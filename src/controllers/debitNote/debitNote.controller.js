@@ -100,9 +100,6 @@ class DebitNoteController {
       if (!debitNoteData.id_contract) {
         return errorResponse(res, "id_contract is required", 400);
       }
-      if (!debitNoteData.id_invoice) {
-        return errorResponse(res, "id_invoice is required", 400);
-      }
       if (!debitNoteData.id_company) {
         return errorResponse(res, "id_company is required", 400);
       }

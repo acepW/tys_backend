@@ -54,6 +54,10 @@ class ServicePricingService extends DualDatabaseService {
               model: dbModels.ProjectPlanPoint,
               as: "project_plan_points",
             },
+            {
+              model: dbModels.ProjectPlanCost,
+              as: "project_plan_costs",
+            },
           ],
         },
         {
@@ -144,6 +148,10 @@ class ServicePricingService extends DualDatabaseService {
             {
               model: dbModels.ProjectPlanPoint,
               as: "project_plan_points",
+            },
+            {
+              model: dbModels.ProjectPlanCost,
+              as: "project_plan_costs",
             },
           ],
         },

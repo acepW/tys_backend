@@ -84,6 +84,49 @@ class ContractService extends DualDatabaseService {
             {
               model: dbModels.ContractProjectPlanPoint,
               as: "contract_project_plan_points",
+              separate: true,
+              include: [
+                {
+                  model: dbModels.User,
+                  as: "user",
+                  attributes: ["id", "name", "email"],
+                },
+              ],
+              attributes: [
+                "id",
+                "file_description_indo",
+                "file_description_mandarin",
+                "is_checked",
+                "remarks",
+                "file",
+                "is_active",
+              ],
+            },
+            {
+              model: dbModels.ContractProjectPlanCost,
+              as: "contract_project_plan_costs",
+              attributes: [
+                "id",
+                "cost_description_indo",
+                "cost_description_mandarin",
+                "price_idr",
+                "price_rmb",
+                "is_checked",
+                "remarks",
+                "file",
+                "is_active",
+              ],
+              include: [
+                {
+                  model: dbModels.User,
+                  as: "user",
+                  attributes: ["id", "name", "email"],
+                },
+              ],
+            },
+            {
+              model: dbModels.PaymentRequest,
+              as: "payment_requests",
             },
             {
               model: dbModels.User,
@@ -198,6 +241,49 @@ class ContractService extends DualDatabaseService {
             {
               model: dbModels.ContractProjectPlanPoint,
               as: "contract_project_plan_points",
+              separate: true,
+              include: [
+                {
+                  model: dbModels.User,
+                  as: "user",
+                  attributes: ["id", "name", "email"],
+                },
+              ],
+              attributes: [
+                "id",
+                "file_description_indo",
+                "file_description_mandarin",
+                "is_checked",
+                "remarks",
+                "file",
+                "is_active",
+              ],
+            },
+            {
+              model: dbModels.ContractProjectPlanCost,
+              as: "contract_project_plan_costs",
+              attributes: [
+                "id",
+                "cost_description_indo",
+                "cost_description_mandarin",
+                "price_idr",
+                "price_rmb",
+                "is_checked",
+                "remarks",
+                "file",
+                "is_active",
+              ],
+              include: [
+                {
+                  model: dbModels.User,
+                  as: "user",
+                  attributes: ["id", "name", "email"],
+                },
+              ],
+            },
+            {
+              model: dbModels.PaymentRequest,
+              as: "payment_requests",
             },
             {
               model: dbModels.User,

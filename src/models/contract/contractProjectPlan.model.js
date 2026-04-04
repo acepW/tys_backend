@@ -77,6 +77,22 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Realization Duration",
       },
+      category: {
+        type: DataTypes.ENUM("normal", "cost"),
+        defaultValue: "normal",
+        allowNull: false,
+        comment: "category activity",
+      },
+      payment_type: {
+        type: DataTypes.ENUM("internal", "government", "customer"),
+        allowNull: true,
+        comment: "payment type for category cost and is_extra_plan = true",
+      },
+      is_extra_plan: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "sign for extra plan",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -123,6 +139,14 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    // ContractProjectPlan has many ContractProjectPlanCosts
+    ContractProjectPlan.hasMany(models.ContractProjectPlanCost, {
+      foreignKey: "id_contract_project_plan",
+      as: "contract_project_plan_costs",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     // ContractProjectPlan belongs to User (started)
     ContractProjectPlan.belongsTo(models.User, {
       foreignKey: "id_user_started",
@@ -135,6 +159,14 @@ module.exports = (sequelize) => {
     ContractProjectPlan.belongsTo(models.User, {
       foreignKey: "id_user_stopped",
       as: "user_stopped",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // ContractProjectPlan has many Payment Requests
+    ContractProjectPlan.hasMany(models.PaymentRequest, {
+      foreignKey: "id_contract_project_plan",
+      as: "payment_requests",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

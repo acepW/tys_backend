@@ -86,6 +86,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // ContractService has many Payment Requests
+    ContractService.hasMany(models.PaymentRequest, {
+      foreignKey: "id_contract_service",
+      as: "payment_requests",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return ContractService;

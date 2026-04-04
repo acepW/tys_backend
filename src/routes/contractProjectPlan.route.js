@@ -29,6 +29,12 @@ router.patch(
   authenticate,
   contractProjectPlanController.inputContractProjectPlan,
 );
+// PATCH routes
+router.patch(
+  "/costs/fill/:cost_id",
+  authenticate,
+  contractProjectPlanController.inputContractProjectPlanCost,
+);
 
 // DELETE routes
 router.delete("/:id", authenticate, contractProjectPlanController.delete);

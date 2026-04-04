@@ -35,7 +35,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Duration",
       },
-
+      category: {
+        type: DataTypes.ENUM("normal", "cost"),
+        defaultValue: "normal",
+        comment: "category activity",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -78,6 +82,14 @@ module.exports = (sequelize) => {
     ProjectPlan.hasMany(models.ProjectPlanPoint, {
       foreignKey: "id_project_plan",
       as: "project_plan_points",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // ProjectPlan has many ProjectPlanCosts
+    ProjectPlan.hasMany(models.ProjectPlanCost, {
+      foreignKey: "id_project_plan",
+      as: "project_plan_costs",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
