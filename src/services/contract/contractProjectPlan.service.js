@@ -89,6 +89,7 @@ class ContractProjectPlanService extends DualDatabaseService {
           attributes: ["id", "name", "email"],
         },
       ],
+      order: [["plan_start_date", "ASC"]],
     };
 
     if (!page || !limit) {

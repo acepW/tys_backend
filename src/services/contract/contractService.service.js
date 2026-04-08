@@ -80,6 +80,8 @@ class ContractService extends DualDatabaseService {
         {
           model: dbModels.ContractProjectPlan,
           as: "contract_project_plans",
+          separate: true,
+          order: [["plan_start_date", "ASC"]],
           include: [
             {
               model: dbModels.ContractProjectPlanPoint,
@@ -237,6 +239,8 @@ class ContractService extends DualDatabaseService {
         {
           model: dbModels.ContractProjectPlan,
           as: "contract_project_plans",
+          separate: true,
+          order: [["plan_start_date", "ASC"]],
           include: [
             {
               model: dbModels.ContractProjectPlanPoint,
