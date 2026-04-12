@@ -91,6 +91,15 @@ module.exports = (sequelize) => {
         },
         comment: "Id user who reject the service pricing",
       },
+      id_user_paid: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Id user who paid the debit note",
+      },
       date: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -137,8 +146,28 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Note for verification",
       },
+      payment_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Payment date of Invoice",
+      },
+      payment_amount: {
+        type: DataTypes.DECIMAL(15, 0),
+        allowNull: true,
+        comment: "Payment amount of Invoice",
+      },
+      payment_method: {
+        type: DataTypes.ENUM("transfer", "cash"),
+        allowNull: true,
+        comment: "Payment method of Invoice",
+      },
+      proof_of_payment: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Proof of payment for Invoice",
+      },
       status: {
-        type: DataTypes.ENUM("pending", "rejected", "approved"),
+        type: DataTypes.ENUM("pending", "rejected", "approved", "paid"),
         allowNull: false,
         defaultValue: "pending",
         comment: "Status of DebitNote",
@@ -262,6 +291,14 @@ module.exports = (sequelize) => {
     DebitNote.belongsTo(models.User, {
       foreignKey: "id_user_reject",
       as: "user_reject",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //DebitNote belongs to user
+    DebitNote.belongsTo(models.User, {
+      foreignKey: "id_user_paid",
+      as: "user_paid",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

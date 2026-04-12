@@ -94,6 +94,26 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Total payment request amount",
       },
+      billing_id: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Billing ID",
+      },
+      bank_name: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Bank name",
+      },
+      account_name: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Account name",
+      },
+      account_number: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Account number",
+      },
       description: {
         type: DataTypes.STRING(1000),
         allowNull: false,
@@ -103,6 +123,11 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(500),
         allowNull: true,
         comment: "File",
+      },
+      payment_method: {
+        type: DataTypes.ENUM("transfer", "cash"),
+        allowNull: true,
+        comment: "Payment method of Invoice",
       },
       total_payment: {
         type: DataTypes.DECIMAL(10, 2),

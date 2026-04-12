@@ -199,6 +199,14 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    //Users has many Debit Note
+    Users.hasMany(models.DebitNote, {
+      foreignKey: "id_user_paid",
+      as: "paid_debit_note",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     //Users has many contract plan (started)
     Users.hasMany(models.ContractProjectPlan, {
       foreignKey: "id_user_started",

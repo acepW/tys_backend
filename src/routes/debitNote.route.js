@@ -25,4 +25,7 @@ router.patch("/approve/:id", authenticate, DebitNoteController.approve);
 //PATCH reject
 router.patch("/reject/:id", authenticate, DebitNoteController.reject);
 
+//PATCH paid
+router.patch("/paid/:id", authenticate, DebitNoteController.paid);
+
 module.exports = router;

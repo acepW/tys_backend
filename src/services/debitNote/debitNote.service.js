@@ -77,6 +77,11 @@ class DebitNoteService extends DualDatabaseService {
           attributes: ["id", "name", "email"],
         },
         {
+          model: dbModels.User,
+          as: "user_paid",
+          attributes: ["id", "name", "email"],
+        },
+        {
           model: dbModels.DebitNoteItem,
           as: "debit_note_items",
           separate: true,
@@ -152,6 +157,11 @@ class DebitNoteService extends DualDatabaseService {
         {
           model: dbModels.User,
           as: "user_reject",
+          attributes: ["id", "name", "email"],
+        },
+        {
+          model: dbModels.User,
+          as: "user_paid",
           attributes: ["id", "name", "email"],
         },
         {
@@ -438,6 +448,35 @@ class DebitNoteService extends DualDatabaseService {
   }
 
   /**
+   * Pay debit note - change status to "paid off" and add progress
+   * @param {Number} id - Debit note ID
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated debit note
+   */
+  async payDebitNote(
+    id,
+    note,
+    payment_date,
+    payment_amount,
+    payment_method,
+    proof_of_payment,
+    id_user,
+    isDoubleDatabase = true,
+  ) {
+    return await this._changeStatus(
+      id,
+      "paid",
+      note || "Debit note paid",
+      id_user,
+      isDoubleDatabase,
+      payment_date,
+      payment_amount,
+      payment_method,
+      proof_of_payment,
+    );
+  }
+
+  /**
    * Internal method to change debit note status
    * @param {Number} id - Debit note ID
    * @param {String} status - New status
@@ -446,7 +485,17 @@ class DebitNoteService extends DualDatabaseService {
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated debit note
    */
-  async _changeStatus(id, status, note, id_user, isDoubleDatabase = true) {
+  async _changeStatus(
+    id,
+    status,
+    note,
+    id_user,
+    isDoubleDatabase = true,
+    payment_date,
+    payment_amount,
+    payment_method,
+    proof_of_payment,
+  ) {
     let transaction1 = null;
     let transaction2 = null;
 
@@ -463,6 +512,14 @@ class DebitNoteService extends DualDatabaseService {
         if (status === "approved") updateData.id_user_approve = id_user;
         if (status === "rejected") updateData.id_user_reject = id_user;
 
+        if (status == "paid") {
+          updateData.payment_date = payment_date;
+          updateData.payment_amount = payment_amount;
+          updateData.payment_method = payment_method;
+          updateData.proof_of_payment = proof_of_payment;
+          updateData.id_user_paid = id_user;
+        }
+
         // Update DebitNote status in both databases
         const [updatedRows1] = await this.Model1.update(updateData, {
           where: { id },
@@ -476,6 +533,42 @@ class DebitNoteService extends DualDatabaseService {
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
           throw new Error(`DebitNote with ID ${id} not found`);
+        }
+
+        const getDataDebitNote = await this.getById(id, {}, isDoubleDatabase);
+        if (!getDataDebitNote) {
+          throw new Error(`DebitNote with ID ${id} not found`);
+        }
+
+        if (getDataDebitNote.id_payment_request) {
+          // Handle payment request
+          await models.db1.PaymentRequest.update(
+            {
+              payment_method: payment_method,
+              total_payment: payment_amount,
+              file_proof_payment: proof_of_payment,
+              status: "paid",
+            },
+            {
+              where: { id: getDataDebitNote.id_payment_request },
+              transaction: transaction1,
+            },
+          );
+
+          await models.db2.PaymentRequest.update(
+            {
+              payment_method: payment_method,
+              total_payment: payment_amount,
+              file_proof_payment: proof_of_payment,
+              status: "paid",
+            },
+            {
+              where: { id: getDataDebitNote.id_payment_request },
+              transaction: transaction2,
+            },
+          );
+
+          console.log(`✅ Update PaymentRequest with status "paid"`);
         }
 
         console.log(`✅ Updated DebitNote status in both databases`);

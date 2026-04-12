@@ -348,6 +348,48 @@ class DebitNoteController {
   }
 
   /**
+   * Paid debit note
+   */
+  async paid(req, res) {
+    try {
+      const { id } = req.params;
+      const {
+        is_double_database = true,
+        note,
+        payment_date,
+        payment_amount,
+        payment_method,
+        proof_of_payment,
+      } = req.body || {};
+      const isDoubleDatabase = is_double_database;
+
+      const existing = await debitNoteService.findById(
+        id,
+        {},
+        isDoubleDatabase,
+      );
+      if (!existing) {
+        return errorResponse(res, "Debit note not found", 404);
+      }
+
+      const result = await debitNoteService.payDebitNote(
+        id,
+        note,
+        payment_date,
+        payment_amount,
+        payment_method,
+        proof_of_payment,
+        req.user.id,
+        isDoubleDatabase,
+      );
+
+      return successResponse(res, result, "Debit note paid successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Delete debit note
    */
   async delete(req, res) {
