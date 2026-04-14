@@ -11,6 +11,7 @@ const companyRoutes = require("./company.route");
 const productRoutes = require("./product.route");
 const customerRoutes = require("./customer.route");
 const divisionRoutes = require("./division.route");
+const vendorRoutes = require("./vendor.route");
 const flowProcessRoutes = require("./flowProcess.route");
 const clauseRoute = require("./clause.route");
 const userRoute = require("./user.route");
@@ -49,6 +50,7 @@ router.use("/companies", companyRoutes);
 router.use("/products-header", productRoutes);
 router.use("/customers", customerRoutes);
 router.use("/divisions", divisionRoutes);
+router.use("/vendors", vendorRoutes);
 router.use("/flow-process", flowProcessRoutes);
 router.use("/clauses", clauseRoute);
 router.use("/users", userRoute);
@@ -90,6 +92,7 @@ router.get("/", (req, res) => {
       products: "/api/products-header",
       customers: "/api/customers",
       divisions: "/api/divisions",
+      vendors: "/api/vendors",
       flowProcess: "/api/flow-process",
       clauses: "/api/clauses",
       users: "/api/users",

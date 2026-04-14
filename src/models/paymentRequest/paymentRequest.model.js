@@ -55,6 +55,15 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key for Customer",
       },
+      id_vendor: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "vendors",
+          key: "id",
+        },
+        comment: "Foreign key for Vendor",
+      },
       id_user_request: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -259,6 +268,14 @@ module.exports = (sequelize) => {
     PaymentRequest.belongsTo(models.Customer, {
       foreignKey: "id_customer",
       as: "customer",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Payment Request belongs to Vendor
+    PaymentRequest.belongsTo(models.Vendor, {
+      foreignKey: "id_vendor",
+      as: "vendor",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

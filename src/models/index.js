@@ -5,6 +5,7 @@ const CompanyModel = require("./company.model");
 const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
 const CustomerModel = require("./customer.model");
+const VendorModel = require("./vendor.model");
 const DivisionModel = require("./division.model");
 const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 const ClauseModel = require("./masterClause/clause.model");
@@ -69,6 +70,7 @@ const initializeModels = (sequelize) => {
     Product: ProductModel(sequelize),
     ProductFields: ProductFieldsModel(sequelize),
     Customer: CustomerModel(sequelize),
+    Vendor: VendorModel(sequelize),
     Division: DivisionModel(sequelize),
     FlowProcess: FlowProcessModel(sequelize),
     Clause: ClauseModel(sequelize),
