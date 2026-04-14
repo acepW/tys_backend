@@ -180,7 +180,7 @@ class PaymentRequestController {
   async approve(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true, note, payer } = req.body || {};
+      const { is_double_database = true, note, payer, role } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       // Check if payment request exists
@@ -194,23 +194,34 @@ class PaymentRequestController {
       }
 
       // Validate payer
-      if (!payer) {
-        return errorResponse(res, "payer is required", 400);
-      }
+      // if (!payer) {
+      //   return errorResponse(res, "payer is required", 400);
+      // }
 
-      if (!["customer", "company"].includes(payer)) {
+      // if (!["customer", "company"].includes(payer)) {
+      //   return errorResponse(
+      //     res,
+      //     "payer must be either 'customer' or 'company'",
+      //     400,
+      //   );
+      // }
+
+      // Whitelist role yang valid
+      const VALID_ROLES = ["spv", "fat", "spv fat", "manager fat", "director"];
+      if (!VALID_ROLES.includes(role)) {
         return errorResponse(
           res,
-          "payer must be either 'customer' or 'company'",
+          `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
           400,
         );
       }
 
       const result = await paymentRequestService.approvePaymentRequest(
+        role,
         id,
-        payer,
         note,
         req.user.id,
+        payer,
         isDoubleDatabase,
       );
 
@@ -231,7 +242,7 @@ class PaymentRequestController {
   async reject(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true, note } = req.body || {};
+      const { is_double_database = true, note, role } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       // Check if payment request exists
@@ -248,7 +259,17 @@ class PaymentRequestController {
         return errorResponse(res, "Rejection note is required", 400);
       }
 
+      const VALID_ROLES = ["spv", "fat", "spv fat", "manager fat", "director"];
+      if (!VALID_ROLES.includes(role)) {
+        return errorResponse(
+          res,
+          `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
+          400,
+        );
+      }
+
       const result = await paymentRequestService.rejectPaymentRequest(
+        role,
         id,
         note,
         req.user.id,

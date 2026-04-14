@@ -12,7 +12,7 @@ module.exports = (sequelize) => {
       },
       id_contract: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "contracts",
           key: "id",
@@ -21,7 +21,7 @@ module.exports = (sequelize) => {
       },
       id_contract_service: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "contract_service",
           key: "id",
@@ -30,7 +30,7 @@ module.exports = (sequelize) => {
       },
       id_contract_project_plan: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "contract_project_plan",
           key: "id",
@@ -39,7 +39,7 @@ module.exports = (sequelize) => {
       },
       id_company: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "companies",
           key: "id",
@@ -48,7 +48,7 @@ module.exports = (sequelize) => {
       },
       id_customer: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "customers",
           key: "id",
@@ -70,7 +70,12 @@ module.exports = (sequelize) => {
         comment: "Payment request number",
       },
       payment_type: {
-        type: DataTypes.STRING(500),
+        type: DataTypes.ENUM(
+          "reimburse internal",
+          "reimburse client",
+          "pnbp spb",
+          "vendor",
+        ),
         allowNull: false,
         comment: "Payment type",
       },
@@ -119,6 +124,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Description",
       },
+      priority: {
+        type: DataTypes.ENUM("normal", "urgent"),
+        allowNull: false,
+        comment: "Priority",
+      },
       file: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -147,8 +157,16 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.ENUM(
           "pending",
-          "approved",
-          "rejected",
+          "approve spv",
+          "approve fat",
+          "approve spv fat",
+          "approve manager fat",
+          "approve director",
+          "reject spv",
+          "reject fat",
+          "reject spv fat",
+          "reject manager fat",
+          "reject director",
           "paid",
           "continue_to_debit_note",
         ),

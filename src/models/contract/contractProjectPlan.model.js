@@ -84,7 +84,12 @@ module.exports = (sequelize) => {
         comment: "category activity",
       },
       payment_type: {
-        type: DataTypes.ENUM("internal", "government", "customer"),
+        type: DataTypes.ENUM(
+          "reimburse internal",
+          "reimburse client",
+          "pnbp spb",
+          "vendor",
+        ),
         allowNull: true,
         comment: "payment type for category cost and is_extra_plan = true",
       },

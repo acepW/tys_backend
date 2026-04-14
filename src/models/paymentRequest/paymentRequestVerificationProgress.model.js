@@ -37,8 +37,16 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.ENUM(
           "requested",
-          "approved",
-          "rejected",
+          "approve spv",
+          "approve fat",
+          "approve spv fat",
+          "approve manager fat",
+          "approve director",
+          "reject spv",
+          "reject fat",
+          "reject spv fat",
+          "reject manager fat",
+          "reject director",
           "paid",
           "continue_to_debit_note",
         ),

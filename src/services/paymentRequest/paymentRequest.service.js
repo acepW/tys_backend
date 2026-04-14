@@ -247,6 +247,44 @@ class PaymentRequestService extends DualDatabaseService {
           `✅ Created PaymentRequestVerificationProgress with status "requested"`,
         );
 
+        if (paymentRequestData.id_contract_project_plan) {
+          const contractProjectPlan =
+            await models.db1.ContractProjectPlan.findByPk(
+              paymentRequestData.id_contract_project_plan,
+              { transaction: transaction1 },
+            );
+
+          if (!contractProjectPlan) {
+            throw new Error(
+              `ContractProjectPlan with ID ${paymentRequestData.id_contract_project_plan} not found`,
+            );
+          }
+
+          // Update data Contract Project Plan in DB1
+          await models.db1.ContractProjectPlan.update(
+            {
+              payment_type: paymentRequestData.payment_type,
+            },
+            {
+              transaction: transaction1,
+              where: { id: paymentRequestData.id_contract_project_plan },
+            },
+          );
+
+          // Update data Contract Project Plan in DB2
+          await models.db2.ContractProjectPlan.update(
+            {
+              payment_type: paymentRequestData.payment_type,
+            },
+            {
+              transaction: transaction2,
+              where: { id: paymentRequestData.id_contract_project_plan },
+            },
+          );
+
+          console.log(`✅ Update ContractProjectPlan payment type`);
+        }
+
         await transaction1.commit();
         await transaction2.commit();
         console.log(`✅ PaymentRequest with relations successfully created`);
@@ -276,6 +314,33 @@ class PaymentRequestService extends DualDatabaseService {
             { transaction: transaction1 },
           );
 
+        if (paymentRequestData.id_contract_project_plan) {
+          const contractProjectPlan =
+            await models.db1.ContractProjectPlan.findByPk(
+              paymentRequestData.id_contract_project_plan,
+              { transaction: transaction1 },
+            );
+
+          if (!contractProjectPlan) {
+            throw new Error(
+              `ContractProjectPlan with ID ${paymentRequestData.id_contract_project_plan} not found`,
+            );
+          }
+
+          // Update data Contract Project Plan in DB1
+          await models.db1.ContractProjectPlan.update(
+            {
+              payment_type: paymentRequestData.payment_type,
+            },
+            {
+              transaction: transaction1,
+              where: { id: paymentRequestData.id_contract_project_plan },
+            },
+          );
+
+          console.log(`✅ Update ContractProjectPlan payment type`);
+        }
+
         await transaction1.commit();
         console.log(`✅ PaymentRequest created in DB1 only`);
 
@@ -295,256 +360,83 @@ class PaymentRequestService extends DualDatabaseService {
   }
 
   /**
-   * Approve payment request
-   * - If payer = "customer" → contract status = "continue_to_debit_note", progress status = "approved"
-   * - If payer = "company" → contract status = "approved", progress status = "approved"
-   * @param {Number} id - Payment request ID
-   * @param {String} payer - "customer" or "company"
-   * @param {String} note - Approval note
-   * @param {Number} id_user - User ID who approves
+   * approvePaymentRequest by role
+   * @param {String} role - "spv" | "fat" | "spv fat" | "manager fat" | "director"
+   * @param {Number} id
+   * @param {String} note
+   * @param {Number} id_user
+   * @param {String} payer - "customer" | "company" (only for "director")
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated payment request
+   * @returns {Object} Updated record
    */
   async approvePaymentRequest(
+    role,
     id,
-    payer,
     note,
     id_user,
+    payer = null,
     isDoubleDatabase = true,
   ) {
-    let transaction1 = null;
-    let transaction2 = null;
-
-    try {
-      // Determine contract status based on payer
-      const contractStatus =
-        payer === "customer" ? "continue_to_debit_note" : "approved";
-
-      if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
-
-        console.log(
-          `🔄 Approving PaymentRequest ID ${id} with payer "${payer}"...`,
-        );
-
-        // 1. Update PaymentRequest status + payer in both databases
-        const updateData = {
-          status: contractStatus,
-          payer,
-        };
-
-        const [updatedRows1] = await this.Model1.update(updateData, {
-          where: { id },
-          transaction: transaction1,
-        });
-
-        const [updatedRows2] = await this.Model2.update(updateData, {
-          where: { id },
-          transaction: transaction2,
-        });
-
-        if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`PaymentRequest with ID ${id} not found`);
-        }
-
-        console.log(
-          `✅ Updated PaymentRequest status to "${contractStatus}" in both databases`,
-        );
-
-        // 2. Create verification progress with status "approved"
-        const progressData = {
-          id_payment_request: id,
-          id_user,
-          status: "approved",
-          note: note || "Payment request approved",
-        };
-
-        const progress1 =
-          await models.db1.PaymentRequestVerificationProgress.create(
-            progressData,
-            { transaction: transaction1 },
-          );
-
-        const progressDataWithId = {
-          ...progressData,
-          id: progress1.id,
-        };
-        await models.db2.PaymentRequestVerificationProgress.create(
-          progressDataWithId,
-          { transaction: transaction2 },
-        );
-
-        console.log(
-          `✅ Created PaymentRequestVerificationProgress with status "approved"`,
-        );
-
-        await transaction1.commit();
-        await transaction2.commit();
-        console.log(`✅ PaymentRequest approved successfully`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
-      } else {
-        transaction1 = await db1.transaction();
-
-        const updateData = {
-          status: contractStatus,
-          payer,
-        };
-
-        const [updatedRows] = await this.Model1.update(updateData, {
-          where: { id },
-          transaction: transaction1,
-        });
-
-        if (updatedRows === 0) {
-          throw new Error(`PaymentRequest with ID ${id} not found`);
-        }
-
-        const progressData = {
-          id_payment_request: id,
-          id_user,
-          status: "approved",
-          note: note || "Payment request approved",
-        };
-
-        await models.db1.PaymentRequestVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        await transaction1.commit();
-        console.log(`✅ PaymentRequest approved in DB1 only`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
-      }
-    } catch (error) {
-      console.error(`❌ Error approving PaymentRequest:`, error.message);
-
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
-
-      throw new Error(`Failed to approve PaymentRequest: ${error.message}`);
+    // Whitelist role yang valid
+    const VALID_ROLES = ["spv", "fat", "spv fat", "manager fat", "director"];
+    if (!VALID_ROLES.includes(role)) {
+      throw new Error(
+        `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
+      );
     }
+
+    let status = `approve ${role}`;
+
+    // Logika khusus hanya untuk director
+    if (role === "director") {
+      // Kalau payer tidak diisi, ambil dari database
+      if (!payer) {
+        const existingData = await this.getById(id, {}, isDoubleDatabase);
+        if (!existingData) {
+          throw new Error(`PaymentRequest with ID ${id} not found`);
+        }
+        payer = existingData.payer;
+      }
+
+      // Terapkan logika payer setelah dapat nilainya
+      status =
+        payer === "customer" ? "continue_to_debit_note" : "approve director";
+    }
+
+    return this._changeStatus(
+      id,
+      status,
+      { payer, note, id_user },
+      isDoubleDatabase,
+    );
   }
 
   /**
-   * Reject payment request
-   * @param {Number} id - Payment request ID
-   * @param {String} note - Rejection note (required)
-   * @param {Number} id_user - User ID who rejects
+   * rejectPaymentRequest by role
+   * @param {String} role - "spv" | "fat" | "spv fat" | "manager fat" | "director"
+   * @param {Number} id
+   * @param {String} note - Required
+   * @param {Number} id_user
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated payment request
+   * @returns {Object} Updated record
    */
-  async rejectPaymentRequest(id, note, id_user, isDoubleDatabase = true) {
-    let transaction1 = null;
-    let transaction2 = null;
-
-    try {
-      if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
-
-        console.log(`🔄 Rejecting PaymentRequest ID ${id}...`);
-
-        const [updatedRows1] = await this.Model1.update(
-          { status: "rejected" },
-          { where: { id }, transaction: transaction1 },
-        );
-
-        const [updatedRows2] = await this.Model2.update(
-          { status: "rejected" },
-          { where: { id }, transaction: transaction2 },
-        );
-
-        if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`PaymentRequest with ID ${id} not found`);
-        }
-
-        console.log(
-          `✅ Updated PaymentRequest status to "rejected" in both databases`,
-        );
-
-        const progressData = {
-          id_payment_request: id,
-          id_user,
-          status: "rejected",
-          note: note,
-        };
-
-        const progress1 =
-          await models.db1.PaymentRequestVerificationProgress.create(
-            progressData,
-            { transaction: transaction1 },
-          );
-
-        const progressDataWithId = {
-          ...progressData,
-          id: progress1.id,
-        };
-        await models.db2.PaymentRequestVerificationProgress.create(
-          progressDataWithId,
-          { transaction: transaction2 },
-        );
-
-        console.log(
-          `✅ Created PaymentRequestVerificationProgress with status "rejected"`,
-        );
-
-        await transaction1.commit();
-        await transaction2.commit();
-        console.log(`✅ PaymentRequest rejected successfully`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
-      } else {
-        transaction1 = await db1.transaction();
-
-        const [updatedRows] = await this.Model1.update(
-          { status: "rejected" },
-          { where: { id }, transaction: transaction1 },
-        );
-
-        if (updatedRows === 0) {
-          throw new Error(`PaymentRequest with ID ${id} not found`);
-        }
-
-        const progressData = {
-          id_payment_request: id,
-          id_user,
-          status: "rejected",
-          note: note,
-        };
-
-        await models.db1.PaymentRequestVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        await transaction1.commit();
-        console.log(`✅ PaymentRequest rejected in DB1 only`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
-      }
-    } catch (error) {
-      console.error(`❌ Error rejecting PaymentRequest:`, error.message);
-
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
-
-      throw new Error(`Failed to reject PaymentRequest: ${error.message}`);
+  async rejectPaymentRequest(role, id, note, id_user, isDoubleDatabase = true) {
+    // Whitelist role yang valid
+    const VALID_ROLES = ["spv", "fat", "spv fat", "manager fat", "director"];
+    if (!VALID_ROLES.includes(role)) {
+      throw new Error(
+        `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
+      );
     }
+
+    return this._changeStatus(
+      id,
+      `reject ${role}`,
+      { note, id_user },
+      isDoubleDatabase,
+    );
   }
 
-  /**
-   * Mark payment request as paid
-   * @param {Number} id - Payment request ID
-   * @param {Number} total_payment - Total payment amount
-   * @param {String} file_proof_payment - File path of payment proof
-   * @param {String} note - Note
-   * @param {Number} id_user - User ID who marks as paid
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated payment request
-   */
   async paidPaymentRequest(
     id,
     total_payment,
@@ -553,21 +445,56 @@ class PaymentRequestService extends DualDatabaseService {
     id_user,
     isDoubleDatabase = true,
   ) {
+    return this._changeStatus(
+      id,
+      "paid",
+      { total_payment, file_proof_payment, note, id_user },
+      isDoubleDatabase,
+    );
+  }
+
+  /**
+   * Internal method to change payment request status
+   * @param {Number} id - Payment request ID
+   * @param {String} status - "approved" | "continue_to_debit_note" | "rejected" | "paid"
+   * @param {Object} options - Additional options
+   * @param {String} options.payer - "customer" | "company" (required for approve)
+   * @param {String} options.note - Note for the status change
+   * @param {Number} options.id_user - User ID performing the action
+   * @param {Number} options.total_payment - Total payment amount (required for paid)
+   * @param {String} options.file_proof_payment - File path of payment proof (required for paid)
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated payment request
+   */
+  async _changeStatus(id, status, options = {}, isDoubleDatabase = true) {
+    const { payer, note, id_user, total_payment, file_proof_payment } = options;
+
     let transaction1 = null;
     let transaction2 = null;
 
     try {
+      // Build update payload based on status
+      const updateData = { status };
+      if (payer) updateData.payer = payer;
+      if (status === "paid") {
+        updateData.total_payment = total_payment;
+        updateData.file_proof_payment = file_proof_payment;
+      }
+
+      const progressData = {
+        id_payment_request: id,
+        id_user,
+        status,
+        note: note || `Payment request ${status}`,
+      };
+
       if (isDoubleDatabase) {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
-        console.log(`🔄 Marking PaymentRequest ID ${id} as paid...`);
-
-        const updateData = {
-          status: "paid",
-          total_payment,
-          file_proof_payment,
-        };
+        console.log(
+          `🔄 Changing PaymentRequest ID ${id} status to "${status}"...`,
+        );
 
         const [updatedRows1] = await this.Model1.update(updateData, {
           where: { id },
@@ -584,15 +511,8 @@ class PaymentRequestService extends DualDatabaseService {
         }
 
         console.log(
-          `✅ Updated PaymentRequest status to "paid" in both databases`,
+          `✅ Updated PaymentRequest status to "${status}" in both databases`,
         );
-
-        const progressData = {
-          id_payment_request: id,
-          id_user,
-          status: "paid",
-          note: note || "Payment request paid",
-        };
 
         const progress1 =
           await models.db1.PaymentRequestVerificationProgress.create(
@@ -600,32 +520,22 @@ class PaymentRequestService extends DualDatabaseService {
             { transaction: transaction1 },
           );
 
-        const progressDataWithId = {
-          ...progressData,
-          id: progress1.id,
-        };
         await models.db2.PaymentRequestVerificationProgress.create(
-          progressDataWithId,
+          { ...progressData, id: progress1.id },
           { transaction: transaction2 },
         );
 
         console.log(
-          `✅ Created PaymentRequestVerificationProgress with status "paid"`,
+          `✅ Created PaymentRequestVerificationProgress with status "${status}"`,
         );
 
         await transaction1.commit();
         await transaction2.commit();
-        console.log(`✅ PaymentRequest marked as paid successfully`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
+        console.log(
+          `✅ PaymentRequest status changed to "${status}" successfully`,
+        );
       } else {
         transaction1 = await db1.transaction();
-
-        const updateData = {
-          status: "paid",
-          total_payment,
-          file_proof_payment,
-        };
 
         const [updatedRows] = await this.Model1.update(updateData, {
           where: { id },
@@ -636,31 +546,24 @@ class PaymentRequestService extends DualDatabaseService {
           throw new Error(`PaymentRequest with ID ${id} not found`);
         }
 
-        const progressData = {
-          id_payment_request: id,
-          id_user,
-          status: "paid",
-          note: note || "Payment request paid",
-        };
-
         await models.db1.PaymentRequestVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
 
         await transaction1.commit();
-        console.log(`✅ PaymentRequest marked as paid in DB1 only`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
+        console.log(
+          `✅ PaymentRequest status changed to "${status}" in DB1 only`,
+        );
       }
-    } catch (error) {
-      console.error(`❌ Error marking PaymentRequest as paid:`, error.message);
 
+      return await this.getById(id, {}, isDoubleDatabase);
+    } catch (error) {
+      console.error(`❌ Error changing PaymentRequest status:`, error.message);
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
-
       throw new Error(
-        `Failed to mark PaymentRequest as paid: ${error.message}`,
+        `Failed to change PaymentRequest status: ${error.message}`,
       );
     }
   }
