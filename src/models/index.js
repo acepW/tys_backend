@@ -5,7 +5,6 @@ const CompanyModel = require("./company.model");
 const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
 const CustomerModel = require("./customer.model");
-const VendorModel = require("./vendor.model");
 const DivisionModel = require("./division.model");
 const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 const ClauseModel = require("./masterClause/clause.model");
@@ -56,6 +55,9 @@ const DebitNoteItemModel = require("./debitNote/debitNoteItem.model");
 const PaymentRequestModel = require("./paymentRequest/paymentRequest.model");
 const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymentRequestVerificationProgress.model");
 
+//vendor
+const VendorModel = require("./vendor/vendor.model");
+const VendorVerificationProgressModel = require("./vendor/vendorVerificationProgress.model");
 /**
  * Initialize all models for a given sequelize instance
  * @param {Sequelize} sequelize - Sequelize instance
@@ -70,7 +72,6 @@ const initializeModels = (sequelize) => {
     Product: ProductModel(sequelize),
     ProductFields: ProductFieldsModel(sequelize),
     Customer: CustomerModel(sequelize),
-    Vendor: VendorModel(sequelize),
     Division: DivisionModel(sequelize),
     FlowProcess: FlowProcessModel(sequelize),
     Clause: ClauseModel(sequelize),
@@ -121,6 +122,10 @@ const initializeModels = (sequelize) => {
     PaymentRequest: PaymentRequestModel(sequelize),
     PaymentRequestVerificationProgress:
       PaymentRequestVerificationProgressModel(sequelize),
+
+    //vendor
+    Vendor: VendorModel(sequelize),
+    VendorVerificationProgress: VendorVerificationProgressModel(sequelize),
   };
 
   // Setup associations for all models
@@ -171,7 +176,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true },
+  options = { alter: true }
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

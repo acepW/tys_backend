@@ -37,6 +37,15 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key for Contract Project Plan",
       },
+      id_contract_project_plan_cost: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "contract_project_plan_cost",
+          key: "id",
+        },
+        comment: "Foreign key for Contract Project Plan Cost",
+      },
       id_company: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -79,12 +88,7 @@ module.exports = (sequelize) => {
         comment: "Payment request number",
       },
       payment_type: {
-        type: DataTypes.ENUM(
-          "reimburse internal",
-          "reimburse client",
-          "pnbp spb",
-          "vendor",
-        ),
+        type: DataTypes.ENUM("vendor", "pnbp spb", "others"),
         allowNull: false,
         comment: "Payment type",
       },
@@ -158,10 +162,10 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "File proof of payment",
       },
-      payer: {
+      cost_bearer: {
         type: DataTypes.ENUM("company", "customer"),
         allowNull: true,
-        comment: "Payer",
+        comment: "cost bearer payment",
       },
       status: {
         type: DataTypes.ENUM(
@@ -177,7 +181,7 @@ module.exports = (sequelize) => {
           "reject manager fat",
           "reject director",
           "paid",
-          "continue_to_debit_note",
+          "continue_to_debit_note"
         ),
         defaultValue: "pending",
         comment: "Status",
@@ -207,6 +211,10 @@ module.exports = (sequelize) => {
           fields: ["id_contract_project_plan"],
         },
         {
+          name: "idx_id_contract_project_plan_cost",
+          fields: ["id_contract_project_plan_cost"],
+        },
+        {
           name: "idx_id_company",
           fields: ["id_company"],
         },
@@ -224,7 +232,7 @@ module.exports = (sequelize) => {
           fields: ["id_contract", "is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
@@ -252,6 +260,14 @@ module.exports = (sequelize) => {
     PaymentRequest.belongsTo(models.ContractProjectPlan, {
       foreignKey: "id_contract_project_plan",
       as: "contract_project_plan",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Payment Request belongs to Contract Project Plan Cost
+    PaymentRequest.belongsTo(models.ContractProjectPlanCost, {
+      foreignKey: "id_contract_project_plan_cost",
+      as: "contract_project_plan_cost",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

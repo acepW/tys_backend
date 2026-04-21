@@ -19,7 +19,30 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key for Project Plan",
       },
-
+      id_vendor: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "vendors",
+          key: "id",
+        },
+        comment: "Foreign key for vendors",
+      },
+      vendor_name: {
+        type: DataTypes.STRING(200),
+        allowNull: false,
+        comment: "Vendor name",
+      },
+      payment_type: {
+        type: DataTypes.ENUM("vendor", "pnbp spb", "others"),
+        allowNull: false,
+        comment: "Payment type",
+      },
+      cost_bearer: {
+        type: DataTypes.ENUM("company", "customer"),
+        allowNull: true,
+        comment: "cost bearer payment",
+      },
       cost_description_indo: {
         type: DataTypes.STRING(1000),
         allowNull: false,
@@ -56,13 +79,17 @@ module.exports = (sequelize) => {
           name: "idx_id_project_plan",
           fields: ["id_project_plan"],
         },
+        {
+          name: "idx_id_vendor",
+          fields: ["id_vendor"],
+        },
         // Composite index (lebih efisien dari is_active standalone)
         {
           name: "idx_project_plan_cost_active",
           fields: ["id_project_plan", "is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
@@ -74,6 +101,14 @@ module.exports = (sequelize) => {
     ProjectPlanCost.belongsTo(models.ProjectPlan, {
       foreignKey: "id_project_plan",
       as: "project_plan",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Service Pricing belongs to vendor
+    ProjectPlanCost.belongsTo(models.Vendor, {
+      foreignKey: "id_vendor",
+      as: "vendor",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
