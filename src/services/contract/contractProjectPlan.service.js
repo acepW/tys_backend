@@ -19,7 +19,7 @@ class ContractProjectPlanService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -37,30 +37,11 @@ class ContractProjectPlanService extends DualDatabaseService {
               attributes: ["id", "name", "email"],
             },
           ],
-          attributes: [
-            "id",
-            "file_description_indo",
-            "file_description_mandarin",
-            "is_checked",
-            "remarks",
-            "file",
-            "is_active",
-          ],
         },
         {
           model: dbModels.ContractProjectPlanCost,
           as: "contract_project_plan_costs",
-          attributes: [
-            "id",
-            "cost_description_indo",
-            "cost_description_mandarin",
-            "price_idr",
-            "price_rmb",
-            "is_checked",
-            "remarks",
-            "file",
-            "is_active",
-          ],
+
           include: [
             {
               model: dbModels.User,
@@ -99,7 +80,7 @@ class ContractProjectPlanService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     return {
@@ -137,30 +118,10 @@ class ContractProjectPlanService extends DualDatabaseService {
               attributes: ["id", "name", "email"],
             },
           ],
-          attributes: [
-            "id",
-            "file_description_indo",
-            "file_description_mandarin",
-            "is_checked",
-            "remarks",
-            "file",
-            "is_active",
-          ],
         },
         {
           model: dbModels.ContractProjectPlanCost,
           as: "contract_project_plan_costs",
-          attributes: [
-            "id",
-            "cost_description_indo",
-            "cost_description_mandarin",
-            "price_idr",
-            "price_rmb",
-            "is_checked",
-            "remarks",
-            "file",
-            "is_active",
-          ],
           include: [
             {
               model: dbModels.User,
@@ -203,7 +164,7 @@ class ContractProjectPlanService extends DualDatabaseService {
    */
   async createMultipleWithPoints(
     contractProjectPlanDataList = [],
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -214,7 +175,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating ${contractProjectPlanDataList.length} Contract Project Plan records with points in both databases...`,
+          `🔄 Creating ${contractProjectPlanDataList.length} Contract Project Plan records with points in both databases...`
         );
 
         const results = [];
@@ -229,10 +190,10 @@ class ContractProjectPlanService extends DualDatabaseService {
           // 1. Create Contract Project Plan in DB1
           const contractProjectPlan1 = await this.Model1.create(
             contractProjectPlanData,
-            { transaction: transaction1 },
+            { transaction: transaction1 }
           );
           console.log(
-            `✅ Created Contract Project Plan in DB1 with ID: ${contractProjectPlan1.id}`,
+            `✅ Created Contract Project Plan in DB1 with ID: ${contractProjectPlan1.id}`
           );
 
           // 2. Create Contract Project Plan in DB2 with same ID
@@ -244,7 +205,7 @@ class ContractProjectPlanService extends DualDatabaseService {
             transaction: transaction2,
           });
           console.log(
-            `✅ Created Contract Project Plan in DB2 with ID: ${contractProjectPlan1.id}`,
+            `✅ Created Contract Project Plan in DB2 with ID: ${contractProjectPlan1.id}`
           );
 
           // 3. Prepare points data with foreign key
@@ -293,7 +254,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${contractProjectPlanDataList.length} Contract Project Plan records with points successfully created`,
+          `✅ ${contractProjectPlanDataList.length} Contract Project Plan records with points successfully created`
         );
 
         return results;
@@ -312,7 +273,7 @@ class ContractProjectPlanService extends DualDatabaseService {
 
           const contractProjectPlan = await this.Model1.create(
             contractProjectPlanData,
-            { transaction: transaction1 },
+            { transaction: transaction1 }
           );
 
           const pointsData = contract_project_plan_points.map((point) => ({
@@ -356,7 +317,7 @@ class ContractProjectPlanService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ ${contractProjectPlanDataList.length} Contract Project Plan records created in DB1 only`,
+          `✅ ${contractProjectPlanDataList.length} Contract Project Plan records created in DB1 only`
         );
 
         return results;
@@ -364,14 +325,14 @@ class ContractProjectPlanService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating Contract Project Plan with points:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to create Contract Project Plan with points: ${error.message}`,
+        `Failed to create Contract Project Plan with points: ${error.message}`
       );
     }
   }
@@ -388,7 +349,7 @@ class ContractProjectPlanService extends DualDatabaseService {
   async syncByContractService(
     idContractService,
     contractProjectPlanDataList = [],
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -399,7 +360,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Syncing Contract Project Plans for ContractService ID ${idContractService} in both databases...`,
+          `🔄 Syncing Contract Project Plans for ContractService ID ${idContractService} in both databases...`
         );
 
         const existingPlans = await this.Model1.findAll({
@@ -414,7 +375,7 @@ class ContractProjectPlanService extends DualDatabaseService {
           .map((item) => item.id);
 
         const idsToDelete = existingIds.filter(
-          (id) => !incomingIds.includes(id),
+          (id) => !incomingIds.includes(id)
         );
 
         if (idsToDelete.length > 0) {
@@ -447,7 +408,7 @@ class ContractProjectPlanService extends DualDatabaseService {
           });
 
           console.log(
-            `🗑️ Deleted Contract Project Plan IDs: ${idsToDelete.join(", ")}`,
+            `🗑️ Deleted Contract Project Plan IDs: ${idsToDelete.join(", ")}`
           );
         }
 
@@ -483,7 +444,7 @@ class ContractProjectPlanService extends DualDatabaseService {
             });
             await this.Model2.create(
               { ...planData, id: newPlan.id },
-              { transaction: transaction2 },
+              { transaction: transaction2 }
             );
             planId = newPlan.id;
             console.log(`✅ Created Contract Project Plan ID ${planId}`);
@@ -529,7 +490,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ Contract Project Plans synced for ContractService ID ${idContractService}`,
+          `✅ Contract Project Plans synced for ContractService ID ${idContractService}`
         );
 
         const finalRecords = await this.Model1.findAll({
@@ -553,7 +514,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         transaction1 = await db1.transaction();
 
         console.log(
-          `🔄 Syncing Contract Project Plans for ContractService ID ${idContractService} in DB1...`,
+          `🔄 Syncing Contract Project Plans for ContractService ID ${idContractService} in DB1...`
         );
 
         const existingPlans = await this.Model1.findAll({
@@ -568,7 +529,7 @@ class ContractProjectPlanService extends DualDatabaseService {
           .map((item) => item.id);
 
         const idsToDelete = existingIds.filter(
-          (id) => !incomingIds.includes(id),
+          (id) => !incomingIds.includes(id)
         );
 
         if (idsToDelete.length > 0) {
@@ -588,7 +549,7 @@ class ContractProjectPlanService extends DualDatabaseService {
             transaction: transaction1,
           });
           console.log(
-            `🗑️ Deleted Contract Project Plan IDs: ${idsToDelete.join(", ")}`,
+            `🗑️ Deleted Contract Project Plan IDs: ${idsToDelete.join(", ")}`
           );
         }
 
@@ -656,7 +617,7 @@ class ContractProjectPlanService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ Contract Project Plans synced for ContractService ID ${idContractService} in DB1`,
+          `✅ Contract Project Plans synced for ContractService ID ${idContractService} in DB1`
         );
 
         const finalRecords = await this.Model1.findAll({
@@ -679,14 +640,14 @@ class ContractProjectPlanService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error syncing Contract Project Plans for ContractService ID ${idContractService}:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to sync Contract Project Plans: ${error.message}`,
+        `Failed to sync Contract Project Plans: ${error.message}`
       );
     }
   }
@@ -723,7 +684,7 @@ class ContractProjectPlanService extends DualDatabaseService {
 
       if (plan.realization_start_date) {
         throw new Error(
-          `Contract Project Plan with ID ${id} has already been started`,
+          `Contract Project Plan with ID ${id} has already been started`
         );
       }
 
@@ -754,7 +715,7 @@ class ContractProjectPlanService extends DualDatabaseService {
         {
           where: { id: plan.id_contract_service },
           transaction: transaction1,
-        },
+        }
       );
 
       if (isDoubleDatabase) {
@@ -763,12 +724,12 @@ class ContractProjectPlanService extends DualDatabaseService {
           {
             where: { id: plan.id_contract_service },
             transaction: transaction2,
-          },
+          }
         );
       }
 
       console.log(
-        `✅ Updated ContractService ID ${plan.id_contract_service} status to "processed"`,
+        `✅ Updated ContractService ID ${plan.id_contract_service} status to "processed"`
       );
 
       if (isDoubleDatabase) {
@@ -783,14 +744,14 @@ class ContractProjectPlanService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error starting Contract Project Plan ID ${id}:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to start Contract Project Plan: ${error.message}`,
+        `Failed to start Contract Project Plan: ${error.message}`
       );
     }
   }
@@ -828,13 +789,13 @@ class ContractProjectPlanService extends DualDatabaseService {
 
       if (!plan.realization_start_date) {
         throw new Error(
-          `Contract Project Plan with ID ${id} has not been started yet`,
+          `Contract Project Plan with ID ${id} has not been started yet`
         );
       }
 
       if (plan.realization_end_date) {
         throw new Error(
-          `Contract Project Plan with ID ${id} has already been stopped`,
+          `Contract Project Plan with ID ${id} has already been stopped`
         );
       }
 
@@ -865,7 +826,7 @@ class ContractProjectPlanService extends DualDatabaseService {
       }
 
       console.log(
-        `✅ Stopped Contract Project Plan ID ${id}, duration: ${diffDays} day(s)`,
+        `✅ Stopped Contract Project Plan ID ${id}, duration: ${diffDays} day(s)`
       );
 
       // 4. Check if all plans under this ContractService are done
@@ -885,7 +846,7 @@ class ContractProjectPlanService extends DualDatabaseService {
           {
             where: { id: plan.id_contract_service },
             transaction: transaction1,
-          },
+          }
         );
 
         if (isDoubleDatabase) {
@@ -894,16 +855,16 @@ class ContractProjectPlanService extends DualDatabaseService {
             {
               where: { id: plan.id_contract_service },
               transaction: transaction2,
-            },
+            }
           );
         }
 
         console.log(
-          `✅ All plans done — Updated ContractService ID ${plan.id_contract_service} status to "done"`,
+          `✅ All plans done — Updated ContractService ID ${plan.id_contract_service} status to "done"`
         );
       } else {
         console.log(
-          `ℹ️ ${remainingActivePlans} plan(s) still active under ContractService ID ${plan.id_contract_service}`,
+          `ℹ️ ${remainingActivePlans} plan(s) still active under ContractService ID ${plan.id_contract_service}`
         );
       }
 
@@ -919,7 +880,7 @@ class ContractProjectPlanService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error stopping Contract Project Plan ID ${id}:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
@@ -952,12 +913,12 @@ class ContractProjectPlanService extends DualDatabaseService {
       // 1. Fetch the point to verify it exists
       const point = await models.db1.ContractProjectPlanPoint.findByPk(
         pointId,
-        { transaction: transaction1 },
+        { transaction: transaction1 }
       );
 
       if (!point) {
         throw new Error(
-          `Contract Project Plan Point with ID ${pointId} not found`,
+          `Contract Project Plan Point with ID ${pointId} not found`
         );
       }
 
@@ -992,20 +953,21 @@ class ContractProjectPlanService extends DualDatabaseService {
       }
 
       // Return updated point
-      const updatedPoint =
-        await models.db1.ContractProjectPlanPoint.findByPk(pointId);
+      const updatedPoint = await models.db1.ContractProjectPlanPoint.findByPk(
+        pointId
+      );
       return updatedPoint ? updatedPoint.toJSON() : null;
     } catch (error) {
       console.error(
         `❌ Error updating Contract Project Plan Point ID ${pointId}:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to update Contract Project Plan Point: ${error.message}`,
+        `Failed to update Contract Project Plan Point: ${error.message}`
       );
     }
   }
@@ -1021,7 +983,7 @@ class ContractProjectPlanService extends DualDatabaseService {
   async inputContractProjectPlanCost(
     costId,
     data = {},
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -1041,7 +1003,7 @@ class ContractProjectPlanService extends DualDatabaseService {
 
       if (!cost) {
         throw new Error(
-          `Contract Project Plan Cost with ID ${costId} not found`,
+          `Contract Project Plan Cost with ID ${costId} not found`
         );
       }
 
@@ -1076,20 +1038,21 @@ class ContractProjectPlanService extends DualDatabaseService {
       }
 
       // Return updated cost
-      const updatedCost =
-        await models.db1.ContractProjectPlanCost.findByPk(costId);
+      const updatedCost = await models.db1.ContractProjectPlanCost.findByPk(
+        costId
+      );
       return updatedCost ? updatedCost.toJSON() : null;
     } catch (error) {
       console.error(
         `❌ Error updating Contract Project Plan Cost ID ${costId}:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to update Contract Project Plan Point: ${error.message}`,
+        `Failed to update Contract Project Plan Point: ${error.message}`
       );
     }
   }

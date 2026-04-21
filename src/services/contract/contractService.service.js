@@ -21,7 +21,7 @@ class ContractService extends DualDatabaseService {
     optionsContract = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -94,30 +94,11 @@ class ContractService extends DualDatabaseService {
                   attributes: ["id", "name", "email"],
                 },
               ],
-              attributes: [
-                "id",
-                "file_description_indo",
-                "file_description_mandarin",
-                "is_checked",
-                "remarks",
-                "file",
-                "is_active",
-              ],
             },
             {
               model: dbModels.ContractProjectPlanCost,
               as: "contract_project_plan_costs",
-              attributes: [
-                "id",
-                "cost_description_indo",
-                "cost_description_mandarin",
-                "price_idr",
-                "price_rmb",
-                "is_checked",
-                "remarks",
-                "file",
-                "is_active",
-              ],
+
               include: [
                 {
                   model: dbModels.User,
@@ -155,7 +136,7 @@ class ContractService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     return {
@@ -180,7 +161,7 @@ class ContractService extends DualDatabaseService {
     id,
     options = {},
     optionsContract = {},
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -253,30 +234,11 @@ class ContractService extends DualDatabaseService {
                   attributes: ["id", "name", "email"],
                 },
               ],
-              attributes: [
-                "id",
-                "file_description_indo",
-                "file_description_mandarin",
-                "is_checked",
-                "remarks",
-                "file",
-                "is_active",
-              ],
             },
             {
               model: dbModels.ContractProjectPlanCost,
               as: "contract_project_plan_costs",
-              attributes: [
-                "id",
-                "cost_description_indo",
-                "cost_description_mandarin",
-                "price_idr",
-                "price_rmb",
-                "is_checked",
-                "remarks",
-                "file",
-                "is_active",
-              ],
+
               include: [
                 {
                   model: dbModels.User,
