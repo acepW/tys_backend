@@ -6,10 +6,14 @@ const ProductModel = require("./masterProduct/product.model");
 const ProductFieldsModel = require("./masterProduct/productField.model");
 const CustomerModel = require("./customer.model");
 const DivisionModel = require("./division.model");
+const DepartmentModel = require("./department/department.model");
+const PositionModel = require("./position/position.model");
 const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 const ClauseModel = require("./masterClause/clause.model");
 const ClausePointModel = require("./masterClause/clausePoint.model");
 const UserModel = require("./user.model");
+const MenuModel = require("./menu.model");
+const PositionMenuModel = require("./position/positionMenu.model");
 
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
@@ -73,10 +77,14 @@ const initializeModels = (sequelize) => {
     ProductFields: ProductFieldsModel(sequelize),
     Customer: CustomerModel(sequelize),
     Division: DivisionModel(sequelize),
+    Department: DepartmentModel(sequelize),
+    Position: PositionModel(sequelize),
     FlowProcess: FlowProcessModel(sequelize),
     Clause: ClauseModel(sequelize),
     ClausePoint: ClausePointModel(sequelize),
     User: UserModel(sequelize),
+    Menu: MenuModel(sequelize),
+    PositionMenu: PositionMenuModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
@@ -176,7 +184,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true }
+  options = { alter: true },
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

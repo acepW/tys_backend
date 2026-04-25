@@ -8,7 +8,10 @@ class DivisionController {
   async getAll(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const divisions = await divisionService.findAll({}, isDoubleDatabase);
+      const divisions = await divisionService.findAll(
+        { where: { is_active: true } },
+        isDoubleDatabase,
+      );
 
       return successResponse(
         res,
@@ -137,7 +140,7 @@ class DivisionController {
         return errorResponse(res, "Division not found", 404);
       }
 
-      await divisionService.delete(id, isDoubleDatabase);
+      await divisionService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Division deleted successfully");
     } catch (error) {

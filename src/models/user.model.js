@@ -19,6 +19,24 @@ module.exports = (sequelize) => {
         },
         comment: "Id division from divisions",
       },
+      id_department: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "departments",
+          key: "id",
+        },
+        comment: "Id department from departments",
+      },
+      id_position: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "positions",
+          key: "id",
+        },
+        comment: "Id position from positions",
+      },
       email: {
         type: DataTypes.STRING(100),
         allowNull: false,
@@ -59,6 +77,14 @@ module.exports = (sequelize) => {
           fields: ["id_division"],
         },
         {
+          name: "idx_id_department",
+          fields: ["id_department"],
+        },
+        {
+          name: "idx_id_position",
+          fields: ["id_position"],
+        },
+        {
           name: "idx_email",
           fields: ["email"],
         },
@@ -71,7 +97,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
@@ -83,6 +109,22 @@ module.exports = (sequelize) => {
     Users.belongsTo(models.Division, {
       foreignKey: "id_division",
       as: "division",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users belongs to Department
+    Users.belongsTo(models.Department, {
+      foreignKey: "id_department",
+      as: "department",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users belongs to Position
+    Users.belongsTo(models.Position, {
+      foreignKey: "id_position",
+      as: "position",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

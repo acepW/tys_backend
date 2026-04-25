@@ -1,4 +1,5 @@
 const DualDatabaseService = require("./dualDatabase.service");
+const positionMenuService = require("./position/positionMenu.service");
 const { models } = require("../models");
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
@@ -26,6 +27,16 @@ class UserService extends DualDatabaseService {
           as: "division",
           required: false,
         },
+        {
+          model: dbModels.Department,
+          as: "department",
+          required: false,
+        },
+        {
+          model: dbModels.Position,
+          as: "position",
+          required: false,
+        },
       ],
       order: [["name", "ASC"]],
     };
@@ -50,6 +61,16 @@ class UserService extends DualDatabaseService {
           as: "division",
           required: false,
         },
+        {
+          model: dbModels.Department,
+          as: "department",
+          required: false,
+        },
+        {
+          model: dbModels.Position,
+          as: "position",
+          required: false,
+        },
       ],
       order: [["name", "ASC"]],
     };
@@ -72,6 +93,16 @@ class UserService extends DualDatabaseService {
         {
           model: dbModels.Division,
           as: "division",
+          required: false,
+        },
+        {
+          model: dbModels.Department,
+          as: "department",
+          required: false,
+        },
+        {
+          model: dbModels.Position,
+          as: "position",
           required: false,
         },
       ],
@@ -162,6 +193,26 @@ class UserService extends DualDatabaseService {
       ? user.toJSON()
       : user;
     return userWithoutPassword;
+  }
+
+  /**
+   * Attach menu access to user object
+   */
+  async attachMenuAccess(user, isDoubleDatabase = true) {
+    if (!user) return user;
+
+    const userObj = user.toJSON ? user.toJSON() : { ...user };
+
+    if (userObj.id_position) {
+      userObj.menu_access = await positionMenuService.getAccessForUser(
+        userObj.id_position,
+        isDoubleDatabase,
+      );
+    } else {
+      userObj.menu_access = [];
+    }
+
+    return userObj;
   }
 }
 

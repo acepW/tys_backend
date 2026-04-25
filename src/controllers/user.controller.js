@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const userService = require("../services/user.service");
+const positionMenuService = require("../services/position/positionMenu.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
 // Cookie config
@@ -35,8 +36,6 @@ class UserController {
       const { email, password, is_double_database } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
-      console.log(req.body);
-
       if (!email || !password) {
         return errorResponse(res, "Email and password are required", 400);
       }
@@ -54,7 +53,7 @@ class UserController {
       // Verify password
       const isMatch = await userService.comparePassword(
         password,
-        user.password
+        user.password,
       );
       if (!isMatch) {
         return errorResponse(res, "Invalid email or password", 401);
@@ -76,12 +75,11 @@ class UserController {
         ? user.toJSON()
         : user;
 
-      console.log(1);
-      return successResponse(
-        res,
-        { user: userWithoutPassword },
-        "Login successful"
+      const userWithAccess = await userService.attachMenuAccess(
+        user,
+        isDoubleDatabase,
       );
+      return successResponse(res, { user: userWithAccess }, "Login successful");
     } catch (error) {
       console.log(error);
       return errorResponse(res, error.message);
@@ -116,14 +114,22 @@ class UserController {
 
       const user = await userService.getByIdWithRelations(
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       if (!user) {
         return errorResponse(res, "User not found", 404);
       }
 
-      return successResponse(res, user, "User retrieved successfully");
+      const userWithAccess = await userService.attachMenuAccess(
+        user,
+        isDoubleDatabase,
+      );
+      return successResponse(
+        res,
+        userWithAccess,
+        "User retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -141,7 +147,10 @@ class UserController {
       const { is_double_database } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
-      const users = await userService.getAllWithRelations({}, isDoubleDatabase);
+      const users = await userService.getAllWithRelations(
+        { where: { is_active: true } },
+        isDoubleDatabase,
+      );
 
       return successResponse(res, users, "Users retrieved successfully");
     } catch (error) {
@@ -180,7 +189,15 @@ class UserController {
         return errorResponse(res, "User not found", 404);
       }
 
-      return successResponse(res, user, "User retrieved successfully");
+      const userWithAccess = await userService.attachMenuAccess(
+        user,
+        isDoubleDatabase,
+      );
+      return successResponse(
+        res,
+        userWithAccess,
+        "User retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -191,8 +208,16 @@ class UserController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, id_division, email, name, password, role } =
-        req.body;
+      const {
+        is_double_database,
+        id_division,
+        id_department,
+        id_position,
+        email,
+        name,
+        password,
+        role,
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
@@ -201,13 +226,16 @@ class UserController {
       if (!password) return errorResponse(res, "Password is required", 400);
       if (!role) return errorResponse(res, "Role is required", 400);
       if (!id_division) return errorResponse(res, "Division is required", 400);
+      if (!id_department)
+        return errorResponse(res, "Department is required", 400);
+      if (!id_position) return errorResponse(res, "Position is required", 400);
 
       // Password minimum length
       if (password.length < 6) {
         return errorResponse(
           res,
           "Password must be at least 6 characters",
-          400
+          400,
         );
       }
 
@@ -215,7 +243,7 @@ class UserController {
       const emailExists = await userService.checkEmailExists(
         email,
         null,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (emailExists) {
         return errorResponse(res, "Email already exists", 400);
@@ -223,6 +251,8 @@ class UserController {
 
       const data = {
         id_division,
+        id_department,
+        id_position,
         email,
         name,
         password,
@@ -247,6 +277,8 @@ class UserController {
       const {
         is_double_database,
         id_division,
+        id_department,
+        id_position,
         email,
         name,
         password,
@@ -267,12 +299,14 @@ class UserController {
       if (name !== undefined) data.name = name;
       if (role !== undefined) data.role = role;
       if (is_active !== undefined) data.is_active = is_active;
+      if (id_department !== undefined) data.id_department = id_department;
+      if (id_position !== undefined) data.id_position = id_position;
 
       if (email !== undefined) {
         const emailExists = await userService.checkEmailExists(
           email,
           id,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
         if (emailExists) {
           return errorResponse(res, "Email already exists", 400);
@@ -285,7 +319,7 @@ class UserController {
           return errorResponse(
             res,
             "Password must be at least 6 characters",
-            400
+            400,
           );
         }
         data.password = password; // will be hashed in updateUser
@@ -318,7 +352,7 @@ class UserController {
         return errorResponse(res, "User not found", 404);
       }
 
-      await userService.delete(id, isDoubleDatabase);
+      await userService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "User deleted successfully");
     } catch (error) {
@@ -339,7 +373,7 @@ class UserController {
         return errorResponse(
           res,
           "Current password and new password are required",
-          400
+          400,
         );
       }
 
@@ -347,7 +381,7 @@ class UserController {
         return errorResponse(
           res,
           "New password must be at least 6 characters",
-          400
+          400,
         );
       }
 
@@ -355,7 +389,7 @@ class UserController {
       const user = await userService.findById(
         req.user.id,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!user) {
         return errorResponse(res, "User not found", 404);
@@ -363,7 +397,7 @@ class UserController {
 
       const isMatch = await userService.comparePassword(
         current_password,
-        user.password
+        user.password,
       );
       if (!isMatch) {
         return errorResponse(res, "Current password is incorrect", 400);
@@ -372,7 +406,7 @@ class UserController {
       await userService.updateUser(
         req.user.id,
         { password: new_password },
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, null, "Password changed successfully");
