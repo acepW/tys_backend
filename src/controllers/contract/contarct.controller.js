@@ -75,6 +75,26 @@ class ContractController {
   }
 
   /**
+   * Get no Contract
+   */
+  async getNoContract(req, res) {
+    try {
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database;
+
+      const contract = await contractService.getNoContract(isDoubleDatabase);
+
+      if (!contract) {
+        return errorResponse(res, "Contract not found", 404);
+      }
+
+      return successResponse(res, contract, "Contract retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Create contract with services, clauses, clause points, and clause logs
    */
   async create(req, res) {

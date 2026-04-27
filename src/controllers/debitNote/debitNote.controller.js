@@ -85,6 +85,30 @@ class DebitNoteController {
   }
 
   /**
+   * Get no Debit Note
+   */
+  async getNoDebitNote(req, res) {
+    try {
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database;
+
+      const debitNote = await debitNoteService.getNoDebitNote(isDoubleDatabase);
+
+      if (!debitNote) {
+        return errorResponse(res, "Debit note not found", 404);
+      }
+
+      return successResponse(
+        res,
+        debitNote,
+        "Debit note retrieved successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Create debit note with debit note items
    */
   async create(req, res) {

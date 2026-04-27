@@ -71,6 +71,26 @@ class InvoiceController {
   }
 
   /**
+   * Get no Invoice
+   */
+  async getNoInvoice(req, res) {
+    try {
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database;
+
+      const invoice = await invoiceService.getNoInvoice(isDoubleDatabase);
+
+      if (!invoice) {
+        return errorResponse(res, "Invoice not found", 404);
+      }
+
+      return successResponse(res, invoice, "Invoice retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Create invoice with invoice services
    */
   async create(req, res) {

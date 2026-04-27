@@ -97,6 +97,30 @@ class QuotationController {
   }
 
   /**
+   * Get no quotation
+   */
+  async getNoQuotation(req, res) {
+    try {
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database;
+
+      const quotation = await quotationService.getNoQuotation(isDoubleDatabase);
+
+      if (!quotation) {
+        return errorResponse(res, "Quotation not found", 404);
+      }
+
+      return successResponse(
+        res,
+        quotation,
+        "Quotation retrieved successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Create quotation with nested categories, services, products, and fields
    */
   async create(req, res) {

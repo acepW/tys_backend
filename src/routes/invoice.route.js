@@ -6,6 +6,7 @@ const { authenticate, authorize } = require("../middleware/auth.middleware");
 // GET routes
 router.get("/", authenticate, InvoiceController.getAll);
 router.get("/:id", authenticate, InvoiceController.getById);
+router.get("/no/documents", authenticate, InvoiceController.getNoInvoice);
 
 // POST routes
 router.post("/", authenticate, InvoiceController.create);

@@ -6,6 +6,7 @@ const { authenticate, authorize } = require("../middleware/auth.middleware");
 // GET routes
 router.get("/", authenticate, DebitNoteController.getAll);
 router.get("/:id", authenticate, DebitNoteController.getById);
+router.get("/no/documents", authenticate, DebitNoteController.getNoDebitNote);
 
 // POST routes
 router.post("/", authenticate, DebitNoteController.create);

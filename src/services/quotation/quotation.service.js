@@ -1,6 +1,8 @@
 const DualDatabaseService = require("../dualDatabase.service");
+const companyService = require("../company.service");
 const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
+const { Op, fn, col } = require("sequelize");
 
 class QuotationService extends DualDatabaseService {
   constructor() {
@@ -234,6 +236,87 @@ class QuotationService extends DualDatabaseService {
     };
 
     return await this.findById(id, queryOptions, isDoubleDatabase);
+  }
+
+  /**
+   * Get no quotation
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Quotation with relations
+   */
+  async getNoQuotation(isDoubleDatabase = true) {
+    const dbModels = isDoubleDatabase ? models.db1 : models.db2;
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+
+    // 🔥 1. Ambil total per company
+    const dataTotal = await dbModels.Quotation.findAll({
+      attributes: ["id_company", [fn("COUNT", col("id")), "total"]],
+      where: {
+        is_active: true,
+        createdAt: {
+          [Op.gte]: new Date(`${year}-01-01`),
+          [Op.lt]: new Date(`${year + 1}-01-01`),
+        },
+      },
+      group: ["id_company"],
+      raw: true,
+    });
+
+    // 🔥 2. Ambil data company
+    const dataCompany = await companyService.findAll(
+      {
+        attributes: ["id", "company_name", "initial_company"],
+      },
+      isDoubleDatabase,
+    );
+
+    // 🔥 function bulan romawi
+    function getRomanMonth(month) {
+      const romans = [
+        "I",
+        "II",
+        "III",
+        "IV",
+        "V",
+        "VI",
+        "VII",
+        "VIII",
+        "IX",
+        "X",
+        "XI",
+        "XII",
+      ];
+      return romans[month - 1];
+    }
+
+    const bulanRomawi = getRomanMonth(month);
+
+    // 🔥 3. Merge + format nomor
+    const result = dataCompany.map((company) => {
+      const found = dataTotal.find((d) => d.id_company === company.id);
+
+      const total = found ? parseInt(found.total) : 0;
+      const nomorUrut = String(total + 1).padStart(3, "0");
+
+      const initial = company.initial_company
+        ? company.initial_company.toUpperCase()
+        : "-";
+
+      const noQuotation = `${nomorUrut}/QT/${initial}/${bulanRomawi}/${year}`;
+
+      return {
+        id_company: company.id,
+        company_name: company.company_name,
+        initial_company: initial,
+        total,
+        next_number: nomorUrut,
+        no_quotation: noQuotation,
+      };
+    });
+
+    return result;
   }
 
   /**
