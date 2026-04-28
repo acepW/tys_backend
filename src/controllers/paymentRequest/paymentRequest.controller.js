@@ -14,7 +14,7 @@ class PaymentRequestController {
         id_contract_service,
         id_contract_project_plan,
         status,
-        payer,
+        cost_bearer,
         search,
         page,
         limit,
@@ -36,7 +36,7 @@ class PaymentRequestController {
       if (id_contract_project_plan)
         obj.id_contract_project_plan = id_contract_project_plan;
       if (status) obj.status = status;
-      if (payer) obj.payer = payer;
+      if (cost_bearer) obj.cost_bearer = cost_bearer;
 
       const paymentRequests = await paymentRequestService.getAllWithRelations(
         { where: obj },
@@ -87,7 +87,7 @@ class PaymentRequestController {
   /**
    * Create payment request
    * Status awal: pending (payment request) & requested (verification progress)
-   * Fields yang tidak diisi saat create: total_payment, file_proof_payment, payer
+   * Fields yang tidak diisi saat create: total_payment, file_proof_payment
    */
   async create(req, res) {
     try {
@@ -134,10 +134,9 @@ class PaymentRequestController {
           paymentRequestData.is_active !== undefined
             ? paymentRequestData.is_active
             : true,
-        // Explicitly exclude: total_payment, file_proof_payment, payer
+        // Explicitly exclude: total_payment, file_proof_payment
         total_payment: null,
         file_proof_payment: null,
-        payer: null,
       };
 
       const result = await paymentRequestService.createWithRelations(
@@ -159,15 +158,15 @@ class PaymentRequestController {
 
   /**
    * Approve payment request
-   * Wajib mengisi payer (customer/company)
-   * - payer = "customer" → status payment request = "continue_to_debit_note"
-   * - payer = "company"  → status payment request = "approved"
+   * Wajib mengisi cost_bearer (customer/company)
+   * - cost_bearer = "customer" → status payment request = "continue_to_debit_note"
+   * - cost_bearer = "company"  → status payment request = "approved"
    * Verification progress status = "approved" untuk kedua kondisi
    */
   async approve(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true, note, payer, role } = req.body || {};
+      const { is_double_database = true, note, role } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       // Check if payment request exists
@@ -208,7 +207,7 @@ class PaymentRequestController {
         id,
         note,
         req.user.id,
-        payer,
+        existing.cost_bearer,
         isDoubleDatabase
       );
 
