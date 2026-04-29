@@ -21,7 +21,7 @@ class DebitNoteService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -99,7 +99,7 @@ class DebitNoteService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     return {
@@ -208,7 +208,7 @@ class DebitNoteService extends DualDatabaseService {
       {
         attributes: ["id", "company_name", "initial_company"],
       },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     // 🔥 function bulan romawi
@@ -251,7 +251,7 @@ class DebitNoteService extends DualDatabaseService {
         initial_company: initial,
         total,
         next_number: nomorUrut,
-        no_quotation: noQuotation,
+        no_debit_note: noQuotation,
       };
     });
 
@@ -270,7 +270,7 @@ class DebitNoteService extends DualDatabaseService {
     debitNoteData,
     debitNoteItems = [],
     id_user_create,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -313,7 +313,7 @@ class DebitNoteService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
+          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`
         );
 
         await transaction1.commit();
@@ -350,7 +350,7 @@ class DebitNoteService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
+          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`
         );
 
         await transaction1.commit();
@@ -381,7 +381,7 @@ class DebitNoteService extends DualDatabaseService {
     id,
     debitNoteData,
     debitNoteItems = [],
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -490,7 +490,7 @@ class DebitNoteService extends DualDatabaseService {
       "on verification",
       note || "Debit note submitted",
       id_user,
-      isDoubleDatabase,
+      isDoubleDatabase
     );
   }
 
@@ -508,7 +508,7 @@ class DebitNoteService extends DualDatabaseService {
       "approved",
       note || "Debit note approved",
       id_user,
-      isDoubleDatabase,
+      isDoubleDatabase
     );
   }
 
@@ -526,7 +526,7 @@ class DebitNoteService extends DualDatabaseService {
       "rejected",
       note || "Debit note rejected",
       id_user,
-      isDoubleDatabase,
+      isDoubleDatabase
     );
   }
 
@@ -544,7 +544,7 @@ class DebitNoteService extends DualDatabaseService {
     payment_method,
     proof_of_payment,
     id_user,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     return await this._changeStatus(
       id,
@@ -555,7 +555,7 @@ class DebitNoteService extends DualDatabaseService {
       payment_date,
       payment_amount,
       payment_method,
-      proof_of_payment,
+      proof_of_payment
     );
   }
 
@@ -577,7 +577,7 @@ class DebitNoteService extends DualDatabaseService {
     payment_date,
     payment_amount,
     payment_method,
-    proof_of_payment,
+    proof_of_payment
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -635,7 +635,7 @@ class DebitNoteService extends DualDatabaseService {
             {
               where: { id: getDataDebitNote.id_payment_request },
               transaction: transaction1,
-            },
+            }
           );
 
           await models.db2.PaymentRequest.update(
@@ -648,7 +648,7 @@ class DebitNoteService extends DualDatabaseService {
             {
               where: { id: getDataDebitNote.id_payment_request },
               transaction: transaction2,
-            },
+            }
           );
 
           console.log(`✅ Update PaymentRequest with status "paid"`);
