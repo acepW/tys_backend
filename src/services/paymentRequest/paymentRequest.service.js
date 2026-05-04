@@ -19,7 +19,7 @@ class PaymentRequestService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -99,7 +99,7 @@ class PaymentRequestService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     return {
@@ -203,7 +203,7 @@ class PaymentRequestService extends DualDatabaseService {
   async createWithRelations(
     paymentRequestData,
     id_user_create,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -214,7 +214,7 @@ class PaymentRequestService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating PaymentRequest with relations in both databases...`
+          `🔄 Creating PaymentRequest with relations in both databases...`,
         );
 
         // 1. Create PaymentRequest in DB1
@@ -222,7 +222,7 @@ class PaymentRequestService extends DualDatabaseService {
           transaction: transaction1,
         });
         console.log(
-          `✅ Created PaymentRequest in DB1 with ID: ${paymentRequest1.id}`
+          `✅ Created PaymentRequest in DB1 with ID: ${paymentRequest1.id}`,
         );
 
         // 2. Create PaymentRequest in DB2 with same ID
@@ -234,7 +234,7 @@ class PaymentRequestService extends DualDatabaseService {
           transaction: transaction2,
         });
         console.log(
-          `✅ Created PaymentRequest in DB2 with ID: ${paymentRequest1.id}`
+          `✅ Created PaymentRequest in DB2 with ID: ${paymentRequest1.id}`,
         );
 
         // 3. Create initial verification progress with status "requested"
@@ -248,7 +248,7 @@ class PaymentRequestService extends DualDatabaseService {
         const progress1 =
           await models.db1.PaymentRequestVerificationProgress.create(
             progressData,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
         const progressDataWithId = {
@@ -257,23 +257,23 @@ class PaymentRequestService extends DualDatabaseService {
         };
         await models.db2.PaymentRequestVerificationProgress.create(
           progressDataWithId,
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
 
         console.log(
-          `✅ Created PaymentRequestVerificationProgress with status "requested"`
+          `✅ Created PaymentRequestVerificationProgress with status "requested"`,
         );
 
         if (paymentRequestData.id_contract_project_plan) {
           const contractProjectPlan =
             await models.db1.ContractProjectPlan.findByPk(
               paymentRequestData.id_contract_project_plan,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
           if (!contractProjectPlan) {
             throw new Error(
-              `ContractProjectPlan with ID ${paymentRequestData.id_contract_project_plan} not found`
+              `ContractProjectPlan with ID ${paymentRequestData.id_contract_project_plan} not found`,
             );
           }
 
@@ -285,7 +285,7 @@ class PaymentRequestService extends DualDatabaseService {
             {
               transaction: transaction1,
               where: { id: paymentRequestData.id_contract_project_plan },
-            }
+            },
           );
 
           // Update data Contract Project Plan in DB2
@@ -296,7 +296,7 @@ class PaymentRequestService extends DualDatabaseService {
             {
               transaction: transaction2,
               where: { id: paymentRequestData.id_contract_project_plan },
-            }
+            },
           );
 
           console.log(`✅ Update ContractProjectPlan payment type`);
@@ -328,19 +328,19 @@ class PaymentRequestService extends DualDatabaseService {
         const progress =
           await models.db1.PaymentRequestVerificationProgress.create(
             progressData,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
         if (paymentRequestData.id_contract_project_plan) {
           const contractProjectPlan =
             await models.db1.ContractProjectPlan.findByPk(
               paymentRequestData.id_contract_project_plan,
-              { transaction: transaction1 }
+              { transaction: transaction1 },
             );
 
           if (!contractProjectPlan) {
             throw new Error(
-              `ContractProjectPlan with ID ${paymentRequestData.id_contract_project_plan} not found`
+              `ContractProjectPlan with ID ${paymentRequestData.id_contract_project_plan} not found`,
             );
           }
 
@@ -352,7 +352,7 @@ class PaymentRequestService extends DualDatabaseService {
             {
               transaction: transaction1,
               where: { id: paymentRequestData.id_contract_project_plan },
-            }
+            },
           );
 
           console.log(`✅ Update ContractProjectPlan payment type`);
@@ -391,42 +391,44 @@ class PaymentRequestService extends DualDatabaseService {
     id,
     note,
     id_user,
-    cost_bearer = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     // Whitelist role yang valid
-    const VALID_ROLES = ["spv", "fat", "spv fat", "manager fat", "director"];
+    const VALID_ROLES = [
+      "dept manager",
+      "fat",
+      "manager fat",
+      "director",
+      "cashier",
+    ];
     if (!VALID_ROLES.includes(role)) {
       throw new Error(
-        `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`
+        `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
       );
     }
 
     let status = `approve ${role}`;
 
-    // Logika khusus hanya untuk director
-    if (role === "director") {
-      // Kalau cost_bearer tidak diisi, ambil dari database
-      if (!cost_bearer) {
-        const existingData = await this.getById(id, {}, isDoubleDatabase);
-        if (!existingData) {
-          throw new Error(`PaymentRequest with ID ${id} not found`);
-        }
-        cost_bearer = existingData.cost_bearer;
-      }
+    const existingData = await this.getById(id, {}, isDoubleDatabase);
+    if (!existingData) {
+      throw new Error(`PaymentRequest with ID ${id} not found`);
+    }
+    const cost_bearer = existingData.cost_bearer;
 
+    // Logika khusus hanya untuk dept manager
+    if (role === "dept manager") {
       // Terapkan logika cost_bearer setelah dapat nilainya
       status =
         cost_bearer === "customer"
           ? "continue_to_debit_note"
-          : "approve director";
+          : "approve dept manager";
     }
 
     return this._changeStatus(
       id,
       status,
       { cost_bearer, note, id_user },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -441,10 +443,16 @@ class PaymentRequestService extends DualDatabaseService {
    */
   async rejectPaymentRequest(role, id, note, id_user, isDoubleDatabase = true) {
     // Whitelist role yang valid
-    const VALID_ROLES = ["spv", "fat", "spv fat", "manager fat", "director"];
+    const VALID_ROLES = [
+      "dept manager",
+      "fat",
+      "manager fat",
+      "director",
+      "cashier",
+    ];
     if (!VALID_ROLES.includes(role)) {
       throw new Error(
-        `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`
+        `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
       );
     }
 
@@ -452,7 +460,7 @@ class PaymentRequestService extends DualDatabaseService {
       id,
       `reject ${role}`,
       { note, id_user },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -462,13 +470,13 @@ class PaymentRequestService extends DualDatabaseService {
     file_proof_payment,
     note,
     id_user,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     return this._changeStatus(
       id,
       "paid",
       { total_payment, file_proof_payment, note, id_user },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -515,7 +523,7 @@ class PaymentRequestService extends DualDatabaseService {
         const dataPayment = await this.getById(id, {}, true);
 
         console.log(
-          `🔄 Changing PaymentRequest ID ${id} status to "${status}"...`
+          `🔄 Changing PaymentRequest ID ${id} status to "${status}"...`,
         );
 
         const [updatedRows1] = await this.Model1.update(updateData, {
@@ -533,22 +541,22 @@ class PaymentRequestService extends DualDatabaseService {
         }
 
         console.log(
-          `✅ Updated PaymentRequest status to "${status}" in both databases`
+          `✅ Updated PaymentRequest status to "${status}" in both databases`,
         );
 
         const progress1 =
           await models.db1.PaymentRequestVerificationProgress.create(
             progressData,
-            { transaction: transaction1 }
+            { transaction: transaction1 },
           );
 
         await models.db2.PaymentRequestVerificationProgress.create(
           { ...progressData, id: progress1.id },
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
 
         console.log(
-          `✅ Created PaymentRequestVerificationProgress with status "${status}"`
+          `✅ Created PaymentRequestVerificationProgress with status "${status}"`,
         );
 
         if (status === "paid" && dataPayment.id_contract_project_plan_cost) {
@@ -557,7 +565,7 @@ class PaymentRequestService extends DualDatabaseService {
             {
               where: { id: dataPayment.id_contract_project_plan_cost },
               transaction: transaction1,
-            }
+            },
           );
 
           await models.dbb.ContractProjectPlanCost.update(
@@ -565,7 +573,7 @@ class PaymentRequestService extends DualDatabaseService {
             {
               where: { id: dataPayment.id_contract_project_plan_cost },
               transaction: transaction2,
-            }
+            },
           );
 
           console.log(`✅ Updated Contract Project Plan Cost`);
@@ -574,7 +582,7 @@ class PaymentRequestService extends DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ PaymentRequest status changed to "${status}" successfully`
+          `✅ PaymentRequest status changed to "${status}" successfully`,
         );
       } else {
         transaction1 = await db1.transaction();
@@ -590,12 +598,12 @@ class PaymentRequestService extends DualDatabaseService {
 
         await models.db1.PaymentRequestVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         await transaction1.commit();
         console.log(
-          `✅ PaymentRequest status changed to "${status}" in DB1 only`
+          `✅ PaymentRequest status changed to "${status}" in DB1 only`,
         );
       }
 
@@ -605,7 +613,7 @@ class PaymentRequestService extends DualDatabaseService {
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
       throw new Error(
-        `Failed to change PaymentRequest status: ${error.message}`
+        `Failed to change PaymentRequest status: ${error.message}`,
       );
     }
   }

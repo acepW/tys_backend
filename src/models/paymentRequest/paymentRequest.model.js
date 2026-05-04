@@ -179,18 +179,18 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.ENUM(
           "pending",
-          "approve spv",
+          "approve dept manager",
           "approve fat",
-          "approve spv fat",
           "approve manager fat",
           "approve director",
-          "reject spv",
+          "approve cashier",
+          "reject dept manager",
           "reject fat",
-          "reject spv fat",
           "reject manager fat",
           "reject director",
+          "reject cashier",
           "paid",
-          "continue_to_debit_note"
+          "continue_to_debit_note",
         ),
         defaultValue: "pending",
         comment: "Status",
@@ -241,7 +241,7 @@ module.exports = (sequelize) => {
           fields: ["id_contract", "is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)

@@ -44,6 +44,9 @@ const paymentRequestRoutes = require("./paymentRequest.route");
 //report
 const reportInvoiceRoutes = require("./reportInvoice.route");
 
+//approval flow
+const approvalFlowRoutes = require("./approvalFlow.route");
+
 // Use routes
 //sync
 router.use("/sync", syncRoutes);
@@ -86,6 +89,9 @@ router.use("/payment-requests", paymentRequestRoutes);
 
 //report
 router.use("/report-invoices", reportInvoiceRoutes);
+
+//approval flow
+router.use("/approval-flows", approvalFlowRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -132,6 +138,9 @@ router.get("/", (req, res) => {
 
       //report
       reportInvoice: "/api/report-invoices",
+
+      //approval flow
+      approvalFlow: "/api/approval-flows",
     },
   });
 });

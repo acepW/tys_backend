@@ -63,6 +63,11 @@ const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymen
 const VendorModel = require("./vendor/vendor.model");
 const VendorServiceModel = require("./vendor/vendorService.model");
 const VendorVerificationProgressModel = require("./vendor/vendorVerificationProgress.model");
+
+//approval Work Flow
+const ApprovalFlowModel = require("./approvalFlow/approvalFlow.model");
+const ApprovalFlowPositionModel = require("./approvalFlow/approvalFlowPosition.model");
+
 /**
  * Initialize all models for a given sequelize instance
  * @param {Sequelize} sequelize - Sequelize instance
@@ -136,6 +141,10 @@ const initializeModels = (sequelize) => {
     Vendor: VendorModel(sequelize),
     VendorService: VendorServiceModel(sequelize),
     VendorVerificationProgress: VendorVerificationProgressModel(sequelize),
+
+    //approval Work Flow
+    ApprovalFlow: ApprovalFlowModel(sequelize),
+    ApprovalFlowPosition: ApprovalFlowPositionModel(sequelize),
   };
 
   // Setup associations for all models
@@ -186,7 +195,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true }
+  options = { alter: true },
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

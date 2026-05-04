@@ -58,6 +58,13 @@ module.exports = (sequelize) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+
+    Position.hasMany(models.ApprovalFlowPosition, {
+      foreignKey: "id_position",
+      as: "approval_flow_positions",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
   };
 
   return Position;
