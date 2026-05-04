@@ -97,7 +97,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
@@ -293,6 +293,14 @@ module.exports = (sequelize) => {
     Users.hasMany(models.VendorVerificationProgress, {
       foreignKey: "id_user",
       as: "vendor_verification_progress",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Users has many Vendor
+    Users.hasMany(models.Vendor, {
+      foreignKey: "id_user_request",
+      as: "vendor_request",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

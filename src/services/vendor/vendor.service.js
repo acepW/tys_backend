@@ -1,4 +1,5 @@
 const DualDatabaseService = require("../dualDatabase.service");
+const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
 
 class VendorService extends DualDatabaseService {
@@ -8,11 +9,6 @@ class VendorService extends DualDatabaseService {
 
   /**
    * Get all vendors with relations
-   * @param {Object} options - Query options
-   * @param {Number} page - Page number for pagination
-   * @param {Number} limit - Number of records per page
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Array} Vendors with relations
    */
   async getAllWithRelations(
     options = {},
@@ -26,6 +22,14 @@ class VendorService extends DualDatabaseService {
       ...options,
       include: [
         {
+          model: dbModels.User,
+          as: "user_request",
+        },
+        {
+          model: dbModels.Department,
+          as: "department_request",
+        },
+        {
           model: dbModels.VendorVerificationProgress,
           as: "verification_progress",
           separate: true,
@@ -34,8 +38,23 @@ class VendorService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
             },
           ],
+        },
+        {
+          model: dbModels.VendorService,
+          as: "vendor_service",
+          separate: true,
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -64,10 +83,6 @@ class VendorService extends DualDatabaseService {
 
   /**
    * Get vendor by ID with relations
-   * @param {Number} id
-   * @param {Object} options - Query options
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Vendor with relations
    */
   async getById(id, options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
@@ -76,6 +91,14 @@ class VendorService extends DualDatabaseService {
       ...options,
       include: [
         {
+          model: dbModels.User,
+          as: "user_request",
+        },
+        {
+          model: dbModels.Department,
+          as: "department_request",
+        },
+        {
           model: dbModels.VendorVerificationProgress,
           as: "verification_progress",
           include: [
@@ -83,8 +106,23 @@ class VendorService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
             },
           ],
+        },
+        {
+          model: dbModels.VendorService,
+          as: "vendor_service",
+          separate: true,
         },
       ],
     };
@@ -93,14 +131,16 @@ class VendorService extends DualDatabaseService {
   }
 
   /**
-   * Create vendor with initial verification progress
+   * Create vendor with initial verification progress and vendor services
    * @param {Object} vendorData - Vendor data
+   * @param {Array} vendorServices - Array of vendor service items
    * @param {Number} id_user_create - User ID who creates
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Created vendor with relations
    */
   async createWithRelations(
     vendorData,
+    vendorServices = [],
     id_user_create,
     isDoubleDatabase = true
   ) {
@@ -144,9 +184,7 @@ class VendorService extends DualDatabaseService {
 
         const progress1 = await models.db1.VendorVerificationProgress.create(
           progressData,
-          {
-            transaction: transaction1,
-          }
+          { transaction: transaction1 }
         );
 
         await models.db2.VendorVerificationProgress.create(
@@ -158,6 +196,27 @@ class VendorService extends DualDatabaseService {
           `✅ Created VendorVerificationProgress with status "requested"`
         );
 
+        // 4. Sync Vendor Services
+        const servicesData = vendorServices.map((service) => ({
+          ...service,
+          id_vendor: vendor1.id,
+        }));
+
+        const servicesResult = await syncChildRecords({
+          Model1: models.db1.VendorService,
+          Model2: models.db2.VendorService,
+          foreignKey: "id_vendor",
+          parentId: vendor1.id,
+          newData: servicesData,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
+        console.log(
+          `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`
+        );
+
         await transaction1.commit();
         await transaction2.commit();
         console.log(`✅ Vendor with relations successfully created`);
@@ -165,6 +224,7 @@ class VendorService extends DualDatabaseService {
         return {
           vendor: vendor1.toJSON(),
           verification_progress: progress1.toJSON(),
+          vendor_services: servicesResult,
         };
       } else {
         // Single database (DB1 only)
@@ -187,12 +247,33 @@ class VendorService extends DualDatabaseService {
           { transaction: transaction1 }
         );
 
+        const servicesData = vendorServices.map((service) => ({
+          ...service,
+          id_vendor: vendor.id,
+        }));
+
+        const servicesResult = await syncChildRecords({
+          Model1: models.db1.VendorService,
+          Model2: null,
+          foreignKey: "id_vendor",
+          parentId: vendor.id,
+          newData: servicesData,
+          transaction1,
+          transaction2: null,
+          isDoubleDatabase: false,
+        });
+
+        console.log(
+          `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`
+        );
+
         await transaction1.commit();
         console.log(`✅ Vendor created in DB1 only`);
 
         return {
           vendor: vendor.toJSON(),
           verification_progress: progress.toJSON(),
+          vendor_services: servicesResult,
         };
       }
     } catch (error) {
@@ -204,12 +285,114 @@ class VendorService extends DualDatabaseService {
   }
 
   /**
-   * Approve vendor — sets status to "approve" and is_active to true
-   * @param {Number} id
-   * @param {String} note
-   * @param {Number} id_user
+   * Update vendor with vendor services (create/update/delete)
+   * @param {Number} id - Vendor ID
+   * @param {Object} vendorData - Vendor data to update
+   * @param {Array} vendorServices - Vendor services array
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated vendor
+   * @returns {Object} Updated vendor with all relations
+   */
+  async updateWithRelations(
+    id,
+    vendorData,
+    vendorServices = [],
+    isDoubleDatabase = true
+  ) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      if (isDoubleDatabase) {
+        transaction1 = await db1.transaction();
+        transaction2 = await db2.transaction();
+
+        console.log(`🔄 Updating Vendor ID ${id} with services...`);
+
+        // 1. Update Vendor in both databases
+        const [updatedRows1] = await this.Model1.update(vendorData, {
+          where: { id },
+          transaction: transaction1,
+        });
+
+        const [updatedRows2] = await this.Model2.update(vendorData, {
+          where: { id },
+          transaction: transaction2,
+        });
+
+        if (updatedRows1 === 0 && updatedRows2 === 0) {
+          throw new Error(`Vendor with ID ${id} not found`);
+        }
+
+        console.log(`✅ Updated Vendor in both databases`);
+
+        // 2. Sync Vendor Services (syncChildRecords handles create/update/delete)
+        const servicesData = vendorServices.map((service) => ({
+          ...service,
+          id_vendor: id,
+        }));
+
+        const servicesResult = await syncChildRecords({
+          Model1: models.db1.VendorService,
+          Model2: models.db2.VendorService,
+          foreignKey: "id_vendor",
+          parentId: id,
+          newData: servicesData,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
+        console.log(`✅ Synced Vendor Services`);
+
+        await transaction1.commit();
+        await transaction2.commit();
+        console.log(`✅ Vendor with all relations successfully updated`);
+
+        return await this.getById(id, {}, isDoubleDatabase);
+      } else {
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
+
+        const [updatedRows] = await this.Model1.update(vendorData, {
+          where: { id },
+          transaction: transaction1,
+        });
+
+        if (updatedRows === 0) {
+          throw new Error(`Vendor with ID ${id} not found`);
+        }
+
+        const servicesData = vendorServices.map((service) => ({
+          ...service,
+          id_vendor: id,
+        }));
+
+        await syncChildRecords({
+          Model1: models.db1.VendorService,
+          Model2: null,
+          foreignKey: "id_vendor",
+          parentId: id,
+          newData: servicesData,
+          transaction1,
+          transaction2: null,
+          isDoubleDatabase: false,
+        });
+
+        await transaction1.commit();
+        console.log(`✅ Vendor updated in DB1 only`);
+
+        return await this.getById(id, {}, isDoubleDatabase);
+      }
+    } catch (error) {
+      console.error(`❌ Error updating Vendor:`, error.message);
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+      throw new Error(`Failed to update Vendor: ${error.message}`);
+    }
+  }
+
+  /**
+   * Approve vendor — sets status to "approve" and is_active to true
    */
   async approveVendor(id, note, id_user, isDoubleDatabase = true) {
     return this._changeStatus(
@@ -222,11 +405,6 @@ class VendorService extends DualDatabaseService {
 
   /**
    * Reject vendor — sets status to "reject" and is_active remains false
-   * @param {Number} id
-   * @param {String} note - Required
-   * @param {Number} id_user
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated vendor
    */
   async rejectVendor(id, note, id_user, isDoubleDatabase = true) {
     return this._changeStatus(
@@ -239,14 +417,6 @@ class VendorService extends DualDatabaseService {
 
   /**
    * Internal method to change vendor status
-   * @param {Number} id - Vendor ID
-   * @param {String} status - "approve" | "reject"
-   * @param {Object} options
-   * @param {String} options.note
-   * @param {Number} options.id_user
-   * @param {Boolean} options.is_active
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated vendor
    */
   async _changeStatus(id, status, options = {}, isDoubleDatabase = true) {
     const { note, id_user, is_active } = options;
@@ -255,7 +425,6 @@ class VendorService extends DualDatabaseService {
     let transaction2 = null;
 
     try {
-      console.log(id, status, (options = {}));
       const updateData = { status };
       if (is_active !== undefined) updateData.is_active = is_active;
 
@@ -293,9 +462,7 @@ class VendorService extends DualDatabaseService {
 
         const progress1 = await models.db1.VendorVerificationProgress.create(
           progressData,
-          {
-            transaction: transaction1,
-          }
+          { transaction: transaction1 }
         );
 
         await models.db2.VendorVerificationProgress.create(

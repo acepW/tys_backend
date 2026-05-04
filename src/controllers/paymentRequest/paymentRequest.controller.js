@@ -129,6 +129,7 @@ class PaymentRequestController {
       const dataToCreate = {
         ...paymentRequestData,
         id_user_request: req.user.id,
+        id_department_request: req.user.id_department,
         status: "pending",
         is_active:
           paymentRequestData.is_active !== undefined

@@ -29,17 +29,11 @@ class PaymentRequestService extends DualDatabaseService {
         {
           model: dbModels.Contract,
           as: "contract",
-          attributes: [
-            "id",
-            "contract_no",
-            "contract_title_indo",
-            "contract_title_mandarin",
-          ],
+
           include: [
             {
               model: dbModels.Quotation,
               as: "quotation",
-              attributes: ["id", "quotation_no"],
             },
           ],
         },
@@ -69,6 +63,10 @@ class PaymentRequestService extends DualDatabaseService {
           attributes: ["id", "name", "email"],
         },
         {
+          model: dbModels.Department,
+          as: "department_request",
+        },
+        {
           model: dbModels.PaymentRequestVerificationProgress,
           as: "verification_progress",
           separate: true,
@@ -77,6 +75,16 @@ class PaymentRequestService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
             },
           ],
         },
@@ -121,17 +129,11 @@ class PaymentRequestService extends DualDatabaseService {
         {
           model: dbModels.Contract,
           as: "contract",
-          attributes: [
-            "id",
-            "contract_no",
-            "contract_title_indo",
-            "contract_title_mandarin",
-          ],
+
           include: [
             {
               model: dbModels.Quotation,
               as: "quotation",
-              attributes: ["id", "quotation_no"],
             },
           ],
         },
@@ -161,6 +163,10 @@ class PaymentRequestService extends DualDatabaseService {
           attributes: ["id", "name", "email"],
         },
         {
+          model: dbModels.Department,
+          as: "department_request",
+        },
+        {
           model: dbModels.PaymentRequestVerificationProgress,
           as: "verification_progress",
           include: [
@@ -168,6 +174,16 @@ class PaymentRequestService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
             },
           ],
         },

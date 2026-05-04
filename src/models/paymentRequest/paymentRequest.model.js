@@ -82,6 +82,15 @@ module.exports = (sequelize) => {
         },
         comment: "Id user who created the service pricing",
       },
+      id_department_request: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "departments",
+          key: "id",
+        },
+        comment: "Id to table department for request",
+      },
       payment_request_no: {
         type: DataTypes.STRING(500),
         allowNull: false,
@@ -300,6 +309,14 @@ module.exports = (sequelize) => {
     PaymentRequest.belongsTo(models.User, {
       foreignKey: "id_user_request",
       as: "user_request",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Payment Request belongs to department
+    PaymentRequest.belongsTo(models.Department, {
+      foreignKey: "id_department_request",
+      as: "department_request",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

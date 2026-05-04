@@ -10,6 +10,35 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Vendor",
       },
+      id_user_request: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+        comment: "Foreign key to users table",
+      },
+      id_department_request: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "departments",
+          key: "id",
+        },
+        comment: "Foreign key to users table",
+      },
+      vendor_application_no: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "Vendor application no",
+      },
+      date_request: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        defaultValue: DataTypes.NOW,
+        comment: "Date Request",
+      },
       vendor_name: {
         type: DataTypes.STRING(200),
         allowNull: false,
@@ -107,6 +136,30 @@ module.exports = (sequelize) => {
   Vendor.associate = (models) => {
     // Contoh: Vendor dapat memiliki relasi dengan Order, dll
     // Vendor.hasMany(models.Order, { ... })
+
+    //Vendor Belongs to User
+    Vendor.belongsTo(models.User, {
+      foreignKey: "id_user_request",
+      as: "user_request",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Vendor Belongs to Department
+    Vendor.belongsTo(models.Department, {
+      foreignKey: "id_department_request",
+      as: "department_request",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Vendor has many Vendor Service
+    Vendor.hasMany(models.VendorService, {
+      foreignKey: "id_vendor",
+      as: "vendor_service",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     //Vendor has many Payment Requests
     Vendor.hasMany(models.VendorVerificationProgress, {

@@ -149,6 +149,16 @@ class ContractService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
             },
           ],
         },
@@ -353,6 +363,16 @@ class ContractService extends DualDatabaseService {
               model: dbModels.User,
               as: "user",
               attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
             },
           ],
         },

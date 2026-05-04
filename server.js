@@ -20,11 +20,11 @@ const startServer = async () => {
     //await syncDatabases();
 
     //sync database by table name
-    //await syncModel("PositionMenu");
+    //await syncModel("Department");
     console.log("");
 
     // Start Express server
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log("=".repeat(50));
       console.log(`✅ Server is running successfully`);
       console.log(`📍 Port: ${PORT}`);

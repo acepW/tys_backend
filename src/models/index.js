@@ -61,6 +61,7 @@ const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymen
 
 //vendor
 const VendorModel = require("./vendor/vendor.model");
+const VendorServiceModel = require("./vendor/vendorService.model");
 const VendorVerificationProgressModel = require("./vendor/vendorVerificationProgress.model");
 /**
  * Initialize all models for a given sequelize instance
@@ -133,6 +134,7 @@ const initializeModels = (sequelize) => {
 
     //vendor
     Vendor: VendorModel(sequelize),
+    VendorService: VendorServiceModel(sequelize),
     VendorVerificationProgress: VendorVerificationProgressModel(sequelize),
   };
 
@@ -184,7 +186,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true },
+  options = { alter: true }
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

@@ -67,7 +67,11 @@ class VendorController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, ...vendorData } = req.body;
+      const {
+        is_double_database,
+        vendor_services = [],
+        ...vendorData
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       if (!vendorData.vendor_name) {
@@ -75,12 +79,49 @@ class VendorController {
       }
 
       const result = await vendorService.createWithRelations(
-        vendorData,
+        {
+          ...vendorData,
+          id_user_request: req.user.id,
+          id_department_request: req.user.id_department,
+        },
+        vendor_services,
         req.user.id,
         isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor created successfully", 201);
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
+   * Update vendor with vendor services
+   * vendor_services: [] — kosong = hapus semua, isi id = update, tanpa id = tambah baru
+   */
+  async update(req, res) {
+    try {
+      const { id } = req.params;
+      const {
+        is_double_database,
+        vendor_services = [],
+        ...vendorData
+      } = req.body;
+      const isDoubleDatabase = is_double_database !== false;
+
+      const existing = await vendorService.findById(id, {}, isDoubleDatabase);
+      if (!existing) {
+        return errorResponse(res, "Vendor not found", 404);
+      }
+
+      const result = await vendorService.updateWithRelations(
+        id,
+        vendorData,
+        vendor_services,
+        isDoubleDatabase
+      );
+
+      return successResponse(res, result, "Vendor updated successfully");
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -95,7 +136,6 @@ class VendorController {
       const { id } = req.params;
       const { is_double_database = true, note } = req.body || {};
       const isDoubleDatabase = is_double_database;
-      console.log(id);
 
       const existing = await vendorService.findById(id, {}, isDoubleDatabase);
       if (!existing) {
@@ -105,7 +145,6 @@ class VendorController {
       if (existing.status === "approve") {
         return errorResponse(res, "Vendor is already approved", 400);
       }
-      console.log(existing);
 
       const result = await vendorService.approveVendor(
         id,
@@ -113,8 +152,6 @@ class VendorController {
         req.user.id,
         isDoubleDatabase
       );
-
-      console.log(result);
 
       return successResponse(res, result, "Vendor approved successfully");
     } catch (error) {
