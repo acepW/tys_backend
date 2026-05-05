@@ -42,13 +42,14 @@ class PaymentRequestController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        req.user,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         paymentRequests,
-        "Payment requests retrieved successfully",
+        "Payment requests retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -67,7 +68,7 @@ class PaymentRequestController {
       const paymentRequest = await paymentRequestService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!paymentRequest) {
@@ -77,7 +78,7 @@ class PaymentRequestController {
       return successResponse(
         res,
         paymentRequest,
-        "Payment request retrieved successfully",
+        "Payment request retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -143,14 +144,14 @@ class PaymentRequestController {
       const result = await paymentRequestService.createWithRelations(
         dataToCreate,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Payment request created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -170,11 +171,12 @@ class PaymentRequestController {
       const { is_double_database = true, note, role } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
+      console.log(req.body);
       // Check if payment request exists
       const existing = await paymentRequestService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Payment request not found", 404);
@@ -205,7 +207,7 @@ class PaymentRequestController {
         return errorResponse(
           res,
           `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
-          400,
+          400
         );
       }
 
@@ -215,13 +217,13 @@ class PaymentRequestController {
         note,
         req.user.id,
         existing.cost_bearer,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Payment request approved successfully",
+        "Payment request approved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -242,7 +244,7 @@ class PaymentRequestController {
       const existing = await paymentRequestService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Payment request not found", 404);
@@ -263,7 +265,7 @@ class PaymentRequestController {
         return errorResponse(
           res,
           `Invalid role "${role}". Valid roles: ${VALID_ROLES.join(", ")}`,
-          400,
+          400
         );
       }
 
@@ -272,13 +274,13 @@ class PaymentRequestController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Payment request rejected successfully",
+        "Payment request rejected successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -304,7 +306,7 @@ class PaymentRequestController {
       const existing = await paymentRequestService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Payment request not found", 404);
@@ -325,13 +327,13 @@ class PaymentRequestController {
         file_proof_payment,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Payment request marked as paid successfully",
+        "Payment request marked as paid successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -351,7 +353,7 @@ class PaymentRequestController {
       const existing = await paymentRequestService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Payment request not found", 404);

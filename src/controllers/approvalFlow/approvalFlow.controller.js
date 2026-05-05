@@ -34,13 +34,13 @@ class ApprovalFlowController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         approvalFlows,
-        "Approval flows retrieved successfully",
+        "Approval flows retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -59,7 +59,7 @@ class ApprovalFlowController {
       const approvalFlow = await approvalFlowService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!approvalFlow) {
@@ -69,7 +69,7 @@ class ApprovalFlowController {
       return successResponse(
         res,
         approvalFlow,
-        "Approval flow retrieved successfully",
+        "Approval flow retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -105,14 +105,14 @@ class ApprovalFlowController {
       const result = await approvalFlowService.createWithRelations(
         approvalFlowData,
         approval_flow_positions,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Approval flow created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -131,12 +131,13 @@ class ApprovalFlowController {
         approval_flow_positions = [],
         ...approvalFlowData
       } = req.body;
+
       const isDoubleDatabase = is_double_database !== false;
 
       const existing = await approvalFlowService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Approval flow not found", 404);
@@ -146,7 +147,7 @@ class ApprovalFlowController {
         id,
         approvalFlowData,
         approval_flow_positions,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Approval flow updated successfully");
@@ -167,7 +168,7 @@ class ApprovalFlowController {
       const existing = await approvalFlowService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Approval flow not found", 404);
