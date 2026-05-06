@@ -26,12 +26,12 @@ module.exports = (sequelize) => {
       },
       price_idr: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Price in IDR",
       },
       price_rmb: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Price in RMB",
       },
 
@@ -65,8 +65,8 @@ module.exports = (sequelize) => {
 
     //VendorService Belongs to Vendor
     VendorService.belongsTo(models.Vendor, {
-      foreignKey: "id_user",
-      as: "user_request",
+      foreignKey: "id_vendor",
+      as: "vendor",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

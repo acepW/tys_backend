@@ -31,27 +31,27 @@ module.exports = (sequelize) => {
       },
       price_idr: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Price in IDR",
       },
       price_rmb: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Price in RMB",
       },
       qty: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.INTEGER,
         comment: "Qty of service",
       },
       total_price_idr: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Total price in IDR",
       },
       total_price_rmb: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Total Price in RMB",
       },
       is_active: {
@@ -70,7 +70,7 @@ module.exports = (sequelize) => {
           fields: ["id_debit_note"],
         },
       ],
-    },
+    }
   );
 
   // Define associations

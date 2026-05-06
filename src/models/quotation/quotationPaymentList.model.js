@@ -30,12 +30,12 @@ module.exports = (sequelize) => {
         comment: "Service name in Mandarin",
       },
       price_idr: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         allowNull: false,
         comment: "Price in IDR",
       },
       price_rmb: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         allowNull: false,
         comment: "Price in RMB",
       },
@@ -60,7 +60,7 @@ module.exports = (sequelize) => {
           fields: ["id_quotation_payment"],
         },
       ],
-    },
+    }
   );
 
   // Define associations

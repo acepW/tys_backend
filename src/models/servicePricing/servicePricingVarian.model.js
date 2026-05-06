@@ -21,12 +21,12 @@ module.exports = (sequelize) => {
       },
       price_idr: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Price in IDR",
       },
       price_rmb: {
         allowNull: false,
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 0),
         comment: "Price in RMB",
       },
       information_indo: {
@@ -56,7 +56,7 @@ module.exports = (sequelize) => {
           fields: ["id_service_pricing"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
