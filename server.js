@@ -44,13 +44,12 @@ const startServer = async () => {
 // Handle unhandled rejections
 process.on("unhandledRejection", (err) => {
   console.error("❌ Unhandled Rejection:", err);
-  process.exit(1);
+  // process.exit(1); ❌ matikan dulu
 });
 
-// Handle uncaught exceptions
 process.on("uncaughtException", (err) => {
   console.error("❌ Uncaught Exception:", err);
-  process.exit(1);
+  // process.exit(1); ❌ matikan dulu
 });
 
 // Start the server
