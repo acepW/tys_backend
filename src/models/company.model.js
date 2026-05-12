@@ -148,7 +148,12 @@ module.exports = (sequelize) => {
       bank_name_rmb: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: "Bank name for RMB transactions",
+        comment: "Bank name for RMB transactions language indonesian",
+      },
+      bank_name_rmb_mandarin: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Bank name for RMB transactions language mandarin",
       },
       account_name_rmb: {
         type: DataTypes.STRING(100),
@@ -168,7 +173,12 @@ module.exports = (sequelize) => {
       bank_name_idr: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: "Bank name for IDR transactions",
+        comment: "Bank name for IDR transactions language indonesian",
+      },
+      bank_name_idr_mandarin: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Bank name for IDR transactions language mandarin",
       },
       account_name_idr: {
         type: DataTypes.STRING(100),
@@ -210,7 +220,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)

@@ -13,7 +13,7 @@ class CompanyController {
       return successResponse(
         res,
         companies,
-        "Companies retrieved successfully",
+        "Companies retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -26,13 +26,14 @@ class CompanyController {
   async getActive(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const companies =
-        await companyService.getActiveCompanies(isDoubleDatabase);
+      const companies = await companyService.getActiveCompanies(
+        isDoubleDatabase
+      );
 
       return successResponse(
         res,
         companies,
-        "Active companies retrieved successfully",
+        "Active companies retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -73,7 +74,7 @@ class CompanyController {
 
       const companies = await companyService.searchByName(
         query,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, companies, "Companies found successfully");
@@ -115,10 +116,12 @@ class CompanyController {
         wa_header_invoice,
         email_header_invoice,
         bank_name_rmb,
+        bank_name_rmb_mandarin,
         account_name_rmb,
         account_no_rmb,
         swift_no_rmb,
         bank_name_idr,
+        bank_name_idr_mandarin,
         account_name_idr,
         account_no_idr,
         swift_no_idr,
@@ -137,7 +140,7 @@ class CompanyController {
         const emailExists = await companyService.checkEmailExists(
           req.body.email,
           null,
-          isDoubleDatabase,
+          isDoubleDatabase
         );
 
         if (emailExists) {
@@ -173,10 +176,12 @@ class CompanyController {
         wa_header_invoice: wa_header_invoice,
         email_header_invoice: email_header_invoice,
         bank_name_rmb: bank_name_rmb,
+        bank_name_rmb_mandarin: bank_name_rmb_mandarin,
         account_name_rmb: account_name_rmb,
         account_no_rmb: account_no_rmb,
         swift_no_rmb: swift_no_rmb,
         bank_name_idr: bank_name_idr,
+        bank_name_idr_mandarin: bank_name_idr_mandarin,
         account_name_idr: account_name_idr,
         account_no_idr: account_no_idr,
         swift_no_idr: swift_no_idr,
@@ -225,10 +230,12 @@ class CompanyController {
         wa_header_invoice,
         email_header_invoice,
         bank_name_rmb,
+        bank_name_rmb_mandarin,
         account_name_rmb,
         account_no_rmb,
         swift_no_rmb,
         bank_name_idr,
+        bank_name_idr_mandarin,
         account_name_idr,
         account_no_idr,
         swift_no_idr,
@@ -248,7 +255,7 @@ class CompanyController {
         const emailExists = await companyService.checkEmailExists(
           req.body.email,
           id,
-          isDoubleDatabase,
+          isDoubleDatabase
         );
 
         if (emailExists) {
@@ -300,11 +307,15 @@ class CompanyController {
       if (email_header_invoice !== undefined)
         data.email_header_invoice = email_header_invoice;
       if (bank_name_rmb !== undefined) data.bank_name_rmb = bank_name_rmb;
+      if (bank_name_rmb_mandarin !== undefined)
+        data.bank_name_rmb_mandarin = bank_name_rmb_mandarin;
       if (account_name_rmb !== undefined)
         data.account_name_rmb = account_name_rmb;
       if (account_no_rmb !== undefined) data.account_no_rmb = account_no_rmb;
       if (swift_no_rmb !== undefined) data.swift_no_rmb = swift_no_rmb;
       if (bank_name_idr !== undefined) data.bank_name_idr = bank_name_idr;
+      if (bank_name_idr_mandarin !== undefined)
+        data.bank_name_idr_mandarin = bank_name_idr_mandarin;
       if (account_name_idr !== undefined)
         data.account_name_idr = account_name_idr;
       if (account_no_idr !== undefined) data.account_no_idr = account_no_idr;
