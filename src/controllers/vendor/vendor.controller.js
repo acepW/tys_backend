@@ -11,6 +11,7 @@ class VendorController {
       const {
         is_double_database = true,
         is_request = false,
+        id_department_request,
         status,
         search,
         page,
@@ -26,6 +27,8 @@ class VendorController {
       }
       if (status) obj.status = status;
       if (is_request === "false" || is_request === false) obj.is_active = true;
+      if (id_department_request)
+        obj.id_department_request = id_department_request;
 
       const vendors = await vendorService.getAllWithRelations(
         { where: obj },
