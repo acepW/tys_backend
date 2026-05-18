@@ -67,7 +67,7 @@ class InvoiceService extends DualDatabaseService {
         {
           model: dbModels.Customer,
           as: "customer",
-          attributes: ["id", "company_name"],
+          attributes: ["id", "company_name_indo", "company_name_mandarin"],
         },
         {
           model: dbModels.User,

@@ -13,7 +13,7 @@ class CustomerService extends DualDatabaseService {
   async getActiveCustomers(isDoubleDatabase = true) {
     const options = {
       where: { is_active: true },
-      order: [["company_name", "ASC"]],
+      order: [["company_name_indo", "ASC"]],
     };
 
     return await this.findAll(options, isDoubleDatabase);
@@ -34,7 +34,7 @@ class CustomerService extends DualDatabaseService {
           [Op.like]: `%${searchTerm}%`,
         },
       },
-      order: [["company_name", "ASC"]],
+      order: [["company_name_indo", "ASC"]],
     };
 
     return await this.findAll(options, isDoubleDatabase);

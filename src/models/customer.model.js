@@ -10,50 +10,142 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for customer",
       },
-      company_name: {
-        type: DataTypes.STRING(200),
+      customer_type: {
+        type: DataTypes.ENUM("company", "personal"),
         allowNull: false,
-        comment: "Customer company name",
+        comment: "Customer customer type",
       },
-      address: {
+      company_name_indo: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "Customer company name for Indonesian",
+      },
+      company_name_mandarin: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "Customer company name for Mandarin",
+      },
+      is_company_name_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment:
+          "For customer with same company name in Indonesian and Mandarin",
+      },
+      address_indo: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: "Customer address",
+        comment: "Customer address for Indonesian",
       },
-      contact: {
+      address_mandarin: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Customer address for Mandarin",
+      },
+      is_address_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment: "For customer with same address in Indonesian and Mandarin",
+      },
+      contact_indo: {
         type: DataTypes.STRING(20),
         allowNull: true,
-        comment: "Customer contact number",
+        comment: "Customer contact number for Indonesian",
       },
-      email: {
+      contact_mandarin: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        comment: "Customer contact number for Indonesian",
+      },
+      is_contact_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment: "For customer with same contact in Indonesian and Mandarin",
+      },
+      email_indo: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        validate: {
-          isEmail: {
-            msg: "Must be a valid email address",
-          },
-        },
-        comment: "Customer email address",
+        comment: "Customer email address for Indonesian",
       },
-      pic_name: {
+      email_mandarin: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: "Person in Charge name",
+        comment: "Customer email address for Mandarin",
       },
-      pic_position: {
+      is_email_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment: "For customer with same email in Indonesian and Mandarin",
+      },
+      pic_name_indo: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: "Person in Charge position",
+        comment: "Person in Charge name for Indonesian",
       },
-      director_name: {
+      pic_name_mandarin: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: "Director name",
+        comment: "Person in Charge name for Mandarin",
       },
-      director_position: {
+      is_pic_name_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment: "For customer with same pic name in Indonesian and Mandarin",
+      },
+      pic_position_indo: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        comment: "Director position",
+        comment: "Person in Charge position for Indonesian",
+      },
+      pic_position_mandarin: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Person in Charge position for Mandarin",
+      },
+      is_pic_position_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment:
+          "For customer with same pic position in Indonesian and Mandarin",
+      },
+      director_name_indo: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director name for Indonesian",
+      },
+      director_name_mandarin: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director name for Mandarin",
+      },
+      is_director_name_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment:
+          "For customer with same director name in Indonesian and Mandarin",
+      },
+      director_position_indonesian: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director position for Indonesian",
+      },
+      director_position_mandarin: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Director position for Mandarin",
+      },
+      is_director_position_same: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        comment:
+          "For customer with same director position in Indonesian and Mandarin",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -67,19 +159,19 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
-          name: "idx_company_name",
-          fields: ["company_name"],
+          name: "idx_company_name_indo",
+          fields: ["company_name_indo"],
         },
         {
-          name: "idx_email",
-          fields: ["email"],
+          name: "idx_email_indo",
+          fields: ["email_indo"],
         },
         {
           name: "idx_is_active",
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)

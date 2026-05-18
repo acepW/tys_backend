@@ -14,6 +14,15 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {
+          model: "categories",
+          key: "id",
+        },
+        comment: "Foreign key to categories table",
+      },
+      id_category: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
           model: "vendors",
           key: "id",
         },
@@ -51,6 +60,10 @@ module.exports = (sequelize) => {
           fields: ["id_vendor"],
         },
         {
+          name: "idx_id_category",
+          fields: ["id_category"],
+        },
+        {
           name: "idx_is_active",
           fields: ["is_active"],
         },
@@ -67,6 +80,14 @@ module.exports = (sequelize) => {
     VendorService.belongsTo(models.Vendor, {
       foreignKey: "id_vendor",
       as: "vendor",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //VendorService Belongs to Categories
+    VendorService.belongsTo(models.Category, {
+      foreignKey: "id_category",
+      as: "category",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
