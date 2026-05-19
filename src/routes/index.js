@@ -13,7 +13,6 @@ const customerRoutes = require("./customer.route");
 const divisionRoutes = require("./division.route");
 const departmentRoutes = require("./department.route");
 const positionRoute = require("./position.route");
-const vendorRoutes = require("./vendor.route");
 const flowProcessRoutes = require("./flowProcess.route");
 const clauseRoute = require("./clause.route");
 const userRoute = require("./user.route");
@@ -47,6 +46,10 @@ const reportInvoiceRoutes = require("./reportInvoice.route");
 //approval flow
 const approvalFlowRoutes = require("./approvalFlow.route");
 
+//vendor
+const vendorRoutes = require("./vendor.route");
+const vendorEditRoutes = require("./vendorEdit.route");
+
 // Use routes
 //sync
 router.use("/sync", syncRoutes);
@@ -59,7 +62,6 @@ router.use("/customers", customerRoutes);
 router.use("/divisions", divisionRoutes);
 router.use("/departments", departmentRoutes);
 router.use("/positions", positionRoute);
-router.use("/vendors", vendorRoutes);
 router.use("/flow-process", flowProcessRoutes);
 router.use("/clauses", clauseRoute);
 router.use("/users", userRoute);
@@ -93,6 +95,10 @@ router.use("/report-invoices", reportInvoiceRoutes);
 //approval flow
 router.use("/approval-flows", approvalFlowRoutes);
 
+//vendor
+router.use("/vendors", vendorRoutes);
+router.use("/vendor-edits", vendorEditRoutes);
+
 // API Documentation route
 router.get("/", (req, res) => {
   res.json({
@@ -108,7 +114,6 @@ router.get("/", (req, res) => {
       divisions: "/api/divisions",
       departments: "/api/departments",
       positions: "/api/positions",
-      vendors: "/api/vendors",
       flowProcess: "/api/flow-process",
       clauses: "/api/clauses",
       users: "/api/users",
@@ -141,6 +146,10 @@ router.get("/", (req, res) => {
 
       //approval flow
       approvalFlow: "/api/approval-flows",
+
+      //vendor
+      vendors: "/api/vendors",
+      vendorEdits: "/api/vendor-edits",
     },
   });
 });

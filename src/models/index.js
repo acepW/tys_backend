@@ -62,6 +62,8 @@ const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymen
 //vendor
 const VendorModel = require("./vendor/vendor.model");
 const VendorServiceModel = require("./vendor/vendorService.model");
+const VendorEditModel = require("./vendor/vendorEdit.model");
+const VendorServiceEditModel = require("./vendor/vendorServiceEdit.model");
 const VendorVerificationProgressModel = require("./vendor/vendorVerificationProgress.model");
 
 //approval Work Flow
@@ -141,6 +143,8 @@ const initializeModels = (sequelize) => {
     Vendor: VendorModel(sequelize),
     VendorService: VendorServiceModel(sequelize),
     VendorVerificationProgress: VendorVerificationProgressModel(sequelize),
+    VendorEdit: VendorEditModel(sequelize),
+    VendorServiceEdit: VendorServiceEditModel(sequelize),
 
     //approval Work Flow
     ApprovalFlow: ApprovalFlowModel(sequelize),

@@ -35,7 +35,14 @@ module.exports = (sequelize) => {
         comment: "Description is BAB for Mandarin",
       },
       status: {
-        type: DataTypes.ENUM("requested", "approve", "reject"),
+        type: DataTypes.ENUM(
+          "requested",
+          "approve",
+          "reject",
+          "request edit",
+          "approve edit",
+          "reject edit",
+        ),
         allowNull: false,
         comment: "status of VendorVerificationProgress",
       },
@@ -60,7 +67,7 @@ module.exports = (sequelize) => {
           fields: ["id_user"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)

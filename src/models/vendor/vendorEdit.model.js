@@ -1,14 +1,23 @@
 const { DataTypes, Transaction } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const Vendor = sequelize.define(
-    "Vendor",
+  const VendorEdit = sequelize.define(
+    "VendorEdit",
     {
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
-        comment: "Primary key for Vendor",
+        comment: "Primary key for VendorEdit",
+      },
+      id_vendor: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "vendors",
+          key: "id",
+        },
+        comment: "Foreign key to vendors table",
       },
       id_user_request: {
         type: DataTypes.INTEGER,
@@ -42,7 +51,7 @@ module.exports = (sequelize) => {
       vendor_name: {
         type: DataTypes.STRING(200),
         allowNull: false,
-        comment: "Vendor Vendor name",
+        comment: "VendorEdit VendorEdit name",
       },
       pic_name: {
         type: DataTypes.STRING(200),
@@ -105,25 +114,18 @@ module.exports = (sequelize) => {
         comment: "File",
       },
       status: {
-        type: DataTypes.ENUM(
-          "pending",
-          "approve",
-          "reject",
-          "request edit",
-          "approve edit",
-          "reject edit",
-        ),
+        type: DataTypes.ENUM("pending", "approve", "reject"),
         allowNull: false,
-        comment: "Vendor Vendor name",
+        comment: " VendorEdit name",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
-        comment: "Status of Vendor (active/inactive)",
+        comment: "Status of VendorEdit (active/inactive)",
       },
     },
     {
-      tableName: "vendors",
+      tableName: "vendor_edit",
       timestamps: true,
       underscored: true,
       indexes: [
@@ -140,74 +142,42 @@ module.exports = (sequelize) => {
   );
 
   // Define associations (untuk future development)
-  Vendor.associate = (models) => {
-    // Contoh: Vendor dapat memiliki relasi dengan Order, dll
-    // Vendor.hasMany(models.Order, { ... })
+  VendorEdit.associate = (models) => {
+    // Contoh: VendorEdit dapat memiliki relasi dengan Order, dll
+    // VendorEdit.hasMany(models.Order, { ... })
 
-    //Vendor Belongs to User
-    Vendor.belongsTo(models.User, {
+    //VendorEdit Belongs to Vendor
+    VendorEdit.belongsTo(models.Vendor, {
+      foreignKey: "id_vendor",
+      as: "vendor",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //VendorEdit Belongs to User
+    VendorEdit.belongsTo(models.User, {
       foreignKey: "id_user_request",
       as: "user_request",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    //Vendor Belongs to Department
-    Vendor.belongsTo(models.Department, {
+    //VendorEdit Belongs to Department
+    VendorEdit.belongsTo(models.Department, {
       foreignKey: "id_department_request",
       as: "department_request",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    //Vendor has many Vendor Service
-    Vendor.hasMany(models.VendorService, {
-      foreignKey: "id_vendor",
-      as: "vendor_service",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Vendor has many Vendor edit
-    Vendor.hasMany(models.VendorEdit, {
-      foreignKey: "id_vendor",
-      as: "vendor_edit",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Vendor has many Payment Requests
-    Vendor.hasMany(models.VendorVerificationProgress, {
-      foreignKey: "id_vendor",
-      as: "verification_progress",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Vendor has many ProjectPlan
-    Vendor.hasMany(models.PaymentRequest, {
-      foreignKey: "id_vendor",
-      as: "payment_requests",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Vendor has many ProjectPlan
-    Vendor.hasMany(models.ProjectPlanCost, {
-      foreignKey: "id_vendor",
-      as: "project_plans_cost",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Vendor has many ContractProjectPlan
-    Vendor.hasMany(models.ContractProjectPlanCost, {
-      foreignKey: "id_vendor",
-      as: "contract_project_plans_cost",
+    //VendorEdit has many VendorEdit Service
+    VendorEdit.hasMany(models.VendorServiceEdit, {
+      foreignKey: "id_vendor_edit",
+      as: "vendor_service_edits",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
   };
 
-  return Vendor;
+  return VendorEdit;
 };

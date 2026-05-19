@@ -1,6 +1,7 @@
 const DualDatabaseService = require("../dualDatabase.service");
 const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
+const { where } = require("sequelize");
 
 class VendorService extends DualDatabaseService {
   constructor() {
@@ -14,7 +15,7 @@ class VendorService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -54,6 +55,7 @@ class VendorService extends DualDatabaseService {
         {
           model: dbModels.VendorService,
           as: "vendor_service",
+          where: { is_active: true },
           separate: true,
         },
       ],
@@ -67,7 +69,7 @@ class VendorService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     return {
@@ -122,6 +124,7 @@ class VendorService extends DualDatabaseService {
         {
           model: dbModels.VendorService,
           as: "vendor_service",
+          where: { is_active: true },
           separate: true,
         },
       ],
@@ -142,7 +145,7 @@ class VendorService extends DualDatabaseService {
     vendorData,
     vendorServices = [],
     id_user_create,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -169,7 +172,7 @@ class VendorService extends DualDatabaseService {
         // 2. Create Vendor in DB2 with same ID
         await this.Model2.create(
           { ...dataToCreate, id: vendor1.id },
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
         console.log(`✅ Created Vendor in DB2 with ID: ${vendor1.id}`);
 
@@ -184,16 +187,16 @@ class VendorService extends DualDatabaseService {
 
         const progress1 = await models.db1.VendorVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         await models.db2.VendorVerificationProgress.create(
           { ...progressData, id: progress1.id },
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
 
         console.log(
-          `✅ Created VendorVerificationProgress with status "requested"`
+          `✅ Created VendorVerificationProgress with status "requested"`,
         );
 
         // 4. Sync Vendor Services
@@ -214,7 +217,7 @@ class VendorService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`
+          `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`,
         );
 
         await transaction1.commit();
@@ -244,7 +247,7 @@ class VendorService extends DualDatabaseService {
 
         const progress = await models.db1.VendorVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         const servicesData = vendorServices.map((service) => ({
@@ -264,7 +267,7 @@ class VendorService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`
+          `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`,
         );
 
         await transaction1.commit();
@@ -296,7 +299,7 @@ class VendorService extends DualDatabaseService {
     id,
     vendorData,
     vendorServices = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -399,7 +402,7 @@ class VendorService extends DualDatabaseService {
       id,
       "approve",
       { note, id_user, is_active: true },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -411,7 +414,7 @@ class VendorService extends DualDatabaseService {
       id,
       "reject",
       { note, id_user, is_active: false },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -457,21 +460,21 @@ class VendorService extends DualDatabaseService {
         }
 
         console.log(
-          `✅ Updated Vendor status to "${status}" in both databases`
+          `✅ Updated Vendor status to "${status}" in both databases`,
         );
 
         const progress1 = await models.db1.VendorVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         await models.db2.VendorVerificationProgress.create(
           { ...progressData, id: progress1.id },
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
 
         console.log(
-          `✅ Created VendorVerificationProgress with status "${status}"`
+          `✅ Created VendorVerificationProgress with status "${status}"`,
         );
 
         await transaction1.commit();

@@ -1,8 +1,8 @@
 const { DataTypes, Transaction } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const VendorService = sequelize.define(
-    "VendorService",
+  const VendorServiceEdit = sequelize.define(
+    "VendorServiceEdit",
     {
       id: {
         type: DataTypes.INTEGER,
@@ -10,14 +10,23 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Vendor",
       },
-      id_vendor: {
+      id_vendor_edit: {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {
-          model: "vendors",
+          model: "vendor_edit",
           key: "id",
         },
-        comment: "Foreign key to vendors table",
+        comment: "Foreign key to id_vendor_edit table",
+      },
+      id_vendor_service: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "vendor_services",
+          key: "id",
+        },
+        comment: "Foreign key to vendor_services table",
       },
       id_category: {
         type: DataTypes.INTEGER,
@@ -26,7 +35,7 @@ module.exports = (sequelize) => {
           model: "categories",
           key: "id",
         },
-        comment: "Foreign key to categories table",
+        comment: "Foreign key to users table",
       },
       service_name: {
         type: DataTypes.STRING(200),
@@ -51,13 +60,13 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: "vendor_services",
+      tableName: "vendor_services_edit",
       timestamps: true,
       underscored: true,
       indexes: [
         {
-          name: "idx_id_vendor",
-          fields: ["id_vendor"],
+          name: "idx_id_vendor_edit",
+          fields: ["id_vendor_edit"],
         },
         {
           name: "idx_id_category",
@@ -72,20 +81,28 @@ module.exports = (sequelize) => {
   );
 
   // Define associations (untuk future development)
-  VendorService.associate = (models) => {
-    // Contoh: VendorService dapat memiliki relasi dengan Order, dll
-    // VendorService.hasMany(models.Order, { ... })
+  VendorServiceEdit.associate = (models) => {
+    // Contoh: VendorServiceEdit dapat memiliki relasi dengan Order, dll
+    // VendorServiceEdit.hasMany(models.Order, { ... })
 
-    //VendorService Belongs to Vendor
-    VendorService.belongsTo(models.Vendor, {
-      foreignKey: "id_vendor",
-      as: "vendor",
+    //VendorServiceEdit Belongs to Vendor
+    VendorServiceEdit.belongsTo(models.Vendor, {
+      foreignKey: "id_vendor_edit",
+      as: "vendor_edit",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    //VendorService Belongs to Categories
-    VendorService.belongsTo(models.Category, {
+    //VendorServiceEdit Belongs to Vendor
+    VendorServiceEdit.belongsTo(models.VendorService, {
+      foreignKey: "id_vendor_service",
+      as: "vendor_service",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //VendorServiceEdit Belongs to Categories
+    VendorServiceEdit.belongsTo(models.Category, {
       foreignKey: "id_category",
       as: "category",
       onDelete: "RESTRICT",
@@ -93,5 +110,5 @@ module.exports = (sequelize) => {
     });
   };
 
-  return VendorService;
+  return VendorServiceEdit;
 };
