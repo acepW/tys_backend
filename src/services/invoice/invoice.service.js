@@ -2,7 +2,8 @@ const DualDatabaseService = require("../dualDatabase.service");
 const companyService = require("../company.service");
 const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
-const { Op, fn, col } = require("sequelize");
+const { Op, fn, col, where } = require("sequelize");
+const debitNoteService = require("../debitNote/debitNote.service");
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
@@ -21,7 +22,7 @@ class InvoiceService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -119,8 +120,7 @@ class InvoiceService extends DualDatabaseService {
         },
         {
           model: dbModels.DebitNote,
-          as: "debit_notes",
-          separate: true,
+          as: "debit_note",
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -133,7 +133,7 @@ class InvoiceService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     return {
@@ -229,8 +229,7 @@ class InvoiceService extends DualDatabaseService {
         },
         {
           model: dbModels.DebitNote,
-          as: "debit_notes",
-          separate: true,
+          as: "debit_note",
           include: [
             {
               model: dbModels.Company,
@@ -240,7 +239,7 @@ class InvoiceService extends DualDatabaseService {
             {
               model: dbModels.Customer,
               as: "customer",
-              attributes: ["id", "company_name"],
+              attributes: ["id", "company_name_indo", "company_name_mandarin"],
             },
             {
               model: dbModels.User,
@@ -301,7 +300,7 @@ class InvoiceService extends DualDatabaseService {
       {
         attributes: ["id", "company_name", "initial_company"],
       },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     // 🔥 function bulan romawi
@@ -362,26 +361,167 @@ class InvoiceService extends DualDatabaseService {
     invoiceData,
     invoiceServices = [],
     id_user_create,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
 
     try {
+      //get data for debit note
+      const getNoDebitNote = await debitNoteService.getNoDebitNote(true);
+      const noDebitNote = getNoDebitNote.find(
+        (item) => item.id_company === invoiceData.id_company,
+      );
+
+      const dataContractPayment = await models.db1.ContractPayment.findByPk(
+        invoiceData.id_contract_payment,
+        {
+          include: [
+            {
+              model: models.db1.ContractPaymentList,
+              as: "contract_payment_list",
+              include: [
+                {
+                  model: models.db1.ContractPaymentService,
+                  as: "contract_payment_services",
+                  attributes: ["id", "id_quotation_service"],
+                  include: [
+                    {
+                      model: models.db1.QuotationService,
+                      as: "quotation_service",
+                      include: [
+                        {
+                          model: models.db1.ServicePricing,
+                          as: "service_pricing",
+                          attributes: [
+                            "id",
+                            "product_name_indo",
+                            "product_name_mandarin",
+                            "processing_time",
+                          ],
+                          include: [
+                            {
+                              model: models.db1.ProjectPlan,
+                              as: "project_plans",
+                              include: [
+                                {
+                                  model: models.db1.ProjectPlanCost,
+                                  as: "project_plan_costs",
+                                  where: { cost_bearer: "customer" },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      );
+
+      //formating debit note
+      const today = new Date().toISOString().split("T")[0];
+
+      // Kumpulkan semua debit_note_items dari project_plan_costs
+      const debitNoteItems = [];
+
+      for (const paymentList of dataContractPayment.contract_payment_list) {
+        const paymentType = paymentList.payment_type; // "dp" | "pelunasan" | "full"
+
+        for (const paymentService of paymentList.contract_payment_services) {
+          const servicePricing =
+            paymentService.quotation_service?.service_pricing;
+
+          if (!servicePricing) continue;
+
+          for (const projectPlan of servicePricing.project_plans) {
+            for (const cost of projectPlan.project_plan_costs) {
+              // Hitung harga berdasarkan payment_type
+              let priceIdr = cost.price_idr;
+              let priceRmb = cost.price_rmb;
+
+              if (paymentType === "dp" || paymentType === "pelunasan") {
+                priceIdr = priceIdr / 2;
+                priceRmb = priceRmb / 2;
+              }
+              // "full" → langsung pakai nilai asli
+
+              debitNoteItems.push({
+                product_name_indo: cost.cost_description_indo,
+                product_name_mandarin: cost.cost_description_mandarin,
+                price_idr: priceIdr,
+                price_rmb: priceRmb,
+                qty: 1,
+                total_price_idr: priceIdr,
+                total_price_rmb: priceRmb,
+                payment_type: paymentType,
+              });
+            }
+          }
+        }
+      }
+
+      // Hitung subtotal dari semua item (pakai IDR)
+      const subTotal = debitNoteItems.reduce(
+        (sum, item) => sum + item.total_price_idr,
+        0,
+      );
+
+      // Hitung pajak
+      const ppn = invoiceData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
+      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.04) : 0;
+      const total = subTotal + ppn + pph;
+
+      // Bentuk output akhir
+      const debitNotePayload = {
+        is_double_database: true,
+        id_quotation: invoiceData.id_quotation,
+        id_contract: invoiceData.id_contract,
+        id_company: invoiceData.id_company,
+        id_customer: invoiceData.id_customer,
+        debit_note_no: noDebitNote?.no_debit_note,
+        date: today,
+        tax_ppn: invoiceData.tax_ppn,
+        tax_pph_23: invoiceData.tax_pph_23,
+        sub_total: subTotal,
+        ppn: ppn,
+        pph: pph,
+        total: total,
+        note: invoiceData.note,
+        debit_note_items: debitNoteItems,
+      };
       if (isDoubleDatabase) {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
         console.log(`🔄 Creating Invoice with services in both databases...`);
 
+        const CreateDebitNote = await debitNoteService.createWithRelations(
+          debitNotePayload,
+          debitNotePayload.debit_note_items,
+          id_user_create,
+          true,
+          transaction1,
+          transaction2,
+        );
+
+        const invoiceDataFormat = {
+          ...invoiceData,
+          id_debit_note: CreateDebitNote.debit_note.id,
+        };
+
         // 1. Create Invoice in DB1
-        const invoice1 = await this.Model1.create(invoiceData, {
+        const invoice1 = await this.Model1.create(invoiceDataFormat, {
           transaction: transaction1,
         });
         console.log(`✅ Created Invoice in DB1 with ID: ${invoice1.id}`);
 
         // 2. Create Invoice in DB2 with same ID
-        const invoiceDataWithId = { ...invoiceData, id: invoice1.id };
+        const invoiceDataWithId = { ...invoiceDataFormat, id: invoice1.id };
         await this.Model2.create(invoiceDataWithId, {
           transaction: transaction2,
         });
@@ -405,7 +545,7 @@ class InvoiceService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${servicesResult.created?.length || 0} Invoice Services`
+          `✅ Synced ${servicesResult.created?.length || 0} Invoice Services`,
         );
 
         // 4. Create initial InvoiceVerificationProgress with status "created"
@@ -418,7 +558,7 @@ class InvoiceService extends DualDatabaseService {
 
         const progress1 = await models.db1.InvoiceVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         const progressDataWithId = {
@@ -429,11 +569,11 @@ class InvoiceService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          }
+          },
         );
 
         console.log(
-          `✅ Created ContractVerificationProgress with status "created"`
+          `✅ Created ContractVerificationProgress with status "created"`,
         );
 
         await transaction1.commit();
@@ -449,7 +589,20 @@ class InvoiceService extends DualDatabaseService {
         // Single database (DB1 only)
         transaction1 = await db1.transaction();
 
-        const invoice = await this.Model1.create(invoiceData, {
+        const CreateDebitNote = await debitNoteService.createWithRelations(
+          debitNotePayload,
+          debitNotePayload.debit_note_items,
+          id_user_create,
+          false,
+          transaction1,
+          null,
+        );
+        const invoiceDataFormat = {
+          ...invoiceData,
+          id_debit_note: CreateDebitNote.debit_note.id,
+        };
+
+        const invoice = await this.Model1.create(invoiceDataFormat, {
           transaction: transaction1,
         });
 
@@ -471,7 +624,7 @@ class InvoiceService extends DualDatabaseService {
 
         // 4. Create initial InvoiceVerificationProgress with status "created"
         const progressData = {
-          id_invoice: invoice1.id,
+          id_invoice: invoice.id,
           id_user: id_user_create,
           status: "created",
           note: "Invoice created",
@@ -479,11 +632,11 @@ class InvoiceService extends DualDatabaseService {
 
         const progress = await models.db1.InvoiceVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         console.log(
-          `✅ Created InvoiceVerificationProgress with status "created"`
+          `✅ Created InvoiceVerificationProgress with status "created"`,
         );
 
         await transaction1.commit();
@@ -515,7 +668,7 @@ class InvoiceService extends DualDatabaseService {
     id,
     invoiceData,
     invoiceServices = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -624,7 +777,7 @@ class InvoiceService extends DualDatabaseService {
       note || "Invoice submitted",
       note,
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -643,7 +796,7 @@ class InvoiceService extends DualDatabaseService {
       note || "Invoice approved",
       note,
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -662,7 +815,7 @@ class InvoiceService extends DualDatabaseService {
       note || "Invoice rejected",
       note,
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -678,7 +831,7 @@ class InvoiceService extends DualDatabaseService {
     note,
     file_invoice,
     id_user,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     return await this._changeStatusWithProgress(
       id,
@@ -688,7 +841,7 @@ class InvoiceService extends DualDatabaseService {
       note,
       id_user,
       isDoubleDatabase,
-      file_invoice
+      file_invoice,
     );
   }
 
@@ -707,7 +860,7 @@ class InvoiceService extends DualDatabaseService {
       note || "Invoice is signing",
       note,
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -726,7 +879,7 @@ class InvoiceService extends DualDatabaseService {
     proof_of_payment,
     payment_for,
     id_user,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     return await this._changeStatusWithProgress(
       id,
@@ -741,7 +894,7 @@ class InvoiceService extends DualDatabaseService {
       payment_amount,
       payment_method,
       proof_of_payment,
-      payment_for
+      payment_for,
     );
   }
 
@@ -768,7 +921,7 @@ class InvoiceService extends DualDatabaseService {
     payment_amount,
     payment_method,
     proof_of_payment,
-    payment_for
+    payment_for,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -779,7 +932,7 @@ class InvoiceService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Changing Contract ID ${id} status to "${invoiceStatus}"...`
+          `🔄 Changing Contract ID ${id} status to "${invoiceStatus}"...`,
         );
 
         // Prepare update data
@@ -835,7 +988,7 @@ class InvoiceService extends DualDatabaseService {
 
         const progress1 = await models.db1.InvoiceVerificationProgress.create(
           progressData,
-          { transaction: transaction1 }
+          { transaction: transaction1 },
         );
 
         const progressDataWithId = {
@@ -846,18 +999,18 @@ class InvoiceService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          }
+          },
         );
 
         console.log(
-          `✅ Created ContractVerificationProgress with status "${progressStatus}"`
+          `✅ Created ContractVerificationProgress with status "${progressStatus}"`,
         );
 
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ Contract status successfully changed to "${invoiceStatus}"`
+          `✅ Contract status successfully changed to "${invoiceStatus}"`,
         );
 
         // Get updated contract
@@ -903,7 +1056,7 @@ class InvoiceService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ Contract status changed to "${invoiceStatus}" in DB1 only`
+          `✅ Contract status changed to "${invoiceStatus}" in DB1 only`,
         );
 
         const updated = await this.getById(id, {}, isDoubleDatabase);

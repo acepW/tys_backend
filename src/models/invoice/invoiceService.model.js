@@ -28,6 +28,46 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to quotation service table",
       },
+      product_name_indo: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Product name in Indonesian",
+      },
+      product_name_mandarin: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment: "Product name in Mandarin",
+      },
+      price_idr: {
+        allowNull: true,
+        type: DataTypes.DECIMAL(15, 0),
+        comment: "Price in IDR",
+      },
+      price_rmb: {
+        allowNull: true,
+        type: DataTypes.DECIMAL(15, 0),
+        comment: "Price in RMB",
+      },
+      qty: {
+        allowNull: true,
+        type: DataTypes.INTEGER,
+        comment: "Qty of service",
+      },
+      total_price_idr: {
+        allowNull: true,
+        type: DataTypes.DECIMAL(15, 0),
+        comment: "Total price in IDR",
+      },
+      total_price_rmb: {
+        allowNull: true,
+        type: DataTypes.DECIMAL(15, 0),
+        comment: "Total Price in RMB",
+      },
+      payment_type: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        comment: "Payment type",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

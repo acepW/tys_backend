@@ -21,7 +21,7 @@ class DebitNoteService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -50,7 +50,7 @@ class DebitNoteService extends DualDatabaseService {
         },
         {
           model: dbModels.Invoice,
-          as: "invoice",
+          as: "invoices",
           attributes: ["id", "invoice_no", "date", "total"],
         },
         {
@@ -99,7 +99,7 @@ class DebitNoteService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     return {
@@ -136,7 +136,7 @@ class DebitNoteService extends DualDatabaseService {
         },
         {
           model: dbModels.Invoice,
-          as: "invoice",
+          as: "invoices",
         },
         {
           model: dbModels.Company,
@@ -208,7 +208,7 @@ class DebitNoteService extends DualDatabaseService {
       {
         attributes: ["id", "company_name", "initial_company"],
       },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     // 🔥 function bulan romawi
@@ -270,15 +270,22 @@ class DebitNoteService extends DualDatabaseService {
     debitNoteData,
     debitNoteItems = [],
     id_user_create,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
+    externalTransaction1 = null,
+    externalTransaction2 = null,
   ) {
-    let transaction1 = null;
-    let transaction2 = null;
+    // Jika external transaction dikirim, pakai itu. Jika tidak, buat baru.
+    const isExternalTransaction = !!externalTransaction1;
+
+    let transaction1 = externalTransaction1;
+    let transaction2 = externalTransaction2;
 
     try {
       if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
+        if (!isExternalTransaction) {
+          transaction1 = await db1.transaction();
+          transaction2 = await db2.transaction();
+        }
 
         console.log(`🔄 Creating DebitNote with items in both databases...`);
 
@@ -313,11 +320,14 @@ class DebitNoteService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`
+          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
         );
 
-        await transaction1.commit();
-        await transaction2.commit();
+        if (!isExternalTransaction) {
+          await transaction1.commit();
+          await transaction2.commit();
+          console.log(`✅ DebitNote with all relations successfully created`);
+        }
         console.log(`✅ DebitNote with all relations successfully created`);
 
         return {
@@ -326,7 +336,9 @@ class DebitNoteService extends DualDatabaseService {
         };
       } else {
         // Single database (DB1 only)
-        transaction1 = await db1.transaction();
+        if (!isExternalTransaction) {
+          transaction1 = await db1.transaction();
+        }
 
         const debitNote = await this.Model1.create(debitNoteData, {
           transaction: transaction1,
@@ -350,10 +362,13 @@ class DebitNoteService extends DualDatabaseService {
         });
 
         console.log(
-          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`
+          `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
         );
 
-        await transaction1.commit();
+        if (!isExternalTransaction) {
+          await transaction1.commit();
+          console.log(`✅ DebitNote created in DB1 only`);
+        }
         console.log(`✅ DebitNote created in DB1 only`);
 
         return {
@@ -363,8 +378,10 @@ class DebitNoteService extends DualDatabaseService {
       }
     } catch (error) {
       console.error(`❌ Error creating DebitNote:`, error.message);
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
+      if (!isExternalTransaction) {
+        if (transaction1) await transaction1.rollback();
+        if (transaction2) await transaction2.rollback();
+      }
       throw new Error(`Failed to create DebitNote: ${error.message}`);
     }
   }
@@ -381,7 +398,7 @@ class DebitNoteService extends DualDatabaseService {
     id,
     debitNoteData,
     debitNoteItems = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -490,7 +507,7 @@ class DebitNoteService extends DualDatabaseService {
       "on verification",
       note || "Debit note submitted",
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -508,7 +525,7 @@ class DebitNoteService extends DualDatabaseService {
       "approved",
       note || "Debit note approved",
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -526,7 +543,7 @@ class DebitNoteService extends DualDatabaseService {
       "rejected",
       note || "Debit note rejected",
       id_user,
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -544,7 +561,7 @@ class DebitNoteService extends DualDatabaseService {
     payment_method,
     proof_of_payment,
     id_user,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     return await this._changeStatus(
       id,
@@ -555,7 +572,7 @@ class DebitNoteService extends DualDatabaseService {
       payment_date,
       payment_amount,
       payment_method,
-      proof_of_payment
+      proof_of_payment,
     );
   }
 
@@ -577,7 +594,7 @@ class DebitNoteService extends DualDatabaseService {
     payment_date,
     payment_amount,
     payment_method,
-    proof_of_payment
+    proof_of_payment,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -635,7 +652,7 @@ class DebitNoteService extends DualDatabaseService {
             {
               where: { id: getDataDebitNote.id_payment_request },
               transaction: transaction1,
-            }
+            },
           );
 
           await models.db2.PaymentRequest.update(
@@ -648,7 +665,7 @@ class DebitNoteService extends DualDatabaseService {
             {
               where: { id: getDataDebitNote.id_payment_request },
               transaction: transaction2,
-            }
+            },
           );
 
           console.log(`✅ Update PaymentRequest with status "paid"`);

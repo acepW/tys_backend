@@ -54,6 +54,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(15, 0),
         comment: "Total Price in RMB",
       },
+      payment_type: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        comment: "Payment type",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -70,7 +75,7 @@ module.exports = (sequelize) => {
           fields: ["id_debit_note"],
         },
       ],
-    }
+    },
   );
 
   // Define associations

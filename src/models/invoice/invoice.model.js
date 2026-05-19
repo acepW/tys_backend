@@ -55,6 +55,15 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to companies table",
       },
+      id_debit_note: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "debit_notes",
+          key: "id",
+        },
+        comment: "Foreign key to debit_notes table",
+      },
       id_user_create: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -210,6 +219,10 @@ module.exports = (sequelize) => {
           fields: ["id_customer"],
         },
         {
+          name: "idx_id_debit_note",
+          fields: ["id_debit_note"],
+        },
+        {
           name: "idx_date",
           fields: ["date"],
         },
@@ -306,10 +319,18 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
-    // Invoice has many Debit Note
-    Invoice.hasMany(models.DebitNote, {
-      foreignKey: "id_invoice",
-      as: "debit_notes",
+    // // Invoice has many Debit Note
+    // Invoice.hasMany(models.DebitNote, {
+    //   foreignKey: "id_invoice",
+    //   as: "debit_notes",
+    //   onDelete: "RESTRICT",
+    //   onUpdate: "CASCADE",
+    // });
+
+    // Invoice belongs to Debit Note
+    Invoice.belongsTo(models.DebitNote, {
+      foreignKey: "id_debit_note",
+      as: "debit_note",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
