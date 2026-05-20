@@ -78,11 +78,6 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Phone number",
       },
-      type_of_service: {
-        type: DataTypes.STRING(200),
-        allowNull: true,
-        comment: "Type of service vendor",
-      },
       bank_name: {
         type: DataTypes.STRING(200),
         allowNull: true,
@@ -138,7 +133,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)

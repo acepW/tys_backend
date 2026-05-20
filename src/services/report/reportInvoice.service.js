@@ -15,7 +15,7 @@ class ReportInvoice extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
     const queryOptions = {
@@ -28,7 +28,7 @@ class ReportInvoice extends DualDatabaseService {
           include: [
             {
               model: dbModels.DebitNote,
-              as: "debit_notes",
+              as: "debit_note",
               separate: true,
               attributes: ["id", "debit_note_no", "total"],
             },
@@ -44,7 +44,7 @@ class ReportInvoice extends DualDatabaseService {
       // Total invoice + semua debit notes
       const totalDebitNotes = (invoice.debit_notes || []).reduce(
         (sum, dn) => sum + parseFloat(dn.total || 0),
-        0,
+        0
       );
       const total_invoice_debit_note =
         parseFloat(invoice.total || 0) + totalDebitNotes;
@@ -59,7 +59,7 @@ class ReportInvoice extends DualDatabaseService {
       // Umur piutang dalam hari dari date ke hari ini
       const umur_piutang = Math.floor(
         (today.setHours(0, 0, 0, 0) - invoiceDate.setHours(0, 0, 0, 0)) /
-          (1000 * 60 * 60 * 24),
+          (1000 * 60 * 60 * 24)
       );
 
       return {
@@ -79,12 +79,12 @@ class ReportInvoice extends DualDatabaseService {
 
       const total_bill = invoices.reduce(
         (sum, inv) => sum + inv.total_invoice_debit_note,
-        0,
+        0
       );
 
       const outstanding = invoices.reduce(
         (sum, inv) => sum + inv.outstanding,
-        0,
+        0
       );
 
       return {
@@ -103,7 +103,7 @@ class ReportInvoice extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     return {
