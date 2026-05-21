@@ -29,7 +29,6 @@ class ReportInvoice extends DualDatabaseService {
             {
               model: dbModels.DebitNote,
               as: "debit_note",
-              separate: true,
               attributes: ["id", "debit_note_no", "total"],
             },
           ],
