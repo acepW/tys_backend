@@ -71,11 +71,11 @@ class VendorController {
   async create(req, res) {
     try {
       const {
-        is_double_database,
+        is_double_database = true,
         vendor_services = [],
         ...vendorData
-      } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      } = req.body || {};
+      const isDoubleDatabase = is_double_database;
 
       if (!vendorData.vendor_name) {
         return errorResponse(res, "vendor_name is required", 400);
@@ -106,11 +106,11 @@ class VendorController {
     try {
       const { id } = req.params;
       const {
-        is_double_database,
+        is_double_database = true,
         vendor_services = [],
         ...vendorData
-      } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      } = req.body || {};
+      const isDoubleDatabase = is_double_database;
 
       const existing = await vendorService.findById(id, {}, isDoubleDatabase);
       if (!existing) {

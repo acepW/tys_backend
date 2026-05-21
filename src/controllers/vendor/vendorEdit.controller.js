@@ -30,13 +30,13 @@ class VendorEditController {
         { where },
         parseInt(page) || null,
         parseInt(limit) || null,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Vendor edits retrieved successfully",
+        "Vendor edits retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -49,13 +49,13 @@ class VendorEditController {
   async getById(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database } = req.query;
-      const isDoubleDatabase = is_double_database !== "false";
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database;
 
       const vendorEdit = await vendorEditService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!vendorEdit) {
@@ -65,7 +65,7 @@ class VendorEditController {
       return successResponse(
         res,
         vendorEdit,
-        "Vendor edit retrieved successfully",
+        "Vendor edit retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -92,12 +92,12 @@ class VendorEditController {
   async create(req, res) {
     try {
       const {
-        is_double_database,
+        is_double_database = true,
         vendor_service_edits = [],
         ...vendorEditData
-      } = req.body;
+      } = req.body || {};
 
-      const isDoubleDatabase = is_double_database !== false;
+      const isDoubleDatabase = is_double_database;
 
       if (!vendorEditData.id_vendor) {
         return errorResponse(res, "id_vendor is required", 400);
@@ -114,14 +114,14 @@ class VendorEditController {
         },
         vendor_service_edits,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Vendor edit created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -147,7 +147,7 @@ class VendorEditController {
       const existing = await vendorEditService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Vendor edit not found", 404);
@@ -157,7 +157,7 @@ class VendorEditController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor edit approved successfully");
@@ -183,7 +183,7 @@ class VendorEditController {
       const existing = await vendorEditService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Vendor edit not found", 404);
@@ -193,7 +193,7 @@ class VendorEditController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor edit rejected successfully");
@@ -214,7 +214,7 @@ class VendorEditController {
       const existing = await vendorEditService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Vendor edit not found", 404);
@@ -224,7 +224,7 @@ class VendorEditController {
         return errorResponse(
           res,
           "Only pending vendor edits can be deleted",
-          400,
+          400
         );
       }
 
