@@ -49,12 +49,12 @@ module.exports = (sequelize) => {
         comment: "For customer with same address in Indonesian and Mandarin",
       },
       contact_indo: {
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(200),
         allowNull: true,
         comment: "Customer contact number for Indonesian",
       },
       contact_mandarin: {
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(200),
         allowNull: true,
         comment: "Customer contact number for Indonesian",
       },
@@ -65,12 +65,12 @@ module.exports = (sequelize) => {
         comment: "For customer with same contact in Indonesian and Mandarin",
       },
       email_indo: {
-        type: DataTypes.STRING(100),
+        type: DataTypes.STRING(1000),
         allowNull: true,
         comment: "Customer email address for Indonesian",
       },
       email_mandarin: {
-        type: DataTypes.STRING(100),
+        type: DataTypes.STRING(1000),
         allowNull: true,
         comment: "Customer email address for Mandarin",
       },

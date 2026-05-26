@@ -10,6 +10,15 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Clause",
       },
+      id_clause_template: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "clause_template",
+          key: "id",
+        },
+        comment: "Foreign key to clause_template table",
+      },
       description_indo: {
         type: DataTypes.TEXT("long"),
         allowNull: false,
@@ -42,6 +51,14 @@ module.exports = (sequelize) => {
   Clause.associate = (models) => {
     // Contoh: Clause dapat memiliki relasi dengan Order, dll
     // Clause.hasMany(models.Order, { ... });
+
+    //Clause belongs to Clause template
+    Clause.belongsTo(models.ClauseTemplate, {
+      foreignKey: "id_clause_template",
+      as: "clause_template",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     //Clause has many Clause Point
     Clause.hasMany(models.ClausePoint, {

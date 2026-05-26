@@ -3,16 +3,16 @@ const router = express.Router();
 const clauseController = require("../controllers/masterClause/clause.controller");
 
 // GET routes
-router.get("/", clauseController.getAll);
-router.get("/:id", clauseController.getById);
+router.get("/", clauseController.getAllTemplates);
+router.get("/:id", clauseController.getTemplateById);
 
 // POST routes
-router.post("/", clauseController.createUpdate);
+router.post("/", clauseController.createUpdateTemplate);
 
 // PUT routes
-router.put("/", clauseController.createUpdate);
+router.put("/", clauseController.createUpdateTemplate);
 
 // DELETE routes
-router.delete("/:id", clauseController.delete);
+router.delete("/:id", clauseController.deleteTemplate);
 
 module.exports = router;

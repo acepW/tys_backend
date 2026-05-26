@@ -1,35 +1,60 @@
 const DualDatabaseService = require("../dualDatabase.service");
 const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
+const { where } = require("sequelize");
 
-class ClauseService extends DualDatabaseService {
+class ClauseTemplateService extends DualDatabaseService {
   constructor() {
-    super("Clause");
+    super("ClauseTemplate");
+    // this.Model1 → models.db1.ClauseTemplate
+    // this.Model2 → models.db2.ClauseTemplate
+    // For Clause operations use models.db1.Clause / models.db2.Clause explicitly
   }
 
+  // ============================================================
+  // CLAUSE TEMPLATE METHODS (Top Hierarchy)
+  // ============================================================
+
   /**
-   * Get all clauses with relations
+   * Get all clause templates with their clauses and clause points
    * @param {Object} options - Query options
    * @param {Boolean} isDoubleDatabase
-   * @returns {Array} Clauses with relations
+   * @returns {Array} ClauseTemplates with full nested relations
    */
-  async getAllWithRelations(options = {}, isDoubleDatabase = true) {
+  async getAllTemplatesWithRelations(options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
     const queryOptions = {
       ...options,
       include: [
         {
-          model: dbModels.ClausePoint,
-          as: "clause_points",
+          model: dbModels.Clause,
+          as: "clauses",
           separate: true,
+          where: { is_active: true },
           attributes: [
             "id",
-            "id_clause",
+            "id_clause_template",
             "description_indo",
             "description_mandarin",
             "index",
             "is_active",
+          ],
+          include: [
+            {
+              model: dbModels.ClausePoint,
+              as: "clause_points",
+              separate: true,
+              where: { is_active: true },
+              attributes: [
+                "id",
+                "id_clause",
+                "description_indo",
+                "description_mandarin",
+                "index",
+                "is_active",
+              ],
+            },
           ],
         },
       ],
@@ -39,28 +64,42 @@ class ClauseService extends DualDatabaseService {
   }
 
   /**
-   * Get clause by ID with relations
+   * Get clause template by ID with full nested relations
    * @param {Number} id
    * @param {Object} options - Query options
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Clause with relations
+   * @returns {Object} ClauseTemplate with full nested relations
    */
-  async getById(id, options = {}, isDoubleDatabase = true) {
+  async getTemplateById(id, options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
     const queryOptions = {
       ...options,
       include: [
         {
-          model: dbModels.ClausePoint,
-          as: "clause_points",
+          model: dbModels.Clause,
+          as: "clauses",
           attributes: [
             "id",
-            "id_clause",
+            "id_clause_template",
             "description_indo",
             "description_mandarin",
             "index",
             "is_active",
+          ],
+          include: [
+            {
+              model: dbModels.ClausePoint,
+              as: "clause_points",
+              attributes: [
+                "id",
+                "id_clause",
+                "description_indo",
+                "description_mandarin",
+                "index",
+                "is_active",
+              ],
+            },
           ],
         },
       ],
@@ -70,102 +109,205 @@ class ClauseService extends DualDatabaseService {
   }
 
   /**
-   * Create or Update multiple clauses with clause points in a single transaction
-   * Logic:
-   * - If id is null/undefined => CREATE
-   * - If id exists => UPDATE
-   * - If existing clause_points not included in new data => DELETE
+   * Create or Update a ClauseTemplate along with its clauses and clause points
+   * in a single transaction.
    *
-   * @param {Array} clauseDataList - Array of clause data with clause_points
-   * @param {Boolean} isDoubleDatabase - Hit both databases if true
-   * @returns {Array} Created/Updated clauses with clause points
+   * Hierarchy: ClauseTemplate → Clause → ClausePoint
+   *
+   * Logic:
+   * - If id_clause_template is null/undefined  => CREATE new ClauseTemplate
+   * - If id_clause_template exists             => UPDATE existing ClauseTemplate
+   * - For each clause in clause_list:
+   *     - If clause.id is null/undefined       => CREATE new Clause
+   *     - If clause.id exists                  => UPDATE existing Clause
+   *     - Clauses not in the list              => DELETE (via syncChildRecords)
+   * - For each clause_point in clause_points:
+   *     - If clause_point.id is null/undefined => CREATE new ClausePoint
+   *     - If clause_point.id exists            => UPDATE existing ClausePoint
+   *     - ClausePoints not in the list         => DELETE (via syncChildRecords)
+   *
+   * @param {Object} templateData - { id_clause_template, clause_list, ...templateFields }
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Processed ClauseTemplate with nested result
    */
-  async upsertMultipleWithClausePoints(
-    clauseDataList = [],
-    isDoubleDatabase = true
-  ) {
+  async upsertTemplateWithClauses(templateData = {}, isDoubleDatabase = true) {
     let transaction1 = null;
     let transaction2 = null;
 
     try {
+      const {
+        id_clause_template,
+        clause_list = [],
+        ...templateFields
+      } = templateData;
+
       if (isDoubleDatabase) {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Processing ${clauseDataList.length} Clause records with clause points in both databases...`
+          `🔄 Processing ClauseTemplate ${
+            id_clause_template ? `ID ${id_clause_template}` : "(new)"
+          } with ${clause_list.length} clauses in both databases...`
         );
 
-        const results = [];
+        // ── Step 1: Create or Update ClauseTemplate ──────────────────────────
+        let templateId;
+        let template1;
+        let isTemplateUpdate = false;
 
-        // Loop through each clause data
-        for (const item of clauseDataList) {
+        if (id_clause_template) {
+          isTemplateUpdate = true;
+          templateId = id_clause_template;
+
+          console.log(`🔄 Updating ClauseTemplate ID ${templateId}...`);
+
+          const [updated1] = await this.Model1.update(templateFields, {
+            where: { id: templateId },
+            transaction: transaction1,
+          });
+          const [updated2] = await this.Model2.update(templateFields, {
+            where: { id: templateId },
+            transaction: transaction2,
+          });
+
+          if (updated1 === 0 && updated2 === 0) {
+            throw new Error(`ClauseTemplate with ID ${templateId} not found`);
+          }
+
+          template1 = await this.Model1.findByPk(templateId, {
+            transaction: transaction1,
+          });
+
+          console.log(`✅ Updated ClauseTemplate ID: ${templateId}`);
+        } else {
+          console.log(`🔄 Creating new ClauseTemplate...`);
+
+          template1 = await this.Model1.create(templateFields, {
+            transaction: transaction1,
+          });
+          templateId = template1.id;
+
+          await this.Model2.create(
+            { ...templateFields, id: templateId },
+            { transaction: transaction2 }
+          );
+
+          console.log(
+            `✅ Created ClauseTemplate in both DBs with ID: ${templateId}`
+          );
+        }
+
+        // ── Step 2: Sync Clauses under this template ──────────────────────────
+        // We use syncChildRecords for clause-level sync (create/update/delete)
+        // but we also need to handle clause_points nested inside each clause.
+        // So we do a manual loop and then call syncChildRecords for clause_points.
+
+        const clauseResults = [];
+
+        // Collect IDs of clauses present in the incoming list (for delete detection)
+        const incomingClauseIds = clause_list
+          .filter((c) => c.id)
+          .map((c) => c.id);
+
+        // Fetch existing clause IDs that belong to this template (DB1)
+        const existingClauses = await models.db1.Clause.findAll({
+          where: { id_clause_template: templateId },
+          attributes: ["id"],
+          transaction: transaction1,
+        });
+        const existingClauseIds = existingClauses.map((c) => c.id);
+
+        // Determine clauses to delete (exist in DB but not in incoming list)
+        const clauseIdsToDelete = existingClauseIds.filter(
+          (existId) => !incomingClauseIds.includes(existId)
+        );
+
+        // Delete removed clauses (cascade will handle clause_points if FK set)
+        if (clauseIdsToDelete.length > 0) {
+          console.log(
+            `🗑️ Deleting ${
+              clauseIdsToDelete.length
+            } removed clause(s): [${clauseIdsToDelete.join(", ")}]`
+          );
+
+          await models.db1.Clause.destroy({
+            where: { id: clauseIdsToDelete },
+            transaction: transaction1,
+          });
+          await models.db2.Clause.destroy({
+            where: { id: clauseIdsToDelete },
+            transaction: transaction2,
+          });
+        }
+
+        // Process each clause (create / update)
+        for (const item of clause_list) {
           const { id, clause_points = [], ...clauseData } = item;
+
+          // Strip non-column fields that may come from frontend (createdAt, updatedAt)
+          const { createdAt, updatedAt, ...cleanClauseData } = clauseData;
+
+          const clausePayload = {
+            ...cleanClauseData,
+            id_clause_template: templateId,
+          };
 
           let clauseId;
           let clause1;
-          let isUpdate = false;
+          let isClauseUpdate = false;
 
           if (id) {
-            // UPDATE - Clause exists
-            isUpdate = true;
+            // UPDATE existing Clause
+            isClauseUpdate = true;
             clauseId = id;
 
-            console.log(`🔄 Updating Clause ID ${id}...`);
+            console.log(`🔄 Updating Clause ID ${clauseId}...`);
 
-            // Update in DB1
-            const [updatedRows1] = await this.Model1.update(clauseData, {
-              where: { id },
+            await models.db1.Clause.update(clausePayload, {
+              where: { id: clauseId },
               transaction: transaction1,
             });
-
-            // Update in DB2
-            const [updatedRows2] = await this.Model2.update(clauseData, {
-              where: { id },
+            await models.db2.Clause.update(clausePayload, {
+              where: { id: clauseId },
               transaction: transaction2,
             });
 
-            if (updatedRows1 === 0 && updatedRows2 === 0) {
-              throw new Error(`Clause with ID ${id} not found`);
-            }
-
-            // Fetch updated clause from DB1
-            clause1 = await this.Model1.findByPk(id, {
+            clause1 = await models.db1.Clause.findByPk(clauseId, {
               transaction: transaction1,
             });
 
-            console.log(`✅ Updated Clause in both databases with ID: ${id}`);
+            console.log(`✅ Updated Clause ID: ${clauseId}`);
           } else {
-            // CREATE - New Clause
-            console.log(`🔄 Creating new Clause...`);
+            // CREATE new Clause
+            console.log(
+              `🔄 Creating new Clause under Template ID ${templateId}...`
+            );
 
-            // Create in DB1 (auto-increment ID)
-            clause1 = await this.Model1.create(clauseData, {
+            clause1 = await models.db1.Clause.create(clausePayload, {
               transaction: transaction1,
             });
             clauseId = clause1.id;
 
-            console.log(`✅ Created Clause in DB1 with ID: ${clauseId}`);
+            await models.db2.Clause.create(
+              { ...clausePayload, id: clauseId },
+              { transaction: transaction2 }
+            );
 
-            // Create in DB2 with same ID
-            const clauseDataWithId = {
-              ...clauseData,
-              id: clauseId,
-            };
-            await this.Model2.create(clauseDataWithId, {
-              transaction: transaction2,
-            });
-
-            console.log(`✅ Created Clause in DB2 with ID: ${clauseId}`);
+            console.log(`✅ Created Clause in both DBs with ID: ${clauseId}`);
           }
 
-          // Prepare clause points data with foreign key
-          const clausePointsData = clause_points.map((point) => ({
-            ...point,
-            id_clause: clauseId,
-          }));
+          // ── Step 3: Sync ClausePoints under this clause ───────────────────
+          const clausePointsData = clause_points.map((point) => {
+            const {
+              createdAt: _ca,
+              updatedAt: _ua,
+              id_clause: _ic,
+              ...cleanPoint
+            } = point;
+            return { ...cleanPoint, id_clause: clauseId };
+          });
 
-          // Sync Clause Points (Create/Update/Delete)
           const clausePointsResult = await syncChildRecords({
             Model1: models.db1.ClausePoint,
             Model2: models.db2.ClausePoint,
@@ -177,63 +319,134 @@ class ClauseService extends DualDatabaseService {
             isDoubleDatabase,
           });
 
-          results.push({
+          clauseResults.push({
             clause: clause1.toJSON(),
             clause_points: clausePointsResult,
-            operation: isUpdate ? "updated" : "created",
+            operation: isClauseUpdate ? "updated" : "created",
           });
         }
 
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
+
         console.log(
-          `✅ ${clauseDataList.length} Clause records with clause points successfully processed`
+          `✅ ClauseTemplate ID ${templateId} with clauses successfully processed`
         );
 
-        return results;
+        return {
+          template: template1.toJSON(),
+          clause_list: clauseResults,
+          operation: isTemplateUpdate ? "updated" : "created",
+        };
       } else {
-        // Single database (DB2 only)
+        // ── Single Database (DB1 only) ────────────────────────────────────────
         transaction1 = await db1.transaction();
 
-        const results = [];
+        const {
+          id_clause_template,
+          clause_list = [],
+          ...templateFields
+        } = templateData;
 
-        for (const item of clauseDataList) {
+        const {
+          createdAt: _ca,
+          updatedAt: _ua,
+          ...cleanTemplateFields
+        } = templateFields;
+
+        let templateId;
+        let template;
+        let isTemplateUpdate = false;
+
+        if (id_clause_template) {
+          isTemplateUpdate = true;
+          templateId = id_clause_template;
+
+          const [updated] = await this.Model1.update(cleanTemplateFields, {
+            where: { id: templateId },
+            transaction: transaction1,
+          });
+
+          if (updated === 0) {
+            throw new Error(`ClauseTemplate with ID ${templateId} not found`);
+          }
+
+          template = await this.Model1.findByPk(templateId, {
+            transaction: transaction1,
+          });
+        } else {
+          template = await this.Model1.create(cleanTemplateFields, {
+            transaction: transaction1,
+          });
+          templateId = template.id;
+        }
+
+        const clauseResults = [];
+
+        const incomingClauseIds = clause_list
+          .filter((c) => c.id)
+          .map((c) => c.id);
+
+        const existingClauses = await models.db1.Clause.findAll({
+          where: { id_clause_template: templateId },
+          attributes: ["id"],
+          transaction: transaction1,
+        });
+        const existingClauseIds = existingClauses.map((c) => c.id);
+
+        const clauseIdsToDelete = existingClauseIds.filter(
+          (existId) => !incomingClauseIds.includes(existId)
+        );
+
+        if (clauseIdsToDelete.length > 0) {
+          await models.db1.Clause.destroy({
+            where: { id: clauseIdsToDelete },
+            transaction: transaction1,
+          });
+        }
+
+        for (const item of clause_list) {
           const { id, clause_points = [], ...clauseData } = item;
+          const { createdAt, updatedAt, ...cleanClauseData } = clauseData;
+
+          const clausePayload = {
+            ...cleanClauseData,
+            id_clause_template: templateId,
+          };
 
           let clauseId;
           let clause;
-          let isUpdate = false;
+          let isClauseUpdate = false;
 
           if (id) {
-            // UPDATE
-            isUpdate = true;
+            isClauseUpdate = true;
             clauseId = id;
 
-            const [updatedRows] = await this.Model1.update(clauseData, {
-              where: { id },
+            await models.db1.Clause.update(clausePayload, {
+              where: { id: clauseId },
               transaction: transaction1,
             });
 
-            if (updatedRows === 0) {
-              throw new Error(`Clause with ID ${id} not found`);
-            }
-
-            clause = await this.Model1.findByPk(id, {
+            clause = await models.db1.Clause.findByPk(clauseId, {
               transaction: transaction1,
             });
           } else {
-            // CREATE
-            clause = await this.Model1.create(clauseData, {
+            clause = await models.db1.Clause.create(clausePayload, {
               transaction: transaction1,
             });
             clauseId = clause.id;
           }
 
-          const clausePointsData = clause_points.map((point) => ({
-            ...point,
-            id_clause: clauseId,
-          }));
+          const clausePointsData = clause_points.map((point) => {
+            const {
+              createdAt: _ca,
+              updatedAt: _ua,
+              id_clause: _ic,
+              ...cleanPoint
+            } = point;
+            return { ...cleanPoint, id_clause: clauseId };
+          });
 
           const clausePointsResult = await syncChildRecords({
             Model1: models.db1.ClausePoint,
@@ -246,23 +459,26 @@ class ClauseService extends DualDatabaseService {
             isDoubleDatabase: false,
           });
 
-          results.push({
+          clauseResults.push({
             clause: clause.toJSON(),
             clause_points: clausePointsResult,
-            operation: isUpdate ? "updated" : "created",
+            operation: isClauseUpdate ? "updated" : "created",
           });
         }
 
         await transaction1.commit();
-        console.log(
-          `✅ ${clauseDataList.length} Clause records processed in DB1 only`
-        );
 
-        return results;
+        console.log(`✅ ClauseTemplate ID ${templateId} processed in DB1 only`);
+
+        return {
+          template: template.toJSON(),
+          clause_list: clauseResults,
+          operation: isTemplateUpdate ? "updated" : "created",
+        };
       }
     } catch (error) {
       console.error(
-        `❌ Error processing Clause with clause points:`,
+        `❌ Error processing ClauseTemplate with clauses:`,
         error.message
       );
 
@@ -270,18 +486,18 @@ class ClauseService extends DualDatabaseService {
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to process Clause with clause points: ${error.message}`
+        `Failed to process ClauseTemplate with clauses: ${error.message}`
       );
     }
   }
 
   /**
-   * Delete clause (will cascade to clause points based on DB constraints)
-   * @param {Number} id - Clause ID
+   * Delete a ClauseTemplate (cascades to clauses and clause points based on DB constraints)
+   * @param {Number} id - ClauseTemplate ID
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Delete operation result
+   * @returns {Object} Delete result
    */
-  async deleteClause(id, isDoubleDatabase = true) {
+  async deleteTemplate(id, isDoubleDatabase = true) {
     let transaction1 = null;
     let transaction2 = null;
 
@@ -290,63 +506,71 @@ class ClauseService extends DualDatabaseService {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
-        console.log(`🔄 Deleting Clause ID ${id} from both databases...`);
+        console.log(
+          `🔄 Deleting ClauseTemplate ID ${id} from both databases...`
+        );
 
-        // Delete from DB1
-        const deleted1 = await this.Model1.destroy({
-          where: { id },
-          transaction: transaction1,
-        });
-
-        // Delete from DB2
-        const deleted2 = await this.Model2.destroy({
-          where: { id },
-          transaction: transaction2,
-        });
+        const deleted1 = await this.Model1.update(
+          { is_active: false },
+          {
+            where: { id },
+            transaction: transaction1,
+          }
+        );
+        const deleted2 = await this.Model2.update(
+          { is_active: false },
+          {
+            where: { id },
+            transaction: transaction2,
+          }
+        );
 
         if (deleted1 === 0 && deleted2 === 0) {
-          throw new Error(`Clause with ID ${id} not found`);
+          throw new Error(`ClauseTemplate with ID ${id} not found`);
         }
 
         await transaction1.commit();
         await transaction2.commit();
 
-        console.log(`✅ Clause ID ${id} deleted from both databases`);
+        console.log(`✅ ClauseTemplate ID ${id} deleted from both databases`);
 
         return {
           deleted: true,
-          message: `Clause ID ${id} and related clause points deleted successfully`,
+          message: `ClauseTemplate ID ${id} and all related clauses and clause points deleted successfully`,
         };
       } else {
         transaction1 = await db1.transaction();
 
-        const deleted = await this.Model1.destroy({
-          where: { id },
-          transaction: transaction1,
-        });
+        const deleted = await this.Model1.update(
+          { is_active: false },
+          {
+            where: { id },
+            transaction: transaction1,
+          }
+        );
 
         if (deleted === 0) {
-          throw new Error(`Clause with ID ${id} not found`);
+          throw new Error(`ClauseTemplate with ID ${id} not found`);
         }
 
         await transaction1.commit();
 
-        console.log(`✅ Clause ID ${id} deleted from DB1`);
+        console.log(`✅ ClauseTemplate ID ${id} deleted from DB1`);
 
         return {
           deleted: true,
-          message: `Clause ID ${id} and related clause points deleted successfully`,
+          message: `ClauseTemplate ID ${id} and all related clauses and clause points deleted successfully`,
         };
       }
     } catch (error) {
-      console.error(`❌ Error deleting Clause:`, error.message);
+      console.error(`❌ Error deleting ClauseTemplate:`, error.message);
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
-      throw new Error(`Failed to delete Clause: ${error.message}`);
+      throw new Error(`Failed to delete ClauseTemplate: ${error.message}`);
     }
   }
 }
 
-module.exports = new ClauseService();
+module.exports = new ClauseTemplateService();

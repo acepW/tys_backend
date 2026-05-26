@@ -9,6 +9,7 @@ const DivisionModel = require("./division.model");
 const DepartmentModel = require("./department/department.model");
 const PositionModel = require("./position/position.model");
 const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
+const ClauseTemplateModel = require("./masterClause/clauseTemplate.model");
 const ClauseModel = require("./masterClause/clause.model");
 const ClausePointModel = require("./masterClause/clausePoint.model");
 const UserModel = require("./user.model");
@@ -88,6 +89,7 @@ const initializeModels = (sequelize) => {
     Department: DepartmentModel(sequelize),
     Position: PositionModel(sequelize),
     FlowProcess: FlowProcessModel(sequelize),
+    ClauseTemplate: ClauseTemplateModel(sequelize),
     Clause: ClauseModel(sequelize),
     ClausePoint: ClausePointModel(sequelize),
     User: UserModel(sequelize),
@@ -199,7 +201,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true },
+  options = { alter: true }
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

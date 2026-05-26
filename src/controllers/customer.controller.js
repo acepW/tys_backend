@@ -91,17 +91,17 @@ class CustomerController {
       const isDoubleDatabase = req.body.is_double_database !== false;
 
       // Check if email already exists
-      if (req.body.email_indo) {
-        const emailExists = await customerService.checkEmailExists(
-          req.body.email,
-          null,
-          isDoubleDatabase
-        );
+      // if (req.body.email_indo) {
+      //   const emailExists = await customerService.checkEmailExists(
+      //     req.body.email,
+      //     null,
+      //     isDoubleDatabase
+      //   );
 
-        if (emailExists) {
-          return errorResponse(res, "Email already exists", 400);
-        }
-      }
+      //   if (emailExists) {
+      //     return errorResponse(res, "Email already exists", 400);
+      //   }
+      // }
 
       const data = {
         customer_type: req.body.customer_type,
