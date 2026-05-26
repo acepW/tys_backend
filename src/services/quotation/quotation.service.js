@@ -31,7 +31,6 @@ class QuotationService extends DualDatabaseService {
         {
           model: dbModels.Company,
           as: "company",
-          attributes: ["id", "company_name"],
         },
         {
           model: dbModels.Customer,
