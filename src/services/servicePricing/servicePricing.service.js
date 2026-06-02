@@ -37,6 +37,10 @@ class ServicePricingService extends DualDatabaseService {
           attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
         {
+          model: dbModels.ServiceCode,
+          as: "service_code",
+        },
+        {
           model: dbModels.Product,
           as: "product",
           attributes: ["id", "id_category"],
@@ -132,6 +136,10 @@ class ServicePricingService extends DualDatabaseService {
           attributes: ["id", "category_name_indo", "category_name_mandarin"],
         },
         {
+          model: dbModels.ServiceCode,
+          as: "service_code",
+        },
+        {
           model: dbModels.Product,
           as: "product",
           attributes: ["id", "id_category"],
@@ -174,6 +182,28 @@ class ServicePricingService extends DualDatabaseService {
     };
 
     return await this.findById(id, queryOptions, isDoubleDatabase);
+  }
+
+  /**
+   * Get service pricing serial number
+   * @param {Number} id_category
+   * @param {Number} id_service_code
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Service pricing with relations
+   */
+  async getSerialNumber(id_category, id_service_code, isDoubleDatabase = true) {
+    const getData = await this.count({
+      where: {
+        id_category,
+        id_service_code,
+      },
+      isDoubleDatabase,
+    });
+
+    return {
+      data_total: getData,
+      next_serial_number: String(getData + 1).padStart(2, "0"),
+    };
   }
 
   /**

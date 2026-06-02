@@ -81,8 +81,8 @@ class VendorEditService extends DualDatabaseService {
   // ─────────────────────────────────────────────
   // CREATE VENDOR EDIT
   // Status vendorEdit  : pending
-  // Status vendor      : request edit
-  // Progress vendor    : request edit
+  // Status vendor      : request revision
+  // Progress vendor    : request revision
   // ─────────────────────────────────────────────
   async createWithRelations(
     vendorEditData,
@@ -114,22 +114,22 @@ class VendorEditService extends DualDatabaseService {
         );
         console.log(`✅ VendorEdit created, ID: ${vendorEdit1.id}`);
 
-        // 2. Update status vendor → "request edit" di kedua DB
+        // 2. Update status vendor → "request revision" di kedua DB
         await models.db1.Vendor.update(
-          { status: "request edit" },
+          { status: "request revision" },
           { where: { id: vendorEditData.id_vendor }, transaction: t1 },
         );
         await models.db2.Vendor.update(
-          { status: "request edit" },
+          { status: "request revision" },
           { where: { id: vendorEditData.id_vendor }, transaction: t2 },
         );
-        console.log(`✅ Vendor status → "request edit"`);
+        console.log(`✅ Vendor status → "request revision"`);
 
         // 3. Tambah progress ke vendor_verification_progress
         const progressData = {
           id_vendor: vendorEditData.id_vendor,
           id_user: id_user_create,
-          status: "request edit",
+          status: "request revision",
           note: "Vendor edit requested, waiting for approval",
           is_active: true,
         };
@@ -168,14 +168,14 @@ class VendorEditService extends DualDatabaseService {
         });
 
         await models.db1.Vendor.update(
-          { status: "request edit" },
+          { status: "request revision" },
           { where: { id: vendorEditData.id_vendor }, transaction: t1 },
         );
 
         const progressData = {
           id_vendor: vendorEditData.id_vendor,
           id_user: id_user_create,
-          status: "request edit",
+          status: "request revision",
           note: "Vendor edit requested, waiting for approval",
           is_active: true,
         };
@@ -211,8 +211,8 @@ class VendorEditService extends DualDatabaseService {
   // ─────────────────────────────────────────────
   // APPROVE VENDOR EDIT
   // Status vendorEdit  : approve
-  // Status vendor      : approve edit
-  // Progress vendor    : approve edit
+  // Status vendor      : approve revision
+  // Progress vendor    : approve revision
   // Replace semua data vendor dengan vendorEdit
   // Sync VendorService
   // ─────────────────────────────────────────────
@@ -266,7 +266,8 @@ class VendorEditService extends DualDatabaseService {
           vendorUpdateData[field] = vendorEdit[field];
         }
       });
-      vendorUpdateData.status = "approve edit";
+      vendorUpdateData.status = "approve revision";
+      vendorUpdateData.is_active = true;
 
       if (isDoubleDatabase) {
         t1 = await db1.transaction();
@@ -283,7 +284,7 @@ class VendorEditService extends DualDatabaseService {
         );
         console.log(`✅ VendorEdit status → "approve"`);
 
-        // 2. Replace data vendor + ubah status vendor → approve edit
+        // 2. Replace data vendor + ubah status vendor → approve revision
         await models.db1.Vendor.update(vendorUpdateData, {
           where: { id: idVendor },
           transaction: t1,
@@ -292,13 +293,13 @@ class VendorEditService extends DualDatabaseService {
           where: { id: idVendor },
           transaction: t2,
         });
-        console.log(`✅ Vendor data replaced & status → "approve edit"`);
+        console.log(`✅ Vendor data replaced & status → "approve revision"`);
 
         // 3. Tambah progress ke vendor_verification_progress
         const progressData = {
           id_vendor: idVendor,
           id_user,
-          status: "approve edit",
+          status: "approve revision",
           note: note || "Vendor edit approved",
           is_active: true,
         };
@@ -310,7 +311,7 @@ class VendorEditService extends DualDatabaseService {
           { ...progressData, id: progress1.id },
           { transaction: t2 },
         );
-        console.log(`✅ VendorVerificationProgress → "approve edit"`);
+        console.log(`✅ VendorVerificationProgress → "approve revision"`);
 
         // 4. Sync VendorService berdasarkan VendorServiceEdit
         const vendorEditServices = vendorEdit.vendor_service_edits || [];
@@ -341,7 +342,7 @@ class VendorEditService extends DualDatabaseService {
         const progressData = {
           id_vendor: idVendor,
           id_user,
-          status: "approve edit",
+          status: "approve revision",
           note: note || "Vendor edit approved",
           is_active: true,
         };
@@ -374,8 +375,8 @@ class VendorEditService extends DualDatabaseService {
   // ─────────────────────────────────────────────
   // REJECT VENDOR EDIT
   // Status vendorEdit  : reject
-  // Status vendor      : reject edit
-  // Progress vendor    : reject edit
+  // Status vendor      : reject revision
+  // Progress vendor    : reject revision
   // ─────────────────────────────────────────────
   async rejectVendorEdit(id, note, id_user, isDoubleDatabase = true) {
     let t1 = null;
@@ -402,22 +403,22 @@ class VendorEditService extends DualDatabaseService {
         );
         console.log(`✅ VendorEdit status → "reject"`);
 
-        // 2. Update status vendor → reject edit
+        // 2. Update status vendor → reject revision
         await models.db1.Vendor.update(
-          { status: "reject edit" },
+          { status: "reject revision" },
           { where: { id: idVendor }, transaction: t1 },
         );
         await models.db2.Vendor.update(
-          { status: "reject edit" },
+          { status: "reject revision" },
           { where: { id: idVendor }, transaction: t2 },
         );
-        console.log(`✅ Vendor status → "reject edit"`);
+        console.log(`✅ Vendor status → "reject revision"`);
 
         // 3. Tambah progress
         const progressData = {
           id_vendor: idVendor,
           id_user,
-          status: "reject edit",
+          status: "reject revision",
           note: note || "Vendor edit rejected",
           is_active: true,
         };
@@ -429,7 +430,7 @@ class VendorEditService extends DualDatabaseService {
           { ...progressData, id: progress1.id },
           { transaction: t2 },
         );
-        console.log(`✅ VendorVerificationProgress → "reject edit"`);
+        console.log(`✅ VendorVerificationProgress → "reject revision"`);
 
         await t1.commit();
         await t2.commit();
@@ -442,14 +443,14 @@ class VendorEditService extends DualDatabaseService {
           { where: { id }, transaction: t1 },
         );
         await models.db1.Vendor.update(
-          { status: "reject edit" },
+          { status: "reject revision" },
           { where: { id: idVendor }, transaction: t1 },
         );
 
         const progressData = {
           id_vendor: idVendor,
           id_user,
-          status: "reject edit",
+          status: "reject revision",
           note: note || "Vendor edit rejected",
           is_active: true,
         };

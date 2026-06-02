@@ -100,7 +100,7 @@ class CategoryService extends DualDatabaseService {
   async checkCategoryNameExists(
     categoryNameIndo,
     excludeId = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const where = { category_name_indo: categoryNameIndo };
     if (excludeId) {

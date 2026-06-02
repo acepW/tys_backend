@@ -10,14 +10,14 @@ class CategoryController {
       const { is_double_database } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
       const categories = await categoryService.getAllWithRelations(
-        {},
-        isDoubleDatabase
+        { where: { is_active: true } },
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         categories,
-        "Categories retrieved successfully"
+        "Categories retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -31,14 +31,13 @@ class CategoryController {
     try {
       const { is_double_database } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
-      const categories = await categoryService.getAllWithSubCategories(
-        isDoubleDatabase
-      );
+      const categories =
+        await categoryService.getAllWithSubCategories(isDoubleDatabase);
 
       return successResponse(
         res,
         categories,
-        "Categories with sub-categories retrieved successfully"
+        "Categories with sub-categories retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -52,14 +51,13 @@ class CategoryController {
     try {
       const { is_double_database } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
-      const categories = await categoryService.getActiveCategories(
-        isDoubleDatabase
-      );
+      const categories =
+        await categoryService.getActiveCategories(isDoubleDatabase);
 
       return successResponse(
         res,
         categories,
-        "Active categories retrieved successfully"
+        "Active categories retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -80,7 +78,7 @@ class CategoryController {
       if (withSub) {
         category = await categoryService.getByIdWithSubCategories(
           id,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
       } else {
         category = await categoryService.findById(id, {}, isDoubleDatabase);
@@ -102,11 +100,12 @@ class CategoryController {
   async create(req, res) {
     try {
       const {
-        is_double_database,
+        is_double_database = true,
         category_name_indo,
         category_name_mandarin,
         foot_note,
-      } = req.body;
+        category_code,
+      } = req.body || {};
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
@@ -122,7 +121,7 @@ class CategoryController {
       const exists = await categoryService.checkCategoryNameExists(
         category_name_indo,
         null,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       if (exists) {
@@ -133,6 +132,7 @@ class CategoryController {
         category_name_indo: category_name_indo,
         category_name_mandarin: category_name_mandarin,
         foot_note: foot_note,
+        category_code: category_code,
         is_active: true,
       };
 
@@ -142,7 +142,7 @@ class CategoryController {
         res,
         category,
         "Category created successfully",
-        201
+        201,
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -156,11 +156,12 @@ class CategoryController {
     try {
       const { id } = req.params;
       const {
-        is_double_database,
+        is_double_database = true,
         category_name_indo,
         category_name_mandarin,
         foot_note,
-      } = req.body;
+        category_code,
+      } = req.body || {};
       const isDoubleDatabase = is_double_database !== false;
 
       // Check if category exists
@@ -176,7 +177,7 @@ class CategoryController {
         const nameExists = await categoryService.checkCategoryNameExists(
           category_name_indo,
           id,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
 
         if (nameExists) {
@@ -186,6 +187,7 @@ class CategoryController {
         data.category_name_indo = category_name_indo;
         data.category_name_mandarin = category_name_mandarin;
         data.foot_note = foot_note;
+        data.category_code = category_code;
       }
 
       const category = await categoryService.update(id, data, isDoubleDatabase);
@@ -211,7 +213,7 @@ class CategoryController {
         return errorResponse(res, "Category not found", 404);
       }
 
-      await categoryService.delete(id, isDoubleDatabase);
+      await categoryService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Category deleted successfully");
     } catch (error) {

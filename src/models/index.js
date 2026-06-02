@@ -15,6 +15,7 @@ const ClausePointModel = require("./masterClause/clausePoint.model");
 const UserModel = require("./user.model");
 const MenuModel = require("./menu.model");
 const PositionMenuModel = require("./position/positionMenu.model");
+const ServiceCodeModel = require("./serviceCode.model");
 
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
@@ -32,6 +33,7 @@ const QuotationProductFieldModel = require("./quotation/quotationProductField.mo
 const QuotationPaymentModel = require("./quotation/quotationPayment.model");
 const QuotationPaymentListModel = require("./quotation/quotationPaymentList.model");
 const QuotationPaymentServiceModel = require("./quotation/quotationPaymentService.model");
+const QuotationVerificationProgressModel = require("./quotation/quotationVerificationProgress.model");
 
 //contract
 const ContractModel = require("./contract/contract.model");
@@ -95,6 +97,7 @@ const initializeModels = (sequelize) => {
     User: UserModel(sequelize),
     Menu: MenuModel(sequelize),
     PositionMenu: PositionMenuModel(sequelize),
+    ServiceCode: ServiceCodeModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
@@ -112,6 +115,8 @@ const initializeModels = (sequelize) => {
     QuotationPayment: QuotationPaymentModel(sequelize),
     QuotationPaymentList: QuotationPaymentListModel(sequelize),
     QuotationPaymentService: QuotationPaymentServiceModel(sequelize),
+    QuotationVerificationProgress:
+      QuotationVerificationProgressModel(sequelize),
 
     //contract
     Contract: ContractModel(sequelize),
@@ -201,7 +206,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true }
+  options = { alter: true },
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

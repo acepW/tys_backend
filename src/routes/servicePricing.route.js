@@ -6,6 +6,11 @@ const { authenticate, authorize } = require("../middleware/auth.middleware");
 // GET routes
 router.get("/", authenticate, ServicePriceController.getAll);
 router.get("/:id", authenticate, ServicePriceController.getById);
+router.get(
+  "/serial-number/:id_category/:id_service_code",
+  authenticate,
+  ServicePriceController.getSerialNumber,
+);
 
 // POST routes
 router.post("/", authenticate, ServicePriceController.create);

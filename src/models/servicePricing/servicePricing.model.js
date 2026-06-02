@@ -28,6 +28,15 @@ module.exports = (sequelize) => {
         },
         comment: "Id division from division",
       },
+      id_service_code: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "service_codes",
+          key: "id",
+        },
+        comment: "Id service code from service_codes",
+      },
       id_user_create: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -54,6 +63,11 @@ module.exports = (sequelize) => {
           key: "id",
         },
         comment: "Id user who reject the service pricing",
+      },
+      service_serial_number: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
+        comment: "Service serial number",
       },
       product_name_indo: {
         type: DataTypes.STRING(500),
@@ -149,6 +163,13 @@ module.exports = (sequelize) => {
     ServicePricing.belongsTo(models.Category, {
       foreignKey: "id_category",
       as: "category",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    ServicePricing.belongsTo(models.ServiceCode, {
+      foreignKey: "id_service_code",
+      as: "service_code",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

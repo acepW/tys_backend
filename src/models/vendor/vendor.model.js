@@ -104,9 +104,9 @@ module.exports = (sequelize) => {
           "pending",
           "approve",
           "reject",
-          "request edit",
-          "approve edit",
-          "reject edit"
+          "request revision",
+          "approve revision",
+          "reject revision",
         ),
         allowNull: false,
         comment: "Vendor Vendor name",
@@ -131,7 +131,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)

@@ -50,6 +50,8 @@ class QuotationController {
         if (date_to) obj.date[Op.lte] = date_to;
       }
 
+      obj.is_active = true;
+
       const quotations = await quotationService.getAllWithRelations(
         { where: obj },
         parseInt(page),
@@ -299,6 +301,7 @@ class QuotationController {
       const result = await quotationService.createWithNested(
         preparedQuotationData,
         quotation_category || [],
+        req.user.id,
         isDoubleDatabase,
       );
 
@@ -536,9 +539,9 @@ class QuotationController {
         return errorResponse(res, "Quotation not found", 404);
       }
 
-      const result = await quotationService.update(
+      const result = await quotationService.approve(
         id,
-        { status: "approved", id_user_approve: req.user.id },
+        req.user.id,
         isDoubleDatabase,
       );
 
@@ -567,9 +570,9 @@ class QuotationController {
         return errorResponse(res, "Quotation not found", 404);
       }
 
-      const result = await quotationService.update(
+      const result = await quotationService.reject(
         id,
-        { status: "rejected", id_user_reject: req.user.id },
+        req.user.id,
         isDoubleDatabase,
       );
 
@@ -598,7 +601,7 @@ class QuotationController {
         return errorResponse(res, "Quotation not found", 404);
       }
 
-      await quotationService.delete(id, isDoubleDatabase);
+      await quotationService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Quotation deleted successfully");
     } catch (error) {

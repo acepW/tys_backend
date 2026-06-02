@@ -10,7 +10,7 @@ class VendorController {
     try {
       const {
         is_double_database = true,
-        is_request = false,
+        is_request,
         id_department_request,
         status,
         search,
@@ -34,7 +34,7 @@ class VendorController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, vendors, "Vendors retrieved successfully");
@@ -71,11 +71,11 @@ class VendorController {
   async create(req, res) {
     try {
       const {
-        is_double_database = true,
+        is_double_database,
         vendor_services = [],
         ...vendorData
-      } = req.body || {};
-      const isDoubleDatabase = is_double_database;
+      } = req.body;
+      const isDoubleDatabase = is_double_database !== false;
 
       if (!vendorData.vendor_name) {
         return errorResponse(res, "vendor_name is required", 400);
@@ -89,7 +89,7 @@ class VendorController {
         },
         vendor_services,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Vendor created successfully", 201);
@@ -106,11 +106,11 @@ class VendorController {
     try {
       const { id } = req.params;
       const {
-        is_double_database = true,
+        is_double_database,
         vendor_services = [],
         ...vendorData
-      } = req.body || {};
-      const isDoubleDatabase = is_double_database;
+      } = req.body;
+      const isDoubleDatabase = is_double_database !== false;
 
       const existing = await vendorService.findById(id, {}, isDoubleDatabase);
       if (!existing) {
@@ -121,7 +121,7 @@ class VendorController {
         id,
         vendorData,
         vendor_services,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Vendor updated successfully");
@@ -153,7 +153,7 @@ class VendorController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Vendor approved successfully");
@@ -190,7 +190,7 @@ class VendorController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Vendor rejected successfully");

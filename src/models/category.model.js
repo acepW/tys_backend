@@ -25,6 +25,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Footnote for the category",
       },
+      category_code: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Code of the category",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -49,7 +54,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations

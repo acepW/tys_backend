@@ -155,6 +155,13 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+    // Quotation has many Quotation Verification Progress
+    Quotation.hasMany(models.QuotationVerificationProgress, {
+      foreignKey: "id_quotation",
+      as: "verification_progress",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     // Quotation has many Contract
     Quotation.hasMany(models.Contract, {

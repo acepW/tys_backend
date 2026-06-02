@@ -18,6 +18,7 @@ const clauseRoute = require("./clause.route");
 const userRoute = require("./user.route");
 const menuRoute = require("./menu.route");
 const positionMenuRoute = require("./positionMenu.route");
+const serviceCodeRoute = require("./serviceCode.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
@@ -67,6 +68,7 @@ router.use("/clauses", clauseRoute);
 router.use("/users", userRoute);
 router.use("/menus", menuRoute);
 router.use("/position-menus", positionMenuRoute);
+router.use("/service-codes", serviceCodeRoute);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
@@ -119,6 +121,7 @@ router.get("/", (req, res) => {
       users: "/api/users",
       menus: "/api/menus",
       positionMenus: "/api/position-menus",
+      serviceCodes: "/api/service-codes",
 
       //service pricing
       servicePricing: "/api/service-pricing",

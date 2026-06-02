@@ -21,7 +21,7 @@ const startServer = async () => {
     //await syncDatabases();
 
     //sync database by table name
-    //await syncModel("Customer");
+    //await syncModel("QuotationVerificationProgress");
     console.log("");
 
     // Start Express server

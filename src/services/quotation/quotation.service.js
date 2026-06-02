@@ -21,7 +21,7 @@ class QuotationService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -99,7 +99,30 @@ class QuotationService extends DualDatabaseService {
           as: "user_reject",
           attributes: ["id", "name", "email"],
         },
+        {
+          model: dbModels.QuotationVerificationProgress,
+          as: "verification_progress",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
+            },
+          ],
+        },
       ],
+      order: [["createdAt", "DESC"]],
     };
 
     //if page and limit not set, use normal findAll
@@ -111,8 +134,10 @@ class QuotationService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
+
+    console.log(page, limit);
 
     return {
       data: rows,
@@ -230,6 +255,28 @@ class QuotationService extends DualDatabaseService {
           as: "user_reject",
           attributes: ["id", "name", "email"],
         },
+        {
+          model: dbModels.QuotationVerificationProgress,
+          as: "verification_progress",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+              include: [
+                {
+                  model: dbModels.Department,
+                  as: "department",
+                },
+                {
+                  model: dbModels.Position,
+                  as: "position",
+                },
+              ],
+            },
+          ],
+        },
       ],
     };
 
@@ -267,7 +314,7 @@ class QuotationService extends DualDatabaseService {
       {
         attributes: ["id", "company_name", "initial_company"],
       },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     // 🔥 function bulan romawi
@@ -327,7 +374,8 @@ class QuotationService extends DualDatabaseService {
   async createWithNested(
     quotationData,
     categoriesData = [],
-    isDoubleDatabase = true
+    id_user_create,
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -338,7 +386,7 @@ class QuotationService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating Quotation with nested relations in both databases...`
+          `🔄 Creating Quotation with nested relations in both databases...`,
         );
         console.log(`📋 Categories to create: ${categoriesData.length}`);
 
@@ -361,21 +409,48 @@ class QuotationService extends DualDatabaseService {
         // 3. Process Quotation Categories
         if (categoriesData && categoriesData.length > 0) {
           console.log(
-            `🔄 Starting to sync ${categoriesData.length} categories...`
+            `🔄 Starting to sync ${categoriesData.length} categories...`,
           );
           const syncedCategories = await this._syncQuotationCategories(
             quotation1.id,
             categoriesData,
             transaction1,
             transaction2,
-            isDoubleDatabase
+            isDoubleDatabase,
           );
           console.log(
-            `✅ Categories sync completed: ${syncedCategories.length} categories processed`
+            `✅ Categories sync completed: ${syncedCategories.length} categories processed`,
           );
         } else {
           console.log(`ℹ️ No categories to sync`);
         }
+
+        const progressData = {
+          id_quotation: quotation1.id,
+          id_user: id_user_create,
+          status: "created",
+          note: "Quotation created",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.QuotationVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ Created QuotationVerificationProgress with status "created"`,
+        );
 
         // Commit both transactions
         await transaction1.commit();
@@ -400,9 +475,25 @@ class QuotationService extends DualDatabaseService {
             categoriesData,
             transaction1,
             null,
-            false
+            false,
           );
         }
+
+        const progressData = {
+          id_quotation: quotation.id,
+          id_user: id_user_create,
+          status: "created",
+          note: "Quotation created",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        console.log(
+          `✅ Created QuotationVerificationProgress with status "created"`,
+        );
 
         await transaction1.commit();
         console.log(`✅ Quotation created in DB1 only`);
@@ -413,7 +504,7 @@ class QuotationService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating Quotation with nested relations:`,
-        error.message
+        error.message,
       );
       console.error(`❌ Error stack:`, error.stack);
 
@@ -436,7 +527,7 @@ class QuotationService extends DualDatabaseService {
     id,
     quotationData,
     categoriesData = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -471,7 +562,7 @@ class QuotationService extends DualDatabaseService {
           categoriesData,
           transaction1,
           transaction2,
-          isDoubleDatabase
+          isDoubleDatabase,
         );
 
         // Commit both transactions
@@ -500,7 +591,7 @@ class QuotationService extends DualDatabaseService {
           categoriesData,
           transaction1,
           null,
-          false
+          false,
         );
 
         await transaction1.commit();
@@ -512,7 +603,7 @@ class QuotationService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating Quotation with nested relations:`,
-        error.message
+        error.message,
       );
 
       if (transaction1) await transaction1.rollback();
@@ -539,7 +630,7 @@ class QuotationService extends DualDatabaseService {
       if (isDoubleDatabase) transaction2 = await db2.transaction();
 
       console.log(
-        `🔄 Syncing ${paymentsData.length} Payment(s) for Quotation ID: ${quotationId}...`
+        `🔄 Syncing ${paymentsData.length} Payment(s) for Quotation ID: ${quotationId}...`,
       );
 
       // ── 1. Sync QuotationPayment (array) via syncChildRecords ───────
@@ -566,7 +657,7 @@ class QuotationService extends DualDatabaseService {
 
       console.log(
         `📦 Synced ${syncedPayments.length} payment(s) ` +
-          `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`
+          `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`,
       );
 
       // Cleanup lists & services milik payment yang dihapus
@@ -582,7 +673,7 @@ class QuotationService extends DualDatabaseService {
 
       if (deletedPaymentIds.length > 0) {
         console.log(
-          `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`
+          `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`,
         );
 
         // Ambil list ids yang akan ikut terhapus
@@ -657,7 +748,7 @@ class QuotationService extends DualDatabaseService {
         const paymentListData = paymentData.payment_list || [];
 
         console.log(
-          `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`
+          `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`,
         );
 
         if (paymentListData.length > 0) {
@@ -684,7 +775,7 @@ class QuotationService extends DualDatabaseService {
 
           console.log(
             `✅ Synced ${syncedLists.length} list(s) for Payment ID: ${paymentId} ` +
-              `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`
+              `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`,
           );
 
           // Cleanup services milik list yang dihapus
@@ -712,7 +803,7 @@ class QuotationService extends DualDatabaseService {
             }
 
             console.log(
-              `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`
+              `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`,
             );
           }
 
@@ -742,7 +833,7 @@ class QuotationService extends DualDatabaseService {
 
             if (!syncedList?.id) {
               console.warn(
-                `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`
+                `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`,
               );
               continue;
             }
@@ -776,7 +867,7 @@ class QuotationService extends DualDatabaseService {
 
               console.log(
                 `✅ Synced ${syncedCount} service(s) for PaymentList ID: ${listId} ` +
-                  `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`
+                  `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
               );
             } else {
               // Tidak ada services → hapus semua yang ada
@@ -793,7 +884,7 @@ class QuotationService extends DualDatabaseService {
               }
 
               console.log(
-                `🗑️ Cleared all services for PaymentList ID: ${listId}`
+                `🗑️ Cleared all services for PaymentList ID: ${listId}`,
               );
             }
           }
@@ -832,7 +923,7 @@ class QuotationService extends DualDatabaseService {
             }
 
             console.log(
-              `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`
+              `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`,
             );
           }
         }
@@ -862,7 +953,7 @@ class QuotationService extends DualDatabaseService {
     categoriesData,
     transaction1,
     transaction2,
-    isDoubleDatabase
+    isDoubleDatabase,
   ) {
     // Prepare categories data
     const preparedCategories = categoriesData.map((cat) => {
@@ -892,7 +983,7 @@ class QuotationService extends DualDatabaseService {
     ];
 
     console.log(
-      `📦 Synced ${syncedCategories.length} categories (${categoriesResult.summary.totalCreated} created, ${categoriesResult.summary.totalUpdated} updated)`
+      `📦 Synced ${syncedCategories.length} categories (${categoriesResult.summary.totalCreated} created, ${categoriesResult.summary.totalUpdated} updated)`,
     );
 
     // Get IDs of categories that will be kept
@@ -907,13 +998,13 @@ class QuotationService extends DualDatabaseService {
 
     const existingCategoryIds = existingCategories.map((cat) => cat.id);
     const deletedCategoryIds = existingCategoryIds.filter(
-      (id) => !keepCategoryIds.includes(id)
+      (id) => !keepCategoryIds.includes(id),
     );
 
     // Delete child records for categories that will be deleted
     if (deletedCategoryIds.length > 0) {
       console.log(
-        `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`
+        `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`,
       );
 
       // Get products that belong to categories being deleted
@@ -939,7 +1030,7 @@ class QuotationService extends DualDatabaseService {
           });
         }
         console.log(
-          `   ✓ Deleted fields for ${productIdsToDelete.length} products`
+          `   ✓ Deleted fields for ${productIdsToDelete.length} products`,
         );
       }
 
@@ -970,7 +1061,7 @@ class QuotationService extends DualDatabaseService {
       }
 
       console.log(
-        `   ✓ Cleaned up products and services for deleted categories`
+        `   ✓ Cleaned up products and services for deleted categories`,
       );
     }
 
@@ -986,7 +1077,7 @@ class QuotationService extends DualDatabaseService {
       if (categoryData.id) {
         // Find in synced categories by ID
         const syncedCategory = syncedCategories.find(
-          (sc) => sc.id === categoryData.id
+          (sc) => sc.id === categoryData.id,
         );
         if (syncedCategory) {
           categoryMapping.set(i, syncedCategory);
@@ -1026,7 +1117,7 @@ class QuotationService extends DualDatabaseService {
         }));
 
         console.log(
-          `📝 Syncing ${servicesData.length} services for category ${categoryId}`
+          `📝 Syncing ${servicesData.length} services for category ${categoryId}`,
         );
 
         const servicesResult = await syncChildRecords({
@@ -1044,7 +1135,7 @@ class QuotationService extends DualDatabaseService {
           (servicesResult.created?.length || 0) +
           (servicesResult.updated?.length || 0);
         console.log(
-          `✅ Synced ${syncedServicesCount} services for category ${categoryId}`
+          `✅ Synced ${syncedServicesCount} services for category ${categoryId}`,
         );
       } else {
         // If no services provided, delete all existing services
@@ -1076,7 +1167,7 @@ class QuotationService extends DualDatabaseService {
         });
 
         console.log(
-          `📦 Syncing ${productsData.length} products for category ${categoryId}`
+          `📦 Syncing ${productsData.length} products for category ${categoryId}`,
         );
 
         // Get existing products to identify which will be deleted
@@ -1091,13 +1182,13 @@ class QuotationService extends DualDatabaseService {
           .map((p) => p.id);
         const existingProductIds = existingProducts.map((p) => p.id);
         const deletedProductIds = existingProductIds.filter(
-          (id) => !keepProductIds.includes(id)
+          (id) => !keepProductIds.includes(id),
         );
 
         // Delete fields for products that will be deleted
         if (deletedProductIds.length > 0) {
           console.log(
-            `🗑️ Deleting fields for ${deletedProductIds.length} products...`
+            `🗑️ Deleting fields for ${deletedProductIds.length} products...`,
           );
 
           await models.db1.QuotationProductField.destroy({
@@ -1131,7 +1222,7 @@ class QuotationService extends DualDatabaseService {
         ];
 
         console.log(
-          `✅ Synced ${syncedProducts.length} products for category ${categoryId}`
+          `✅ Synced ${syncedProducts.length} products for category ${categoryId}`,
         );
 
         const productMapping = new Map();
@@ -1142,7 +1233,7 @@ class QuotationService extends DualDatabaseService {
 
           if (productData.id) {
             const syncedProduct = syncedProducts.find(
-              (sp) => sp.id === productData.id
+              (sp) => sp.id === productData.id,
             );
             if (syncedProduct) {
               productMapping.set(j, syncedProduct);
@@ -1163,7 +1254,7 @@ class QuotationService extends DualDatabaseService {
 
           if (!syncedProduct || !syncedProduct.id) {
             console.warn(
-              `⚠️ Product at index ${j} in category ${categoryId} was not synced properly`
+              `⚠️ Product at index ${j} in category ${categoryId} was not synced properly`,
             );
             continue;
           }
@@ -1181,7 +1272,7 @@ class QuotationService extends DualDatabaseService {
             }));
 
             console.log(
-              `🔧 Syncing ${fieldsData.length} fields for product ${productId}`
+              `🔧 Syncing ${fieldsData.length} fields for product ${productId}`,
             );
 
             const fieldsResult = await syncChildRecords({
@@ -1201,7 +1292,7 @@ class QuotationService extends DualDatabaseService {
               (fieldsResult.created?.length || 0) +
               (fieldsResult.updated?.length || 0);
             console.log(
-              `✅ Synced ${syncedFieldsCount} fields for product ${productId}`
+              `✅ Synced ${syncedFieldsCount} fields for product ${productId}`,
             );
           } else {
             // If no fields provided, delete all existing fields
@@ -1257,6 +1348,246 @@ class QuotationService extends DualDatabaseService {
     }
 
     return syncedCategories;
+  }
+
+  async approve(id, id_user_approve, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      if (isDoubleDatabase) {
+        transaction1 = await db1.transaction();
+        transaction2 = await db2.transaction();
+
+        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+
+        // 1. Update Quotation in both databases
+        const [updatedRows1] = await this.Model1.update(
+          { status: "approved", id_user_approve },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        const [updatedRows2] = await this.Model2.update(
+          { status: "approved", id_user_approve },
+          {
+            where: { id },
+            transaction: transaction2,
+          },
+        );
+
+        if (updatedRows1 === 0 && updatedRows2 === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        console.log(`✅ Updated Quotation in both databases`);
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_approve,
+          status: "approved",
+          note: "Quotation approved",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.QuotationVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ approved QuotationVerificationProgress with status "approved"`,
+        );
+
+        // Commit both transactions
+        await transaction1.commit();
+        await transaction2.commit();
+        console.log(`✅ Quotation with nested relations successfully updated`);
+
+        // Get updated quotation
+        const result = await this.getById(id, {}, isDoubleDatabase);
+        return result;
+      } else {
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
+
+        const [updatedRows] = await this.Model1.update(
+          { status: "approved", id_user_approve },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        if (updatedRows === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_approve,
+          status: "approved",
+          note: "Quotation approved",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        console.log(
+          `✅ Approved QuotationVerificationProgress with status "approved"`,
+        );
+
+        await transaction1.commit();
+        console.log(`✅ Quotation updated in DB1 only`);
+
+        const result = await this.getById(id, {}, false);
+        return result;
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error updating Quotation with nested relations:`,
+        error.message,
+      );
+
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+
+      throw new Error(`Failed to update Quotation: ${error.message}`);
+    }
+  }
+
+  async reject(id, id_user_reject, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      if (isDoubleDatabase) {
+        transaction1 = await db1.transaction();
+        transaction2 = await db2.transaction();
+
+        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+
+        // 1. Update Quotation in both databases
+        const [updatedRows1] = await this.Model1.update(
+          { status: "rejected", id_user_reject },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        const [updatedRows2] = await this.Model2.update(
+          { status: "rejected", id_user_reject },
+          {
+            where: { id },
+            transaction: transaction2,
+          },
+        );
+
+        if (updatedRows1 === 0 && updatedRows2 === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        console.log(`✅ Updated Quotation in both databases`);
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_reject,
+          status: "rejected",
+          note: "Quotation rejected",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.QuotationVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ rejected QuotationVerificationProgress with status "rejected"`,
+        );
+
+        // Commit both transactions
+        await transaction1.commit();
+        await transaction2.commit();
+        console.log(`✅ Quotation with nested relations successfully rejected`);
+
+        // Get updated quotation
+        const result = await this.getById(id, {}, isDoubleDatabase);
+        return result;
+      } else {
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
+
+        const [updatedRows] = await this.Model1.update(
+          { status: "rejected", id_user_reject },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        if (updatedRows === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_reject,
+          status: "rejected",
+          note: "Quotation rejected",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        console.log(
+          `✅ rejected QuotationVerificationProgress with status "rejected"`,
+        );
+
+        await transaction1.commit();
+        console.log(`✅ Quotation updated in DB1 only`);
+
+        const result = await this.getById(id, {}, false);
+        return result;
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error updating Quotation with nested relations:`,
+        error.message,
+      );
+
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+
+      throw new Error(`Failed to update Quotation: ${error.message}`);
+    }
   }
 }
 

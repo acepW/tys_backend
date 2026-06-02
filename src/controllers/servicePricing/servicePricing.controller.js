@@ -29,6 +29,7 @@ class ServicePricingController {
       }
       if (id_category) obj.id_category = id_category;
       if (status) obj.status = status;
+      obj.is_active = true;
 
       const servicePricing = await servicePricingService.getAllWithRelations(
         { where: obj },
@@ -70,6 +71,37 @@ class ServicePricingController {
         res,
         servicePricing,
         "Service pricing retrieved successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
+   * Get service pricing by ID
+   */
+  async getSerialNumber(req, res) {
+    try {
+      const { id_category, id_service_code } = req.params;
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database !== "false";
+
+      const serialNumber = await servicePricingService.getSerialNumber(
+        id_category,
+        id_service_code,
+        isDoubleDatabase,
+      );
+
+      console.log(serialNumber);
+
+      if (!serialNumber) {
+        return errorResponse(res, "get serial number error", 404);
+      }
+
+      return successResponse(
+        res,
+        serialNumber,
+        "Serial number retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -275,7 +307,11 @@ class ServicePricingController {
         return errorResponse(res, "Service pricing not found", 404);
       }
 
-      await servicePricingService.delete(id, isDoubleDatabase);
+      await servicePricingService.update(
+        id,
+        { is_active: false },
+        isDoubleDatabase,
+      );
 
       return successResponse(res, null, "Service pricing deleted successfully");
     } catch (error) {
