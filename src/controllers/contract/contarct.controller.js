@@ -40,13 +40,13 @@ class ContractController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         contracts,
-        "Contracts retrieved successfully",
+        "Contracts retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -99,8 +99,13 @@ class ContractController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, services, clauses, ...contractData } =
-        req.body;
+      const {
+        is_double_database,
+        services,
+        payment_request_contract,
+        clauses,
+        ...contractData
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
@@ -151,7 +156,7 @@ class ContractController {
             return errorResponse(
               res,
               `description_indo is required for clause at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -159,7 +164,7 @@ class ContractController {
             return errorResponse(
               res,
               `description_mandarin is required for clause at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -167,7 +172,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_point must be an array for clause at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -175,11 +180,10 @@ class ContractController {
             return errorResponse(
               res,
               `clause_logs must be an array for clause at index ${i}`,
-              400,
+              400
             );
           }
 
-          // Validate clause_point and their nested clause_logs
           if (clause.clause_point && clause.clause_point.length > 0) {
             for (let j = 0; j < clause.clause_point.length; j++) {
               const point = clause.clause_point[j];
@@ -188,9 +192,161 @@ class ContractController {
                 return errorResponse(
                   res,
                   `clause_logs must be an array for clause_point at clause index ${i}, point index ${j}`,
-                  400,
+                  400
                 );
               }
+            }
+          }
+        }
+      }
+
+      // Validate payment_request_contract
+      if (
+        payment_request_contract &&
+        !Array.isArray(payment_request_contract)
+      ) {
+        return errorResponse(
+          res,
+          "payment_request_contract must be an array",
+          400
+        );
+      }
+
+      if (payment_request_contract && payment_request_contract.length > 0) {
+        for (let i = 0; i < payment_request_contract.length; i++) {
+          const payment = payment_request_contract[i];
+
+          if (!payment.payment_time_indo) {
+            return errorResponse(
+              res,
+              `payment_time_indo is required for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (!payment.payment_time_mandarin) {
+            return errorResponse(
+              res,
+              `payment_time_mandarin is required for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (
+            payment.total_payment_idr === undefined ||
+            payment.total_payment_idr === null
+          ) {
+            return errorResponse(
+              res,
+              `total_payment_idr is required for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (
+            payment.total_payment_rmb === undefined ||
+            payment.total_payment_rmb === null
+          ) {
+            return errorResponse(
+              res,
+              `total_payment_rmb is required for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (!payment.currency_type) {
+            return errorResponse(
+              res,
+              `currency_type is required for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (!["idr", "rmb"].includes(payment.currency_type)) {
+            return errorResponse(
+              res,
+              `currency_type must be "idr" or "rmb" for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (!payment.payment_to) {
+            return errorResponse(
+              res,
+              `payment_to is required for payment at index ${i}`,
+              400
+            );
+          }
+
+          // Validate contract_payment_list
+          if (
+            !payment.contract_payment_list ||
+            !Array.isArray(payment.contract_payment_list)
+          ) {
+            return errorResponse(
+              res,
+              `contract_payment_list must be an array for payment at index ${i}`,
+              400
+            );
+          }
+
+          if (payment.contract_payment_list.length === 0) {
+            return errorResponse(
+              res,
+              `contract_payment_list cannot be empty for payment at index ${i}`,
+              400
+            );
+          }
+
+          for (let j = 0; j < payment.contract_payment_list.length; j++) {
+            const list = payment.contract_payment_list[j];
+
+            if (!list.service_name_indo) {
+              return errorResponse(
+                res,
+                `service_name_indo is required for contract_payment_list at payment index ${i}, list index ${j}`,
+                400
+              );
+            }
+
+            if (!list.service_name_mandarin) {
+              return errorResponse(
+                res,
+                `service_name_mandarin is required for contract_payment_list at payment index ${i}, list index ${j}`,
+                400
+              );
+            }
+
+            if (list.price_idr === undefined || list.price_idr === null) {
+              return errorResponse(
+                res,
+                `price_idr is required for contract_payment_list at payment index ${i}, list index ${j}`,
+                400
+              );
+            }
+
+            if (list.price_rmb === undefined || list.price_rmb === null) {
+              return errorResponse(
+                res,
+                `price_rmb is required for contract_payment_list at payment index ${i}, list index ${j}`,
+                400
+              );
+            }
+
+            if (!list.payment_type) {
+              return errorResponse(
+                res,
+                `payment_type is required for contract_payment_list at payment index ${i}, list index ${j}`,
+                400
+              );
+            }
+
+            if (!list.id_quotation_service) {
+              return errorResponse(
+                res,
+                `id_quotation_service is required for contract_payment_list at payment index ${i}, list index ${j}`,
+                400
+              );
             }
           }
         }
@@ -209,8 +365,9 @@ class ContractController {
         contractDataToCreate,
         services || [],
         clauses || [],
+        payment_request_contract || [],
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Contract created successfully", 201);
@@ -254,7 +411,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_point must be an array for clause at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -262,7 +419,7 @@ class ContractController {
             return errorResponse(
               res,
               `clause_logs must be an array for clause at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -275,7 +432,7 @@ class ContractController {
                 return errorResponse(
                   res,
                   `clause_logs must be an array for clause_point at clause index ${i}, point index ${j}`,
-                  400,
+                  400
                 );
               }
             }
@@ -288,7 +445,7 @@ class ContractController {
         contractData,
         services || [],
         clauses || [],
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Contract updated successfully");
@@ -316,7 +473,7 @@ class ContractController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Contract submitted successfully");
@@ -344,7 +501,7 @@ class ContractController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Contract approved successfully");
@@ -376,7 +533,7 @@ class ContractController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Contract rejected successfully");
@@ -404,13 +561,13 @@ class ContractController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Contract sent to customer successfully",
+        "Contract sent to customer successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -436,13 +593,13 @@ class ContractController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Contract approved by customer successfully",
+        "Contract approved by customer successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -472,13 +629,13 @@ class ContractController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Contract rejected by customer successfully",
+        "Contract rejected by customer successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -498,7 +655,7 @@ class ContractController {
       const existing = await paymentService.findById(
         id_payment,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Payment not found", 404);
@@ -507,7 +664,7 @@ class ContractController {
       const result = await paymentService.update(
         id_payment,
         { is_open: true },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Payment opened successfully");
