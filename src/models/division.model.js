@@ -15,6 +15,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Division division name",
       },
+      division_code: {
+        type: DataTypes.STRING(200),
+        allowNull: false,
+        comment: "Division code",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

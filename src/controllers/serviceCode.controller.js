@@ -11,13 +11,13 @@ class ServiceCodeController {
       const isDoubleDatabase = is_double_database !== "false";
       const serviceCodes = await serviceCodeService.findAll(
         { where: { is_active: true } },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         serviceCodes,
-        "Service codes retrieved successfully",
+        "Service codes retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -36,7 +36,7 @@ class ServiceCodeController {
       const serviceCode = await serviceCodeService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!serviceCode) {
@@ -46,7 +46,7 @@ class ServiceCodeController {
       return successResponse(
         res,
         serviceCode,
-        "Service code retrieved successfully",
+        "Service code retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -80,7 +80,7 @@ class ServiceCodeController {
           await serviceCodeService.checkServiceCodeExists(
             service_code,
             null,
-            isDoubleDatabase,
+            isDoubleDatabase
           );
 
         if (serviceCodeExists) {
@@ -96,14 +96,14 @@ class ServiceCodeController {
 
       const serviceCode = await serviceCodeService.create(
         data,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         serviceCode,
         "Service code created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -127,7 +127,7 @@ class ServiceCodeController {
       const existing = await serviceCodeService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Division not found", 404);
@@ -139,7 +139,7 @@ class ServiceCodeController {
           await serviceCodeService.checkServiceCodeExists(
             service_code,
             id,
-            isDoubleDatabase,
+            isDoubleDatabase
           );
 
         if (serviceCodeExists) {
@@ -154,10 +154,14 @@ class ServiceCodeController {
       const serviceCode = await serviceCodeService.update(
         id,
         data,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
-      return successResponse(res, division, "Division updated successfully");
+      return successResponse(
+        res,
+        serviceCode,
+        "Service Code updated successfully"
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -176,7 +180,7 @@ class ServiceCodeController {
       const existing = await serviceCodeService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service code not found", 404);
@@ -185,10 +189,10 @@ class ServiceCodeController {
       await serviceCodeService.update(
         id,
         { is_active: false },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
-      return successResponse(res, null, "Division deleted successfully");
+      return successResponse(res, null, "Service Code deleted successfully");
     } catch (error) {
       return errorResponse(res, error.message);
     }

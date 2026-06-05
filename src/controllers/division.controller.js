@@ -10,13 +10,13 @@ class DivisionController {
       const isDoubleDatabase = req.query.is_double_database !== "false";
       const divisions = await divisionService.findAll(
         { where: { is_active: true } },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         divisions,
-        "Divisions retrieved successfully",
+        "Divisions retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -48,7 +48,7 @@ class DivisionController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, division_name } = req.body;
+      const { is_double_database, division_name, division_code } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Validation
@@ -61,7 +61,7 @@ class DivisionController {
         const divisionExists = await divisionService.checkDivisionExists(
           division_name,
           null,
-          isDoubleDatabase,
+          isDoubleDatabase
         );
 
         if (divisionExists) {
@@ -71,6 +71,7 @@ class DivisionController {
 
       const data = {
         division_name: division_name,
+        division_code: division_code !== undefined ? division_code : null,
         is_active: req.body.is_active !== undefined ? req.body.is_active : true,
       };
 
@@ -80,7 +81,7 @@ class DivisionController {
         res,
         division,
         "Division created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -93,7 +94,7 @@ class DivisionController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database, division_name } = req.body;
+      const { is_double_database, division_name, division_code } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Check if division exists
@@ -107,7 +108,7 @@ class DivisionController {
         const divisionExists = await divisionService.checkDivisionExists(
           division_name,
           id,
-          isDoubleDatabase,
+          isDoubleDatabase
         );
 
         if (divisionExists) {
@@ -117,6 +118,7 @@ class DivisionController {
 
       const data = {};
       if (division_name) data.division_name = division_name;
+      if (division_code) data.division_code = division_code;
 
       const division = await divisionService.update(id, data, isDoubleDatabase);
 
