@@ -27,18 +27,19 @@ class ProjectPlanController {
         };
       }
       if (id_service_pricing) obj.id_service_pricing = id_service_pricing;
+      obj.is_active = true;
 
       const projectPlans = await projectPlanService.getAllWithRelations(
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         projectPlans,
-        "Project plans retrieved successfully",
+        "Project plans retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -57,7 +58,7 @@ class ProjectPlanController {
       const projectPlan = await projectPlanService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!projectPlan) {
@@ -67,7 +68,7 @@ class ProjectPlanController {
       return successResponse(
         res,
         projectPlan,
-        "Project plan retrieved successfully",
+        "Project plan retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -119,7 +120,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `id_service_pricing is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -127,7 +128,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `activity_name_indo is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -135,7 +136,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `activity_name_mandarin is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -143,7 +144,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `duration is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -154,7 +155,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `project_plan_points must be an array for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -166,7 +167,7 @@ class ProjectPlanController {
               return errorResponse(
                 res,
                 `file_description_indo is required for project_plan_points at index ${j} in item ${i}`,
-                400,
+                400
               );
             }
 
@@ -174,7 +175,7 @@ class ProjectPlanController {
               return errorResponse(
                 res,
                 `file_description_mandarin is required for project_plan_points at index ${j} in item ${i}`,
-                400,
+                400
               );
             }
           }
@@ -192,14 +193,14 @@ class ProjectPlanController {
 
       const result = await projectPlanService.createMultipleWithPoints(
         projectPlanDataList,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Project plans created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -251,7 +252,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `activity_name_indo is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -259,7 +260,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `activity_name_mandarin is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -267,7 +268,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `duration is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -278,7 +279,7 @@ class ProjectPlanController {
           return errorResponse(
             res,
             `project_plan_points must be an array for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -290,7 +291,7 @@ class ProjectPlanController {
               return errorResponse(
                 res,
                 `file_description_indo is required for project_plan_points at index ${j} in item ${i}`,
-                400,
+                400
               );
             }
 
@@ -298,7 +299,7 @@ class ProjectPlanController {
               return errorResponse(
                 res,
                 `file_description_mandarin is required for project_plan_points at index ${j} in item ${i}`,
-                400,
+                400
               );
             }
           }
@@ -308,7 +309,7 @@ class ProjectPlanController {
       const result = await projectPlanService.syncByServicePricing(
         id_service_pricing,
         project_plan_list,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Project plans synced successfully");
@@ -329,13 +330,17 @@ class ProjectPlanController {
       const existing = await projectPlanService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Project plan not found", 404);
       }
 
-      await projectPlanService.delete(id, isDoubleDatabase);
+      await projectPlanService.update(
+        id,
+        { is_active: false },
+        isDoubleDatabase
+      );
 
       return successResponse(res, null, "Project plan deleted successfully");
     } catch (error) {

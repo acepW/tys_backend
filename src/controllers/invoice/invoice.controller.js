@@ -35,12 +35,13 @@ class InvoiceController {
       if (id_contract) obj.id_contract = id_contract;
       if (id_quotation) obj.id_quotation = id_quotation;
       if (status) obj.status = status;
+      obj.is_active = true;
 
       const invoices = await invoiceService.getAllWithRelations(
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, invoices, "Invoices retrieved successfully");
@@ -144,7 +145,7 @@ class InvoiceController {
         invoiceDataToCreate,
         invoice_services || [],
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice created successfully", 201);
@@ -177,7 +178,7 @@ class InvoiceController {
         id,
         invoiceData,
         invoice_services || [],
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice updated successfully");
@@ -204,7 +205,7 @@ class InvoiceController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice submitted successfully");
@@ -231,7 +232,7 @@ class InvoiceController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice approved successfully");
@@ -258,7 +259,7 @@ class InvoiceController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice rejected successfully");
@@ -285,7 +286,7 @@ class InvoiceController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice signing successfully");
@@ -313,13 +314,13 @@ class InvoiceController {
         note,
         req.user.id,
         isDoubleDatabase,
-        file_invoice,
+        file_invoice
       );
 
       return successResponse(
         res,
         result,
-        "Invoice waiting for payment successfully",
+        "Invoice waiting for payment successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -357,7 +358,7 @@ class InvoiceController {
         proof_of_payment,
         payment_for,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Invoice paid successfully");
@@ -380,7 +381,7 @@ class InvoiceController {
         return errorResponse(res, "Invoice not found", 404);
       }
 
-      await invoiceService.delete(id, isDoubleDatabase);
+      await invoiceService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Invoice deleted successfully");
     } catch (error) {

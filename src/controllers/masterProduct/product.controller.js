@@ -3,6 +3,7 @@ const productFieldService = require("../../services/masterProduct/productField.s
 const categoryService = require("../../services/category.service");
 const servicePricingService = require("../../services/servicePricing/servicePricing.service");
 const { successResponse, errorResponse } = require("../../utils/response");
+const { where } = require("sequelize");
 
 class ProductController {
   /**
@@ -13,8 +14,8 @@ class ProductController {
       const { is_double_database } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
       const products = await productService.getAllWithRelations(
-        {},
-        isDoubleDatabase,
+        { where: { is_active: true } },
+        isDoubleDatabase
       );
 
       return successResponse(res, products, "Products retrieved successfully");
@@ -65,7 +66,7 @@ class ProductController {
       const checkDataCategory = await categoryService.findById(
         id_category,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!checkDataCategory) {
         return errorResponse(res, "Category not found", 400);
@@ -75,7 +76,7 @@ class ProductController {
       const checkDataServicePricing = await servicePricingService.findById(
         id_service_pricing,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!checkDataServicePricing) {
         return errorResponse(res, "Service Pricing not found", 400);
@@ -90,7 +91,7 @@ class ProductController {
       const product = await productService.createWithFields(
         data,
         product_fields,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, product, "Product created successfully", 201);
@@ -130,7 +131,7 @@ class ProductController {
         id,
         data,
         product_fields,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, product, "Product updated successfully");
@@ -154,7 +155,7 @@ class ProductController {
         return errorResponse(res, "Category not found", 404);
       }
 
-      await productService.delete(id, isDoubleDatabase);
+      await productService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Category deleted successfully");
     } catch (error) {

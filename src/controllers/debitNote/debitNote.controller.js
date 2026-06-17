@@ -37,18 +37,19 @@ class DebitNoteController {
       if (id_quotation) obj.id_quotation = id_quotation;
       if (id_invoice) obj.id_invoice = id_invoice;
       if (status) obj.status = status;
+      obj.is_active = true;
 
       const debitNotes = await debitNoteService.getAllWithRelations(
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         debitNotes,
-        "Debit notes retrieved successfully",
+        "Debit notes retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -67,7 +68,7 @@ class DebitNoteController {
       const debitNote = await debitNoteService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!debitNote) {
@@ -77,7 +78,7 @@ class DebitNoteController {
       return successResponse(
         res,
         debitNote,
-        "Debit note retrieved successfully",
+        "Debit note retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -101,7 +102,7 @@ class DebitNoteController {
       return successResponse(
         res,
         debitNote,
-        "Debit note retrieved successfully",
+        "Debit note retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -150,35 +151,35 @@ class DebitNoteController {
             return errorResponse(
               res,
               `debit_note_items[${i}].product_name_indo is required`,
-              400,
+              400
             );
           }
           if (!item.product_name_mandarin) {
             return errorResponse(
               res,
               `debit_note_items[${i}].product_name_mandarin is required`,
-              400,
+              400
             );
           }
           if (item.price_idr === undefined || item.price_idr === null) {
             return errorResponse(
               res,
               `debit_note_items[${i}].price_idr is required`,
-              400,
+              400
             );
           }
           if (item.price_rmb === undefined || item.price_rmb === null) {
             return errorResponse(
               res,
               `debit_note_items[${i}].price_rmb is required`,
-              400,
+              400
             );
           }
           if (item.qty === undefined || item.qty === null) {
             return errorResponse(
               res,
               `debit_note_items[${i}].qty is required`,
-              400,
+              400
             );
           }
           if (
@@ -188,7 +189,7 @@ class DebitNoteController {
             return errorResponse(
               res,
               `debit_note_items[${i}].total_price_idr is required`,
-              400,
+              400
             );
           }
           if (
@@ -198,7 +199,7 @@ class DebitNoteController {
             return errorResponse(
               res,
               `debit_note_items[${i}].total_price_rmb is required`,
-              400,
+              400
             );
           }
         }
@@ -226,14 +227,14 @@ class DebitNoteController {
         debitNoteDataToCreate,
         debit_note_items || [],
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Debit note created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -254,7 +255,7 @@ class DebitNoteController {
       const existing = await debitNoteService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
@@ -269,7 +270,7 @@ class DebitNoteController {
         id,
         debitNoteData,
         debit_note_items || [],
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Debit note updated successfully");
@@ -290,7 +291,7 @@ class DebitNoteController {
       const existing = await debitNoteService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
@@ -300,7 +301,7 @@ class DebitNoteController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Debit note submitted successfully");
@@ -321,7 +322,7 @@ class DebitNoteController {
       const existing = await debitNoteService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
@@ -331,7 +332,7 @@ class DebitNoteController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Debit note approved successfully");
@@ -352,7 +353,7 @@ class DebitNoteController {
       const existing = await debitNoteService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
@@ -362,7 +363,7 @@ class DebitNoteController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Debit note rejected successfully");
@@ -390,7 +391,7 @@ class DebitNoteController {
       const existing = await debitNoteService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
@@ -404,7 +405,7 @@ class DebitNoteController {
         payment_method,
         proof_of_payment,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Debit note paid successfully");
@@ -425,13 +426,13 @@ class DebitNoteController {
       const existing = await debitNoteService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
       }
 
-      await debitNoteService.delete(id, isDoubleDatabase);
+      await debitNoteService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Debit note deleted successfully");
     } catch (error) {

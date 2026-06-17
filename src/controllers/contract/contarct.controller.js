@@ -35,6 +35,7 @@ class ContractController {
       if (id_customer) obj.id_customer = id_customer;
       if (status) obj.status = status;
       if (contract_type) obj.contract_type = contract_type;
+      obj.is_active = true;
 
       const contracts = await contractService.getAllWithRelations(
         { where: obj },
@@ -688,7 +689,7 @@ class ContractController {
         return errorResponse(res, "Contract not found", 404);
       }
 
-      await contractService.delete(id, isDoubleDatabase);
+      await contractService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Contract deleted successfully");
     } catch (error) {

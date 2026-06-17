@@ -29,12 +29,13 @@ class VendorController {
       if (is_request === "false" || is_request === false) obj.is_active = true;
       if (id_department_request)
         obj.id_department_request = id_department_request;
+      obj.is_active = true;
 
       const vendors = await vendorService.getAllWithRelations(
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, vendors, "Vendors retrieved successfully");
@@ -89,7 +90,7 @@ class VendorController {
         },
         vendor_services,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor created successfully", 201);
@@ -121,7 +122,7 @@ class VendorController {
         id,
         vendorData,
         vendor_services,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor updated successfully");
@@ -153,7 +154,7 @@ class VendorController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor approved successfully");
@@ -190,7 +191,7 @@ class VendorController {
         id,
         note,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Vendor rejected successfully");
@@ -213,7 +214,7 @@ class VendorController {
         return errorResponse(res, "Vendor not found", 404);
       }
 
-      await vendorService.delete(id, isDoubleDatabase);
+      await vendorService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Vendor deleted successfully");
     } catch (error) {

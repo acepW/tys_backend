@@ -29,6 +29,7 @@ class ApprovalFlowController {
       }
       if (status) obj.status = status;
       if (approval_for) obj.approval_for = approval_for;
+      obj.is_active = true;
 
       const approvalFlows = await approvalFlowService.getAllWithRelations(
         { where: obj },
@@ -174,7 +175,11 @@ class ApprovalFlowController {
         return errorResponse(res, "Approval flow not found", 404);
       }
 
-      await approvalFlowService.delete(id, isDoubleDatabase);
+      await approvalFlowService.update(
+        id,
+        { is_active: false },
+        isDoubleDatabase
+      );
 
       return successResponse(res, null, "Approval flow deleted successfully");
     } catch (error) {

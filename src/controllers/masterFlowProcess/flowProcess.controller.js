@@ -22,16 +22,17 @@ class FlowProcessController {
       }
       if (id_category) obj.id_category = id_category;
       if (is_active !== undefined) obj.is_active = is_active === "true";
+      obj.is_active = true;
 
       const flowProcesses = await flowProcessService.getAllWithRelations(
         { where: obj },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         flowProcesses,
-        "Flow processes retrieved successfully",
+        "Flow processes retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -44,13 +45,14 @@ class FlowProcessController {
   async getActive(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const flowProcesses =
-        await flowProcessService.getActiveFlowProcesses(isDoubleDatabase);
+      const flowProcesses = await flowProcessService.getActiveFlowProcesses(
+        isDoubleDatabase
+      );
 
       return successResponse(
         res,
         flowProcesses,
-        "Active flow processes retrieved successfully",
+        "Active flow processes retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -69,7 +71,7 @@ class FlowProcessController {
       const flowProcess = await flowProcessService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!flowProcess) {
@@ -79,7 +81,7 @@ class FlowProcessController {
       return successResponse(
         res,
         flowProcess,
-        "Flow process retrieved successfully",
+        "Flow process retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -96,13 +98,13 @@ class FlowProcessController {
 
       const flowProcesses = await flowProcessService.getByCategory(
         categoryId,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         flowProcesses,
-        "Flow processes retrieved successfully",
+        "Flow processes retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -119,13 +121,13 @@ class FlowProcessController {
 
       const flowProcesses = await flowProcessService.getActiveByCategoryId(
         categoryId,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         flowProcesses,
-        "Active flow processes retrieved successfully",
+        "Active flow processes retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -146,13 +148,13 @@ class FlowProcessController {
 
       const flowProcesses = await flowProcessService.searchByProjectName(
         query,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         flowProcesses,
-        "Flow processes found successfully",
+        "Flow processes found successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -184,7 +186,7 @@ class FlowProcessController {
           return errorResponse(
             res,
             `id_category is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -192,7 +194,7 @@ class FlowProcessController {
           return errorResponse(
             res,
             `project_name_indo is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -200,7 +202,7 @@ class FlowProcessController {
           return errorResponse(
             res,
             `project_name_mandarin is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -208,7 +210,7 @@ class FlowProcessController {
           return errorResponse(
             res,
             `document_description is required for item at index ${i}`,
-            400,
+            400
           );
         }
       }
@@ -221,14 +223,14 @@ class FlowProcessController {
 
       const result = await flowProcessService.createMultiple(
         flowProcessDataList,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Flow processes created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -248,13 +250,13 @@ class FlowProcessController {
       const flowProcess = await flowProcessService.updateMultiple(
         categoryId,
         flow_process_list,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         flowProcess,
-        "Flow process updated successfully",
+        "Flow process updated successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -288,7 +290,7 @@ class FlowProcessController {
       // Check if category exists
       const categoryExists = await flowProcessService.checkCategoryExists(
         categoryId,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!categoryExists) {
@@ -305,7 +307,7 @@ class FlowProcessController {
             return errorResponse(
               res,
               `project_name_indo is required for new item at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -313,7 +315,7 @@ class FlowProcessController {
             return errorResponse(
               res,
               `project_name_mandarin is required for new item at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -321,7 +323,7 @@ class FlowProcessController {
             return errorResponse(
               res,
               `document_description is required for new item at index ${i}`,
-              400,
+              400
             );
           }
         }
@@ -330,7 +332,7 @@ class FlowProcessController {
       const result = await flowProcessService.syncFlowProcessesByCategory(
         categoryId,
         flow_process_list,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Flow processes synced successfully");
@@ -352,13 +354,17 @@ class FlowProcessController {
       const existing = await flowProcessService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Flow process not found", 404);
       }
 
-      await flowProcessService.delete(id, isDoubleDatabase);
+      await flowProcessService.update(
+        id,
+        { is_active: false },
+        isDoubleDatabase
+      );
 
       return successResponse(res, null, "Flow process deleted successfully");
     } catch (error) {

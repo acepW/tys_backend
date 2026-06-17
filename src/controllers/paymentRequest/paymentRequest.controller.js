@@ -37,6 +37,7 @@ class PaymentRequestController {
         obj.id_contract_project_plan = id_contract_project_plan;
       if (status) obj.status = status;
       if (cost_bearer) obj.cost_bearer = cost_bearer;
+      obj.is_active = true;
 
       const paymentRequests = await paymentRequestService.getAllWithRelations(
         { where: obj },
@@ -359,7 +360,11 @@ class PaymentRequestController {
         return errorResponse(res, "Payment request not found", 404);
       }
 
-      await paymentRequestService.delete(id, isDoubleDatabase);
+      await paymentRequestService.update(
+        id,
+        { is_active: false },
+        isDoubleDatabase
+      );
 
       return successResponse(res, null, "Payment request deleted successfully");
     } catch (error) {

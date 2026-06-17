@@ -1,3 +1,4 @@
+const { where } = require("sequelize");
 const customerService = require("../services/customer.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
@@ -8,7 +9,10 @@ class CustomerController {
   async getAll(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const customers = await customerService.findAll({}, isDoubleDatabase);
+      const customers = await customerService.findAll(
+        { where: { is_active: true } },
+        isDoubleDatabase
+      );
 
       return successResponse(
         res,
@@ -288,7 +292,7 @@ class CustomerController {
         return errorResponse(res, "Customer not found", 404);
       }
 
-      await customerService.delete(id, isDoubleDatabase);
+      await customerService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Customer deleted successfully");
     } catch (error) {

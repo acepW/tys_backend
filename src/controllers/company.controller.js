@@ -1,3 +1,4 @@
+const { where } = require("sequelize");
 const companyService = require("../services/company.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
@@ -8,7 +9,10 @@ class CompanyController {
   async getAll(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const companies = await companyService.findAll({}, isDoubleDatabase);
+      const companies = await companyService.findAll(
+        { where: { is_active: true } },
+        isDoubleDatabase
+      );
 
       return successResponse(
         res,
@@ -344,7 +348,7 @@ class CompanyController {
         return errorResponse(res, "Company not found", 404);
       }
 
-      await companyService.delete(id, isDoubleDatabase);
+      await companyService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Company deleted successfully");
     } catch (error) {

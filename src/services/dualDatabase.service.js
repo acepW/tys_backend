@@ -46,7 +46,7 @@ class DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${this.modelName} successfully created in both databases`,
+          `✅ ${this.modelName} successfully created in both databases`
         );
 
         return result1.toJSON();
@@ -57,7 +57,7 @@ class DualDatabaseService {
         await transaction1.commit();
 
         console.log(
-          `✅ Created ${this.modelName} in DB2 only with ID: ${result1.id}`,
+          `✅ Created ${this.modelName} in DB2 only with ID: ${result1.id}`
         );
         return result2.toJSON();
       }
@@ -97,7 +97,7 @@ class DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Updating ${this.modelName} ID ${id} in both databases...`,
+          `🔄 Updating ${this.modelName} ID ${id} in both databases...`
         );
 
         // Update in both databases
@@ -116,7 +116,7 @@ class DualDatabaseService {
         // Check if update was successful in both databases
         if (updatedRows1 === 0 && updatedRows2 === 0) {
           throw new Error(
-            `${this.modelName} with ID ${id} not found in either database`,
+            `${this.modelName} with ID ${id} not found in either database`
           );
         }
 
@@ -124,7 +124,7 @@ class DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${this.modelName} successfully updated in both databases`,
+          `✅ ${this.modelName} successfully updated in both databases`
         );
 
         // Return updated record from DB1
@@ -184,7 +184,7 @@ class DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Deleting ${this.modelName} ID ${id} from both databases...`,
+          `🔄 Deleting ${this.modelName} ID ${id} from both databases...`
         );
 
         // Delete from both databases
@@ -203,7 +203,7 @@ class DualDatabaseService {
         // Check if deletion was successful
         if (deleted1 === 0 && deleted2 === 0) {
           throw new Error(
-            `${this.modelName} with ID ${id} not found in either database`,
+            `${this.modelName} with ID ${id} not found in either database`
           );
         }
 
@@ -211,7 +211,7 @@ class DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${this.modelName} successfully deleted from both databases`,
+          `✅ ${this.modelName} successfully deleted from both databases`
         );
 
         return true;
@@ -267,7 +267,7 @@ class DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Bulk creating ${dataArray.length} ${this.modelName}(s) in both databases...`,
+          `🔄 Bulk creating ${dataArray.length} ${this.modelName}(s) in both databases...`
         );
 
         // Bulk create in DB1
@@ -323,7 +323,7 @@ class DualDatabaseService {
       }
 
       throw new Error(
-        `Failed to bulk create ${this.modelName}: ${error.message}`,
+        `Failed to bulk create ${this.modelName}: ${error.message}`
       );
     }
   }
@@ -352,7 +352,7 @@ class DualDatabaseService {
       });
 
       console.log(
-        `🔄 Bulk operation: ${toCreate.length} to create, ${toUpdate.length} to update`,
+        `🔄 Bulk operation: ${toCreate.length} to create, ${toUpdate.length} to update`
       );
 
       if (isDoubleDatabase) {
@@ -365,7 +365,7 @@ class DualDatabaseService {
         // Handle CREATE operations
         if (toCreate.length > 0) {
           console.log(
-            `🔄 Creating ${toCreate.length} new ${this.modelName}(s) in both databases...`,
+            `🔄 Creating ${toCreate.length} new ${this.modelName}(s) in both databases...`
           );
 
           // Create in DB1 first to get IDs
@@ -394,7 +394,7 @@ class DualDatabaseService {
         // Handle UPDATE operations
         if (toUpdate.length > 0) {
           console.log(
-            `🔄 Updating ${toUpdate.length} ${this.modelName}(s) in both databases...`,
+            `🔄 Updating ${toUpdate.length} ${this.modelName}(s) in both databases...`
           );
 
           for (const data of toUpdate) {
@@ -422,7 +422,7 @@ class DualDatabaseService {
           }
 
           console.log(
-            `✅ Updated ${toUpdate.length} records in both databases`,
+            `✅ Updated ${toUpdate.length} records in both databases`
           );
         }
 
@@ -505,7 +505,7 @@ class DualDatabaseService {
       }
 
       throw new Error(
-        `Failed to bulk create/update ${this.modelName}: ${error.message}`,
+        `Failed to bulk create/update ${this.modelName}: ${error.message}`
       );
     }
   }
@@ -520,7 +520,7 @@ class DualDatabaseService {
 
       const results = await Model.findAll(options);
       console.log(
-        `✅ Found ${results.length} ${this.modelName}(s) from ${dbName}`,
+        `✅ Found ${results.length} ${this.modelName}(s) from ${dbName}`
       );
 
       return results.map((r) => r.toJSON());
@@ -573,14 +573,14 @@ class DualDatabaseService {
         return result.toJSON();
       } else {
         console.log(
-          `⚠️ ${this.modelName} with ID ${id} not found in ${dbName}`,
+          `⚠️ ${this.modelName} with ID ${id} not found in ${dbName}`
         );
         return null;
       }
     } catch (error) {
       console.error(`❌ Error finding ${this.modelName} by ID:`, error.message);
       throw new Error(
-        `Error finding ${this.modelName} by ID: ${error.message}`,
+        `Error finding ${this.modelName} by ID: ${error.message}`
       );
     }
   }

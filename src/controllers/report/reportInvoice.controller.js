@@ -19,12 +19,13 @@ class ReportInvoiceController {
         };
       }
       if (id_customer) obj.id_customer = id_customer;
+      obj.is_active = true;
 
       const invoices = await reportInvoiceService.getReportInvoice(
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, invoices, "Invoices retrieved successfully");
