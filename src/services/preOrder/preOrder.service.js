@@ -4,18 +4,18 @@ const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
 const { Op, fn, col } = require("sequelize");
 
-class QuotationService extends DualDatabaseService {
+class PreOrderService extends DualDatabaseService {
   constructor() {
-    super("Quotation");
+    super("PreOrder");
   }
 
   /**
-   * Get all quotations with relations
+   * Get all pre orders with relations
    * @param {Object} options - Query options
    * @param {Number} page - Page number for pagination
    * @param {Number} limit - Number of records per page
    * @param {Boolean} isDoubleDatabase
-   * @returns {Array} Quotations with relations
+   * @returns {Array} PreOrders with relations
    */
   async getAllWithRelations(
     options = {},
@@ -37,8 +37,16 @@ class QuotationService extends DualDatabaseService {
           as: "customer",
         },
         {
-          model: dbModels.QuotationCategory,
-          as: "quotation_category",
+          model: dbModels.Quotation,
+          as: "quotation",
+        },
+        {
+          model: dbModels.Contract,
+          as: "contract",
+        },
+        {
+          model: dbModels.PreOrderCategory,
+          as: "pre_order_category",
           separate: true,
           include: [
             {
@@ -51,7 +59,7 @@ class QuotationService extends DualDatabaseService {
               ],
             },
             {
-              model: dbModels.QuotationService,
+              model: dbModels.PreOrderService,
               as: "services",
               separate: true,
               include: [
@@ -65,12 +73,12 @@ class QuotationService extends DualDatabaseService {
                   ],
                 },
                 {
-                  model: dbModels.QuotationProduct,
+                  model: dbModels.PreOrderProduct,
                   as: "products",
                   separate: true,
                   include: [
                     {
-                      model: dbModels.QuotationProductField,
+                      model: dbModels.PreOrderProductField,
                       as: "fields",
                       separate: true,
                     },
@@ -81,26 +89,12 @@ class QuotationService extends DualDatabaseService {
           ],
         },
         {
-          model: dbModels.QuotationPayment,
-          as: "quotation_payment",
+          model: dbModels.PreOrderPayment,
+          as: "pre_order_payment",
         },
+
         {
-          model: dbModels.User,
-          as: "user_create",
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: dbModels.User,
-          as: "user_approve",
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: dbModels.User,
-          as: "user_reject",
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: dbModels.QuotationVerificationProgress,
+          model: dbModels.PreOrderVerificationProgress,
           as: "verification_progress",
           separate: true,
           include: [
@@ -137,8 +131,6 @@ class QuotationService extends DualDatabaseService {
       isDoubleDatabase,
     );
 
-    console.log(page, limit);
-
     return {
       data: rows,
       pagination: {
@@ -151,11 +143,11 @@ class QuotationService extends DualDatabaseService {
   }
 
   /**
-   * Get quotation by ID with relations
+   * Get pre order by ID with relations
    * @param {Number} id
    * @param {Object} options - Query options
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Quotation with relations
+   * @returns {Object} PreOrder with relations
    */
   async getById(id, options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
@@ -172,8 +164,16 @@ class QuotationService extends DualDatabaseService {
           as: "customer",
         },
         {
-          model: dbModels.QuotationCategory,
-          as: "quotation_category",
+          model: dbModels.Quotation,
+          as: "quotation",
+        },
+        {
+          model: dbModels.Contract,
+          as: "contract",
+        },
+        {
+          model: dbModels.PreOrderCategory,
+          as: "pre_order_category",
           include: [
             {
               model: dbModels.Category,
@@ -194,7 +194,7 @@ class QuotationService extends DualDatabaseService {
               ],
             },
             {
-              model: dbModels.QuotationService,
+              model: dbModels.PreOrderService,
               as: "services",
               include: [
                 {
@@ -211,11 +211,15 @@ class QuotationService extends DualDatabaseService {
                   ],
                 },
                 {
-                  model: dbModels.QuotationProduct,
+                  model: dbModels.ContractService,
+                  as: "contract_service",
+                },
+                {
+                  model: dbModels.PreOrderProduct,
                   as: "products",
                   include: [
                     {
-                      model: dbModels.QuotationProductField,
+                      model: dbModels.PreOrderProductField,
                       as: "fields",
                     },
                   ],
@@ -225,38 +229,24 @@ class QuotationService extends DualDatabaseService {
           ],
         },
         {
-          model: dbModels.QuotationPayment,
-          as: "quotation_payment",
+          model: dbModels.PreOrderPayment,
+          as: "pre_order_payment",
           include: [
             {
-              model: dbModels.QuotationPaymentList,
-              as: "quotation_payment_list",
+              model: dbModels.PreOrderPaymentList,
+              as: "pre_order_payment_list",
               include: [
                 {
-                  model: dbModels.QuotationPaymentService,
-                  as: "quotation_payment_services",
+                  model: dbModels.PreOrderPaymentService,
+                  as: "pre_order_payment_services",
                 },
               ],
             },
           ],
         },
+
         {
-          model: dbModels.User,
-          as: "user_create",
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: dbModels.User,
-          as: "user_approve",
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: dbModels.User,
-          as: "user_reject",
-          attributes: ["id", "name", "email"],
-        },
-        {
-          model: dbModels.QuotationVerificationProgress,
+          model: dbModels.PreOrderVerificationProgress,
           as: "verification_progress",
           separate: true,
           include: [
@@ -284,11 +274,11 @@ class QuotationService extends DualDatabaseService {
   }
 
   /**
-   * Get no quotation
+   * Get no pre order (generate pre order number)
    * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Quotation with relations
+   * @returns {Object} PreOrder number per company
    */
-  async getNoQuotation(isDoubleDatabase = true) {
+  async getNoPreOrder(isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
     const now = new Date();
@@ -296,7 +286,7 @@ class QuotationService extends DualDatabaseService {
     const month = now.getMonth() + 1;
 
     // 🔥 1. Ambil total per company
-    const dataTotal = await dbModels.Quotation.findAll({
+    const dataTotal = await dbModels.PreOrder.findAll({
       attributes: ["id_company", [fn("COUNT", col("id")), "total"]],
       where: {
         is_active: true,
@@ -349,7 +339,7 @@ class QuotationService extends DualDatabaseService {
         ? company.initial_company.toUpperCase()
         : "-";
 
-      const noQuotation = `${nomorUrut}/QT/${initial}/${bulanRomawi}/${year}`;
+      const noPreOrder = `${nomorUrut}/PO/${initial}/${bulanRomawi}/${year}`;
 
       return {
         id_company: company.id,
@@ -357,7 +347,7 @@ class QuotationService extends DualDatabaseService {
         initial_company: initial,
         total,
         next_number: nomorUrut,
-        no_quotation: noQuotation,
+        no_pre_order: noPreOrder,
       };
     });
 
@@ -365,14 +355,15 @@ class QuotationService extends DualDatabaseService {
   }
 
   /**
-   * Create quotation with nested categories, services, products, and fields
-   * @param {Object} quotationData - Quotation data
-   * @param {Array} categoriesData - Array of quotation categories with services and products
+   * Create pre order with nested categories, services, products, and fields
+   * @param {Object} preOrderData - PreOrder data
+   * @param {Array} categoriesData - Array of pre order categories with services (and each service's products/fields)
+   * @param {Number} id_user_create
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
-   * @returns {Object} Created quotation with all nested relations
+   * @returns {Object} Created pre order with all nested relations
    */
   async createWithNested(
-    quotationData,
+    preOrderData,
     categoriesData = [],
     id_user_create,
     isDoubleDatabase = true,
@@ -386,33 +377,33 @@ class QuotationService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating Quotation with nested relations in both databases...`,
+          `🔄 Creating PreOrder with nested relations in both databases...`,
         );
         console.log(`📋 Categories to create: ${categoriesData.length}`);
 
-        // 1. Create Quotation in DB1
-        const quotation1 = await this.Model1.create(quotationData, {
+        // 1. Create PreOrder in DB1
+        const preOrder1 = await this.Model1.create(preOrderData, {
           transaction: transaction1,
         });
-        console.log(`✅ Created Quotation in DB1 with ID: ${quotation1.id}`);
+        console.log(`✅ Created PreOrder in DB1 with ID: ${preOrder1.id}`);
 
-        // 2. Create Quotation in DB2 with same ID
-        const quotationDataWithId = {
-          ...quotationData,
-          id: quotation1.id,
+        // 2. Create PreOrder in DB2 with same ID
+        const preOrderDataWithId = {
+          ...preOrderData,
+          id: preOrder1.id,
         };
-        await this.Model2.create(quotationDataWithId, {
+        await this.Model2.create(preOrderDataWithId, {
           transaction: transaction2,
         });
-        console.log(`✅ Created Quotation in DB2 with ID: ${quotation1.id}`);
+        console.log(`✅ Created PreOrder in DB2 with ID: ${preOrder1.id}`);
 
-        // 3. Process Quotation Categories
+        // 3. Process PreOrder Categories
         if (categoriesData && categoriesData.length > 0) {
           console.log(
             `🔄 Starting to sync ${categoriesData.length} categories...`,
           );
-          const syncedCategories = await this._syncQuotationCategories(
-            quotation1.id,
+          const syncedCategories = await this._syncPreOrderCategories(
+            preOrder1.id,
             categoriesData,
             transaction1,
             transaction2,
@@ -426,13 +417,13 @@ class QuotationService extends DualDatabaseService {
         }
 
         const progressData = {
-          id_quotation: quotation1.id,
+          id_pre_order: preOrder1.id,
           id_user: id_user_create,
           status: "created",
-          note: "Quotation created",
+          note: "PreOrder created",
         };
 
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
+        const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
@@ -441,7 +432,7 @@ class QuotationService extends DualDatabaseService {
           ...progressData,
           id: progress1.id,
         };
-        await models.db2.QuotationVerificationProgress.create(
+        await models.db2.PreOrderVerificationProgress.create(
           progressDataWithId,
           {
             transaction: transaction2,
@@ -449,29 +440,29 @@ class QuotationService extends DualDatabaseService {
         );
 
         console.log(
-          `✅ Created QuotationVerificationProgress with status "created"`,
+          `✅ Created PreOrderVerificationProgress with status "created"`,
         );
 
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
-        console.log(`✅ Quotation with nested relations successfully created`);
+        console.log(`✅ PreOrder with nested relations successfully created`);
 
-        // Get complete quotation with relations
-        const result = await this.getById(quotation1.id, {}, isDoubleDatabase);
+        // Get complete pre order with relations
+        const result = await this.getById(preOrder1.id, {}, isDoubleDatabase);
 
         return result;
       } else {
         // Single database (DB1 only)
         transaction1 = await db1.transaction();
 
-        const quotation = await this.Model1.create(quotationData, {
+        const preOrder = await this.Model1.create(preOrderData, {
           transaction: transaction1,
         });
 
         if (categoriesData && categoriesData.length > 0) {
-          await this._syncQuotationCategories(
-            quotation.id,
+          await this._syncPreOrderCategories(
+            preOrder.id,
             categoriesData,
             transaction1,
             null,
@@ -480,30 +471,30 @@ class QuotationService extends DualDatabaseService {
         }
 
         const progressData = {
-          id_quotation: quotation.id,
+          id_pre_order: preOrder.id,
           id_user: id_user_create,
           status: "created",
-          note: "Quotation created",
+          note: "PreOrder created",
         };
 
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
+        const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
 
         console.log(
-          `✅ Created QuotationVerificationProgress with status "created"`,
+          `✅ Created PreOrderVerificationProgress with status "created"`,
         );
 
         await transaction1.commit();
-        console.log(`✅ Quotation created in DB1 only`);
+        console.log(`✅ PreOrder created in DB1 only`);
 
-        const result = await this.getById(quotation.id, {}, false);
+        const result = await this.getById(preOrder.id, {}, false);
         return result;
       }
     } catch (error) {
       console.error(
-        `❌ Error creating Quotation with nested relations:`,
+        `❌ Error creating PreOrder with nested relations:`,
         error.message,
       );
       console.error(`❌ Error stack:`, error.stack);
@@ -511,21 +502,21 @@ class QuotationService extends DualDatabaseService {
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
-      throw new Error(`Failed to create Quotation: ${error.message}`);
+      throw new Error(`Failed to create PreOrder: ${error.message}`);
     }
   }
 
   /**
-   * Update quotation with nested categories, services, products, and fields
-   * @param {Number} id - Quotation ID
-   * @param {Object} quotationData - Quotation data to update
-   * @param {Array} categoriesData - Array of quotation categories
+   * Update pre order with nested categories, services, products, and fields
+   * @param {Number} id - PreOrder ID
+   * @param {Object} preOrderData - PreOrder data to update
+   * @param {Array} categoriesData - Array of pre order categories
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
-   * @returns {Object} Updated quotation with nested relations
+   * @returns {Object} Updated pre order with nested relations
    */
   async updateWithNested(
     id,
-    quotationData,
+    preOrderData,
     categoriesData = [],
     isDoubleDatabase = true,
   ) {
@@ -537,27 +528,27 @@ class QuotationService extends DualDatabaseService {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
-        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+        console.log(`🔄 Updating PreOrder ID ${id} with nested relations...`);
 
-        // 1. Update Quotation in both databases
-        const [updatedRows1] = await this.Model1.update(quotationData, {
+        // 1. Update PreOrder in both databases
+        const [updatedRows1] = await this.Model1.update(preOrderData, {
           where: { id },
           transaction: transaction1,
         });
 
-        const [updatedRows2] = await this.Model2.update(quotationData, {
+        const [updatedRows2] = await this.Model2.update(preOrderData, {
           where: { id },
           transaction: transaction2,
         });
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
+          throw new Error(`PreOrder with ID ${id} not found`);
         }
 
-        console.log(`✅ Updated Quotation in both databases`);
+        console.log(`✅ Updated PreOrder in both databases`);
 
-        // 2. Sync Quotation Categories with nested relations
-        await this._syncQuotationCategories(
+        // 2. Sync PreOrder Categories with nested relations
+        await this._syncPreOrderCategories(
           id,
           categoriesData,
           transaction1,
@@ -568,25 +559,25 @@ class QuotationService extends DualDatabaseService {
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
-        console.log(`✅ Quotation with nested relations successfully updated`);
+        console.log(`✅ PreOrder with nested relations successfully updated`);
 
-        // Get updated quotation
+        // Get updated pre order
         const result = await this.getById(id, {}, isDoubleDatabase);
         return result;
       } else {
         // Single database (DB1 only)
         transaction1 = await db1.transaction();
 
-        const [updatedRows] = await this.Model1.update(quotationData, {
+        const [updatedRows] = await this.Model1.update(preOrderData, {
           where: { id },
           transaction: transaction1,
         });
 
         if (updatedRows === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
+          throw new Error(`PreOrder with ID ${id} not found`);
         }
 
-        await this._syncQuotationCategories(
+        await this._syncPreOrderCategories(
           id,
           categoriesData,
           transaction1,
@@ -595,33 +586,33 @@ class QuotationService extends DualDatabaseService {
         );
 
         await transaction1.commit();
-        console.log(`✅ Quotation updated in DB1 only`);
+        console.log(`✅ PreOrder updated in DB1 only`);
 
         const result = await this.getById(id, {}, false);
         return result;
       }
     } catch (error) {
       console.error(
-        `❌ Error updating Quotation with nested relations:`,
+        `❌ Error updating PreOrder with nested relations:`,
         error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
-      throw new Error(`Failed to update Quotation: ${error.message}`);
+      throw new Error(`Failed to update PreOrder: ${error.message}`);
     }
   }
 
   /**
    * Sync payments (array) with nested payment lists and payment services
    * Logic: no id = create, has id = update, missing from data = delete
-   * @param {Number} quotationId
+   * @param {Number} preOrderId
    * @param {Array} paymentsData - Array of payment with nested lists & services
    * @param {Boolean} isDoubleDatabase
-   * @returns {Array} Payments with nested relations
+   * @returns {Object} PreOrder with nested relations
    */
-  async syncPayment(quotationId, paymentsData = [], isDoubleDatabase = true) {
+  async syncPayment(preOrderId, paymentsData = [], isDoubleDatabase = true) {
     let transaction1 = null;
     let transaction2 = null;
 
@@ -630,20 +621,20 @@ class QuotationService extends DualDatabaseService {
       if (isDoubleDatabase) transaction2 = await db2.transaction();
 
       console.log(
-        `🔄 Syncing ${paymentsData.length} Payment(s) for Quotation ID: ${quotationId}...`,
+        `🔄 Syncing ${paymentsData.length} Payment(s) for PreOrder ID: ${preOrderId}...`,
       );
 
-      // ── 1. Sync QuotationPayment (array) via syncChildRecords ───────
+      // ── 1. Sync PreOrderPayment (array) via syncChildRecords ───────
       const preparedPayments = paymentsData.map((payment) => {
         const { payment_list, ...paymentData } = payment;
-        return { ...paymentData, id_quotation: quotationId };
+        return { ...paymentData, id_pre_order: preOrderId };
       });
 
       const paymentsResult = await syncChildRecords({
-        Model1: models.db1.QuotationPayment,
-        Model2: isDoubleDatabase ? models.db2.QuotationPayment : null,
-        foreignKey: "id_quotation",
-        parentId: quotationId,
+        Model1: models.db1.PreOrderPayment,
+        Model2: isDoubleDatabase ? models.db2.PreOrderPayment : null,
+        foreignKey: "id_pre_order",
+        parentId: preOrderId,
         newData: preparedPayments,
         transaction1,
         transaction2,
@@ -662,8 +653,8 @@ class QuotationService extends DualDatabaseService {
 
       // Cleanup lists & services milik payment yang dihapus
       const keepPaymentIds = syncedPayments.map((p) => p.id);
-      const existingPayments = await models.db1.QuotationPayment.findAll({
-        where: { id_quotation: quotationId },
+      const existingPayments = await models.db1.PreOrderPayment.findAll({
+        where: { id_pre_order: preOrderId },
         attributes: ["id"],
         transaction: transaction1,
       });
@@ -677,8 +668,8 @@ class QuotationService extends DualDatabaseService {
         );
 
         // Ambil list ids yang akan ikut terhapus
-        const listsToDelete = await models.db1.QuotationPaymentList.findAll({
-          where: { id_quotation_payment: deletedPaymentIds },
+        const listsToDelete = await models.db1.PreOrderPaymentList.findAll({
+          where: { id_pre_order_payment: deletedPaymentIds },
           attributes: ["id"],
           transaction: transaction1,
         });
@@ -686,28 +677,28 @@ class QuotationService extends DualDatabaseService {
 
         // Hapus services dulu (terdalam)
         if (deletedListIds.length > 0) {
-          await models.db1.QuotationPaymentService.destroy({
-            where: { id_quotation_payment_list: deletedListIds },
+          await models.db1.PreOrderPaymentService.destroy({
+            where: { id_pre_order_payment_list: deletedListIds },
             transaction: transaction1,
           });
 
           if (isDoubleDatabase) {
-            await models.db2.QuotationPaymentService.destroy({
-              where: { id_quotation_payment_list: deletedListIds },
+            await models.db2.PreOrderPaymentService.destroy({
+              where: { id_pre_order_payment_list: deletedListIds },
               transaction: transaction2,
             });
           }
         }
 
         // Hapus lists
-        await models.db1.QuotationPaymentList.destroy({
-          where: { id_quotation_payment: deletedPaymentIds },
+        await models.db1.PreOrderPaymentList.destroy({
+          where: { id_pre_order_payment: deletedPaymentIds },
           transaction: transaction1,
         });
 
         if (isDoubleDatabase) {
-          await models.db2.QuotationPaymentList.destroy({
-            where: { id_quotation_payment: deletedPaymentIds },
+          await models.db2.PreOrderPaymentList.destroy({
+            where: { id_pre_order_payment: deletedPaymentIds },
             transaction: transaction2,
           });
         }
@@ -734,7 +725,7 @@ class QuotationService extends DualDatabaseService {
         }
       }
 
-      // ── 3. Sync QuotationPaymentList per payment ────────────────────
+      // ── 3. Sync PreOrderPaymentList per payment ────────────────────
       for (let i = 0; i < paymentsData.length; i++) {
         const paymentData = paymentsData[i];
         const syncedPayment = paymentMapping.get(i);
@@ -754,13 +745,13 @@ class QuotationService extends DualDatabaseService {
         if (paymentListData.length > 0) {
           const preparedLists = paymentListData.map((list) => {
             const { services, ...listData } = list;
-            return { ...listData, id_quotation_payment: paymentId };
+            return { ...listData, id_pre_order_payment: paymentId };
           });
 
           const listsResult = await syncChildRecords({
-            Model1: models.db1.QuotationPaymentList,
-            Model2: isDoubleDatabase ? models.db2.QuotationPaymentList : null,
-            foreignKey: "id_quotation_payment",
+            Model1: models.db1.PreOrderPaymentList,
+            Model2: isDoubleDatabase ? models.db2.PreOrderPaymentList : null,
+            foreignKey: "id_pre_order_payment",
             parentId: paymentId,
             newData: preparedLists,
             transaction1,
@@ -780,8 +771,8 @@ class QuotationService extends DualDatabaseService {
 
           // Cleanup services milik list yang dihapus
           const keepListIds = syncedLists.map((l) => l.id);
-          const existingLists = await models.db1.QuotationPaymentList.findAll({
-            where: { id_quotation_payment: paymentId },
+          const existingLists = await models.db1.PreOrderPaymentList.findAll({
+            where: { id_pre_order_payment: paymentId },
             attributes: ["id"],
             transaction: transaction1,
           });
@@ -790,14 +781,14 @@ class QuotationService extends DualDatabaseService {
             .filter((id) => !keepListIds.includes(id));
 
           if (deletedListIds.length > 0) {
-            await models.db1.QuotationPaymentService.destroy({
-              where: { id_quotation_payment_list: deletedListIds },
+            await models.db1.PreOrderPaymentService.destroy({
+              where: { id_pre_order_payment_list: deletedListIds },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationPaymentService.destroy({
-                where: { id_quotation_payment_list: deletedListIds },
+              await models.db2.PreOrderPaymentService.destroy({
+                where: { id_pre_order_payment_list: deletedListIds },
                 transaction: transaction2,
               });
             }
@@ -826,7 +817,7 @@ class QuotationService extends DualDatabaseService {
             }
           }
 
-          // ── 5. Sync QuotationPaymentService per list ───────────────
+          // ── 5. Sync PreOrderPaymentService per list ───────────────
           for (let j = 0; j < paymentListData.length; j++) {
             const listData = paymentListData[j];
             const syncedList = listMapping.get(j);
@@ -844,16 +835,16 @@ class QuotationService extends DualDatabaseService {
             if (services.length > 0) {
               const preparedServices = services.map((svc) => ({
                 ...svc,
-                id_quotation_payment: paymentId,
-                id_quotation_payment_list: listId,
+                id_pre_order_payment: paymentId,
+                id_pre_order_payment_list: listId,
               }));
 
               const servicesResult = await syncChildRecords({
-                Model1: models.db1.QuotationPaymentService,
+                Model1: models.db1.PreOrderPaymentService,
                 Model2: isDoubleDatabase
-                  ? models.db2.QuotationPaymentService
+                  ? models.db2.PreOrderPaymentService
                   : null,
-                foreignKey: "id_quotation_payment_list",
+                foreignKey: "id_pre_order_payment_list",
                 parentId: listId,
                 newData: preparedServices,
                 transaction1,
@@ -871,14 +862,14 @@ class QuotationService extends DualDatabaseService {
               );
             } else {
               // Tidak ada services → hapus semua yang ada
-              await models.db1.QuotationPaymentService.destroy({
-                where: { id_quotation_payment_list: listId },
+              await models.db1.PreOrderPaymentService.destroy({
+                where: { id_pre_order_payment_list: listId },
                 transaction: transaction1,
               });
 
               if (isDoubleDatabase) {
-                await models.db2.QuotationPaymentService.destroy({
-                  where: { id_quotation_payment_list: listId },
+                await models.db2.PreOrderPaymentService.destroy({
+                  where: { id_pre_order_payment_list: listId },
                   transaction: transaction2,
                 });
               }
@@ -890,34 +881,34 @@ class QuotationService extends DualDatabaseService {
           }
         } else {
           // Tidak ada list → hapus semua list & services yang ada
-          const existingLists = await models.db1.QuotationPaymentList.findAll({
-            where: { id_quotation_payment: paymentId },
+          const existingLists = await models.db1.PreOrderPaymentList.findAll({
+            where: { id_pre_order_payment: paymentId },
             attributes: ["id"],
             transaction: transaction1,
           });
           const existingListIds = existingLists.map((l) => l.id);
 
           if (existingListIds.length > 0) {
-            await models.db1.QuotationPaymentService.destroy({
-              where: { id_quotation_payment_list: existingListIds },
+            await models.db1.PreOrderPaymentService.destroy({
+              where: { id_pre_order_payment_list: existingListIds },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationPaymentService.destroy({
-                where: { id_quotation_payment_list: existingListIds },
+              await models.db2.PreOrderPaymentService.destroy({
+                where: { id_pre_order_payment_list: existingListIds },
                 transaction: transaction2,
               });
             }
 
-            await models.db1.QuotationPaymentList.destroy({
-              where: { id_quotation_payment: paymentId },
+            await models.db1.PreOrderPaymentList.destroy({
+              where: { id_pre_order_payment: paymentId },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationPaymentList.destroy({
-                where: { id_quotation_payment: paymentId },
+              await models.db2.PreOrderPaymentList.destroy({
+                where: { id_pre_order_payment: paymentId },
                 transaction: transaction2,
               });
             }
@@ -933,9 +924,9 @@ class QuotationService extends DualDatabaseService {
       await transaction1.commit();
       if (isDoubleDatabase) await transaction2.commit();
 
-      console.log(`✅ Payment sync completed for Quotation ID: ${quotationId}`);
+      console.log(`✅ Payment sync completed for PreOrder ID: ${preOrderId}`);
 
-      return await this.getById(quotationId, {}, isDoubleDatabase);
+      return await this.getById(preOrderId, {}, isDoubleDatabase);
     } catch (error) {
       console.error(`❌ Error syncing Payment:`, error.message);
       if (transaction1) await transaction1.rollback();
@@ -945,11 +936,11 @@ class QuotationService extends DualDatabaseService {
   }
 
   /**
-   * Sync Quotation Categories with nested services (and each service's nested products/fields)
+   * Sync PreOrder Categories with nested services (and each service's nested products/fields)
    * @private
    */
-  async _syncQuotationCategories(
-    quotationId,
+  async _syncPreOrderCategories(
+    preOrderId,
     categoriesData,
     transaction1,
     transaction2,
@@ -960,16 +951,16 @@ class QuotationService extends DualDatabaseService {
       const { services, ...categoryData } = cat;
       return {
         ...categoryData,
-        id_quotation: quotationId,
+        id_pre_order: preOrderId,
       };
     });
 
     // Sync Categories
     const categoriesResult = await syncChildRecords({
-      Model1: models.db1.QuotationCategory,
-      Model2: isDoubleDatabase ? models.db2.QuotationCategory : null,
-      foreignKey: "id_quotation",
-      parentId: quotationId,
+      Model1: models.db1.PreOrderCategory,
+      Model2: isDoubleDatabase ? models.db2.PreOrderCategory : null,
+      foreignKey: "id_pre_order",
+      parentId: preOrderId,
       newData: preparedCategories,
       transaction1,
       transaction2,
@@ -990,8 +981,8 @@ class QuotationService extends DualDatabaseService {
     const keepCategoryIds = syncedCategories.map((cat) => cat.id);
 
     // Find categories that will be deleted (exist in DB but not in keepCategoryIds)
-    const existingCategories = await models.db1.QuotationCategory.findAll({
-      where: { id_quotation: quotationId },
+    const existingCategories = await models.db1.PreOrderCategory.findAll({
+      where: { id_pre_order: preOrderId },
       attributes: ["id"],
       transaction: transaction1,
     });
@@ -1007,9 +998,9 @@ class QuotationService extends DualDatabaseService {
         `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`,
       );
 
-      // Get services that belong to categories being deleted (products now hang off services)
-      const servicesToDelete = await models.db1.QuotationService.findAll({
-        where: { id_quotation_category: deletedCategoryIds },
+      // Get services that belong to categories being deleted (products hang off services)
+      const servicesToDelete = await models.db1.PreOrderService.findAll({
+        where: { id_pre_order_category: deletedCategoryIds },
         attributes: ["id"],
         transaction: transaction1,
       });
@@ -1017,8 +1008,8 @@ class QuotationService extends DualDatabaseService {
 
       // Get products that belong to those services
       if (serviceIdsToDelete.length > 0) {
-        const productsToDelete = await models.db1.QuotationProduct.findAll({
-          where: { id_quotation_service: serviceIdsToDelete },
+        const productsToDelete = await models.db1.PreOrderProduct.findAll({
+          where: { id_pre_order_service: serviceIdsToDelete },
           attributes: ["id"],
           transaction: transaction1,
         });
@@ -1026,14 +1017,14 @@ class QuotationService extends DualDatabaseService {
 
         // Delete fields first (deepest child)
         if (productIdsToDelete.length > 0) {
-          await models.db1.QuotationProductField.destroy({
-            where: { id_quotation_product: productIdsToDelete },
+          await models.db1.PreOrderProductField.destroy({
+            where: { id_pre_order_product: productIdsToDelete },
             transaction: transaction1,
           });
 
           if (isDoubleDatabase) {
-            await models.db2.QuotationProductField.destroy({
-              where: { id_quotation_product: productIdsToDelete },
+            await models.db2.PreOrderProductField.destroy({
+              where: { id_pre_order_product: productIdsToDelete },
               transaction: transaction2,
             });
           }
@@ -1043,14 +1034,14 @@ class QuotationService extends DualDatabaseService {
         }
 
         // Delete products
-        await models.db1.QuotationProduct.destroy({
-          where: { id_quotation_service: serviceIdsToDelete },
+        await models.db1.PreOrderProduct.destroy({
+          where: { id_pre_order_service: serviceIdsToDelete },
           transaction: transaction1,
         });
 
         if (isDoubleDatabase) {
-          await models.db2.QuotationProduct.destroy({
-            where: { id_quotation_service: serviceIdsToDelete },
+          await models.db2.PreOrderProduct.destroy({
+            where: { id_pre_order_service: serviceIdsToDelete },
             transaction: transaction2,
           });
         }
@@ -1060,14 +1051,14 @@ class QuotationService extends DualDatabaseService {
       }
 
       // Delete services
-      await models.db1.QuotationService.destroy({
-        where: { id_quotation_category: deletedCategoryIds },
+      await models.db1.PreOrderService.destroy({
+        where: { id_pre_order_category: deletedCategoryIds },
         transaction: transaction1,
       });
 
       if (isDoubleDatabase) {
-        await models.db2.QuotationService.destroy({
-          where: { id_quotation_category: deletedCategoryIds },
+        await models.db2.PreOrderService.destroy({
+          where: { id_pre_order_category: deletedCategoryIds },
           transaction: transaction2,
         });
       }
@@ -1127,7 +1118,7 @@ class QuotationService extends DualDatabaseService {
           const { products, ...serviceData } = service;
           return {
             ...serviceData,
-            id_quotation_category: categoryId,
+            id_pre_order_category: categoryId,
           };
         });
 
@@ -1136,9 +1127,9 @@ class QuotationService extends DualDatabaseService {
         );
 
         const servicesResult = await syncChildRecords({
-          Model1: models.db1.QuotationService,
-          Model2: isDoubleDatabase ? models.db2.QuotationService : null,
-          foreignKey: "id_quotation_category",
+          Model1: models.db1.PreOrderService,
+          Model2: isDoubleDatabase ? models.db2.PreOrderService : null,
+          foreignKey: "id_pre_order_category",
           parentId: categoryId,
           newData: preparedServices,
           transaction1,
@@ -1158,8 +1149,8 @@ class QuotationService extends DualDatabaseService {
 
         // Cleanup products+fields belonging to services that will be deleted
         const keepServiceIds = syncedServices.map((s) => s.id);
-        const existingServices = await models.db1.QuotationService.findAll({
-          where: { id_quotation_category: categoryId },
+        const existingServices = await models.db1.PreOrderService.findAll({
+          where: { id_pre_order_category: categoryId },
           attributes: ["id"],
           transaction: transaction1,
         });
@@ -1168,35 +1159,35 @@ class QuotationService extends DualDatabaseService {
           .filter((id) => !keepServiceIds.includes(id));
 
         if (deletedServiceIds.length > 0) {
-          const productsToDelete = await models.db1.QuotationProduct.findAll({
-            where: { id_quotation_service: deletedServiceIds },
+          const productsToDelete = await models.db1.PreOrderProduct.findAll({
+            where: { id_pre_order_service: deletedServiceIds },
             attributes: ["id"],
             transaction: transaction1,
           });
           const productIdsToDelete = productsToDelete.map((p) => p.id);
 
           if (productIdsToDelete.length > 0) {
-            await models.db1.QuotationProductField.destroy({
-              where: { id_quotation_product: productIdsToDelete },
+            await models.db1.PreOrderProductField.destroy({
+              where: { id_pre_order_product: productIdsToDelete },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationProductField.destroy({
-                where: { id_quotation_product: productIdsToDelete },
+              await models.db2.PreOrderProductField.destroy({
+                where: { id_pre_order_product: productIdsToDelete },
                 transaction: transaction2,
               });
             }
           }
 
-          await models.db1.QuotationProduct.destroy({
-            where: { id_quotation_service: deletedServiceIds },
+          await models.db1.PreOrderProduct.destroy({
+            where: { id_pre_order_service: deletedServiceIds },
             transaction: transaction1,
           });
 
           if (isDoubleDatabase) {
-            await models.db2.QuotationProduct.destroy({
-              where: { id_quotation_service: deletedServiceIds },
+            await models.db2.PreOrderProduct.destroy({
+              where: { id_pre_order_service: deletedServiceIds },
               transaction: transaction2,
             });
           }
@@ -1252,8 +1243,8 @@ class QuotationService extends DualDatabaseService {
               const { fields, ...productData } = product;
               return {
                 ...productData,
-                id_quotation_category: categoryId,
-                id_quotation_service: serviceId,
+                id_pre_order_category: categoryId,
+                id_pre_order_service: serviceId,
               };
             });
 
@@ -1262,8 +1253,8 @@ class QuotationService extends DualDatabaseService {
             );
 
             // Get existing products to identify which will be deleted
-            const existingProducts = await models.db1.QuotationProduct.findAll({
-              where: { id_quotation_service: serviceId },
+            const existingProducts = await models.db1.PreOrderProduct.findAll({
+              where: { id_pre_order_service: serviceId },
               attributes: ["id"],
               transaction: transaction1,
             });
@@ -1282,23 +1273,23 @@ class QuotationService extends DualDatabaseService {
                 `🗑️ Deleting fields for ${deletedProductIds.length} products...`,
               );
 
-              await models.db1.QuotationProductField.destroy({
-                where: { id_quotation_product: deletedProductIds },
+              await models.db1.PreOrderProductField.destroy({
+                where: { id_pre_order_product: deletedProductIds },
                 transaction: transaction1,
               });
 
               if (isDoubleDatabase) {
-                await models.db2.QuotationProductField.destroy({
-                  where: { id_quotation_product: deletedProductIds },
+                await models.db2.PreOrderProductField.destroy({
+                  where: { id_pre_order_product: deletedProductIds },
                   transaction: transaction2,
                 });
               }
             }
 
             const productsResult = await syncChildRecords({
-              Model1: models.db1.QuotationProduct,
-              Model2: isDoubleDatabase ? models.db2.QuotationProduct : null,
-              foreignKey: "id_quotation_service",
+              Model1: models.db1.PreOrderProduct,
+              Model2: isDoubleDatabase ? models.db2.PreOrderProduct : null,
+              foreignKey: "id_pre_order_service",
               parentId: serviceId,
               newData: productsData,
               transaction1,
@@ -1359,7 +1350,7 @@ class QuotationService extends DualDatabaseService {
               ) {
                 const fieldsData = productData.fields.map((field) => ({
                   ...field,
-                  id_quotation_product: productId,
+                  id_pre_order_product: productId,
                 }));
 
                 console.log(
@@ -1367,11 +1358,11 @@ class QuotationService extends DualDatabaseService {
                 );
 
                 const fieldsResult = await syncChildRecords({
-                  Model1: models.db1.QuotationProductField,
+                  Model1: models.db1.PreOrderProductField,
                   Model2: isDoubleDatabase
-                    ? models.db2.QuotationProductField
+                    ? models.db2.PreOrderProductField
                     : null,
-                  foreignKey: "id_quotation_product",
+                  foreignKey: "id_pre_order_product",
                   parentId: productId,
                   newData: fieldsData,
                   transaction1,
@@ -1387,14 +1378,14 @@ class QuotationService extends DualDatabaseService {
                 );
               } else {
                 // If no fields provided, delete all existing fields
-                await models.db1.QuotationProductField.destroy({
-                  where: { id_quotation_product: productId },
+                await models.db1.PreOrderProductField.destroy({
+                  where: { id_pre_order_product: productId },
                   transaction: transaction1,
                 });
 
                 if (isDoubleDatabase) {
-                  await models.db2.QuotationProductField.destroy({
-                    where: { id_quotation_product: productId },
+                  await models.db2.PreOrderProductField.destroy({
+                    where: { id_pre_order_product: productId },
                     transaction: transaction2,
                   });
                 }
@@ -1402,8 +1393,8 @@ class QuotationService extends DualDatabaseService {
             }
           } else {
             // If no products provided for this service, delete all existing products and their fields
-            const existingProducts = await models.db1.QuotationProduct.findAll({
-              where: { id_quotation_service: serviceId },
+            const existingProducts = await models.db1.PreOrderProduct.findAll({
+              where: { id_pre_order_service: serviceId },
               attributes: ["id"],
               transaction: transaction1,
             });
@@ -1411,27 +1402,27 @@ class QuotationService extends DualDatabaseService {
             const productIds = existingProducts.map((p) => p.id);
 
             if (productIds.length > 0) {
-              await models.db1.QuotationProductField.destroy({
-                where: { id_quotation_product: productIds },
+              await models.db1.PreOrderProductField.destroy({
+                where: { id_pre_order_product: productIds },
                 transaction: transaction1,
               });
 
               if (isDoubleDatabase) {
-                await models.db2.QuotationProductField.destroy({
-                  where: { id_quotation_product: productIds },
+                await models.db2.PreOrderProductField.destroy({
+                  where: { id_pre_order_product: productIds },
                   transaction: transaction2,
                 });
               }
             }
 
-            await models.db1.QuotationProduct.destroy({
-              where: { id_quotation_service: serviceId },
+            await models.db1.PreOrderProduct.destroy({
+              where: { id_pre_order_service: serviceId },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationProduct.destroy({
-                where: { id_quotation_service: serviceId },
+              await models.db2.PreOrderProduct.destroy({
+                where: { id_pre_order_service: serviceId },
                 transaction: transaction2,
               });
             }
@@ -1439,56 +1430,56 @@ class QuotationService extends DualDatabaseService {
         }
       } else {
         // If no services provided, delete all existing services (and their products/fields)
-        const existingServices = await models.db1.QuotationService.findAll({
-          where: { id_quotation_category: categoryId },
+        const existingServices = await models.db1.PreOrderService.findAll({
+          where: { id_pre_order_category: categoryId },
           attributes: ["id"],
           transaction: transaction1,
         });
         const existingServiceIds = existingServices.map((s) => s.id);
 
         if (existingServiceIds.length > 0) {
-          const productsToDelete = await models.db1.QuotationProduct.findAll({
-            where: { id_quotation_service: existingServiceIds },
+          const productsToDelete = await models.db1.PreOrderProduct.findAll({
+            where: { id_pre_order_service: existingServiceIds },
             attributes: ["id"],
             transaction: transaction1,
           });
           const productIdsToDelete = productsToDelete.map((p) => p.id);
 
           if (productIdsToDelete.length > 0) {
-            await models.db1.QuotationProductField.destroy({
-              where: { id_quotation_product: productIdsToDelete },
+            await models.db1.PreOrderProductField.destroy({
+              where: { id_pre_order_product: productIdsToDelete },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationProductField.destroy({
-                where: { id_quotation_product: productIdsToDelete },
+              await models.db2.PreOrderProductField.destroy({
+                where: { id_pre_order_product: productIdsToDelete },
                 transaction: transaction2,
               });
             }
           }
 
-          await models.db1.QuotationProduct.destroy({
-            where: { id_quotation_service: existingServiceIds },
+          await models.db1.PreOrderProduct.destroy({
+            where: { id_pre_order_service: existingServiceIds },
             transaction: transaction1,
           });
 
           if (isDoubleDatabase) {
-            await models.db2.QuotationProduct.destroy({
-              where: { id_quotation_service: existingServiceIds },
+            await models.db2.PreOrderProduct.destroy({
+              where: { id_pre_order_service: existingServiceIds },
               transaction: transaction2,
             });
           }
         }
 
-        await models.db1.QuotationService.destroy({
-          where: { id_quotation_category: categoryId },
+        await models.db1.PreOrderService.destroy({
+          where: { id_pre_order_category: categoryId },
           transaction: transaction1,
         });
 
         if (isDoubleDatabase) {
-          await models.db2.QuotationService.destroy({
-            where: { id_quotation_category: categoryId },
+          await models.db2.PreOrderService.destroy({
+            where: { id_pre_order_category: categoryId },
             transaction: transaction2,
           });
         }
@@ -1507,9 +1498,9 @@ class QuotationService extends DualDatabaseService {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
-        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+        console.log(`🔄 Updating PreOrder ID ${id} with nested relations...`);
 
-        // 1. Update Quotation in both databases
+        // 1. Update PreOrder in both databases
         const [updatedRows1] = await this.Model1.update(
           { status: "approved", id_user_approve },
           {
@@ -1527,19 +1518,19 @@ class QuotationService extends DualDatabaseService {
         );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
+          throw new Error(`PreOrder with ID ${id} not found`);
         }
 
-        console.log(`✅ Updated Quotation in both databases`);
+        console.log(`✅ Updated PreOrder in both databases`);
 
         const progressData = {
-          id_quotation: id,
+          id_pre_order: id,
           id_user: id_user_approve,
           status: "approved",
-          note: "Quotation approved",
+          note: "PreOrder approved",
         };
 
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
+        const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
@@ -1548,7 +1539,7 @@ class QuotationService extends DualDatabaseService {
           ...progressData,
           id: progress1.id,
         };
-        await models.db2.QuotationVerificationProgress.create(
+        await models.db2.PreOrderVerificationProgress.create(
           progressDataWithId,
           {
             transaction: transaction2,
@@ -1556,15 +1547,15 @@ class QuotationService extends DualDatabaseService {
         );
 
         console.log(
-          `✅ approved QuotationVerificationProgress with status "approved"`,
+          `✅ approved PreOrderVerificationProgress with status "approved"`,
         );
 
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
-        console.log(`✅ Quotation with nested relations successfully updated`);
+        console.log(`✅ PreOrder with nested relations successfully updated`);
 
-        // Get updated quotation
+        // Get updated pre order
         const result = await this.getById(id, {}, isDoubleDatabase);
         return result;
       } else {
@@ -1580,41 +1571,41 @@ class QuotationService extends DualDatabaseService {
         );
 
         if (updatedRows === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
+          throw new Error(`PreOrder with ID ${id} not found`);
         }
 
         const progressData = {
-          id_quotation: id,
+          id_pre_order: id,
           id_user: id_user_approve,
           status: "approved",
-          note: "Quotation approved",
+          note: "PreOrder approved",
         };
 
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
+        const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
 
         console.log(
-          `✅ Approved QuotationVerificationProgress with status "approved"`,
+          `✅ Approved PreOrderVerificationProgress with status "approved"`,
         );
 
         await transaction1.commit();
-        console.log(`✅ Quotation updated in DB1 only`);
+        console.log(`✅ PreOrder updated in DB1 only`);
 
         const result = await this.getById(id, {}, false);
         return result;
       }
     } catch (error) {
       console.error(
-        `❌ Error updating Quotation with nested relations:`,
+        `❌ Error updating PreOrder with nested relations:`,
         error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
-      throw new Error(`Failed to update Quotation: ${error.message}`);
+      throw new Error(`Failed to update PreOrder: ${error.message}`);
     }
   }
 
@@ -1627,9 +1618,9 @@ class QuotationService extends DualDatabaseService {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
 
-        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+        console.log(`🔄 Updating PreOrder ID ${id} with nested relations...`);
 
-        // 1. Update Quotation in both databases
+        // 1. Update PreOrder in both databases
         const [updatedRows1] = await this.Model1.update(
           { status: "rejected", id_user_reject },
           {
@@ -1647,19 +1638,19 @@ class QuotationService extends DualDatabaseService {
         );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
+          throw new Error(`PreOrder with ID ${id} not found`);
         }
 
-        console.log(`✅ Updated Quotation in both databases`);
+        console.log(`✅ Updated PreOrder in both databases`);
 
         const progressData = {
-          id_quotation: id,
+          id_pre_order: id,
           id_user: id_user_reject,
           status: "rejected",
-          note: "Quotation rejected",
+          note: "PreOrder rejected",
         };
 
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
+        const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
@@ -1668,7 +1659,7 @@ class QuotationService extends DualDatabaseService {
           ...progressData,
           id: progress1.id,
         };
-        await models.db2.QuotationVerificationProgress.create(
+        await models.db2.PreOrderVerificationProgress.create(
           progressDataWithId,
           {
             transaction: transaction2,
@@ -1676,15 +1667,15 @@ class QuotationService extends DualDatabaseService {
         );
 
         console.log(
-          `✅ rejected QuotationVerificationProgress with status "rejected"`,
+          `✅ rejected PreOrderVerificationProgress with status "rejected"`,
         );
 
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
-        console.log(`✅ Quotation with nested relations successfully rejected`);
+        console.log(`✅ PreOrder with nested relations successfully rejected`);
 
-        // Get updated quotation
+        // Get updated pre order
         const result = await this.getById(id, {}, isDoubleDatabase);
         return result;
       } else {
@@ -1700,43 +1691,43 @@ class QuotationService extends DualDatabaseService {
         );
 
         if (updatedRows === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
+          throw new Error(`PreOrder with ID ${id} not found`);
         }
 
         const progressData = {
-          id_quotation: id,
+          id_pre_order: id,
           id_user: id_user_reject,
           status: "rejected",
-          note: "Quotation rejected",
+          note: "PreOrder rejected",
         };
 
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
+        const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
           { transaction: transaction1 },
         );
 
         console.log(
-          `✅ rejected QuotationVerificationProgress with status "rejected"`,
+          `✅ rejected PreOrderVerificationProgress with status "rejected"`,
         );
 
         await transaction1.commit();
-        console.log(`✅ Quotation updated in DB1 only`);
+        console.log(`✅ PreOrder updated in DB1 only`);
 
         const result = await this.getById(id, {}, false);
         return result;
       }
     } catch (error) {
       console.error(
-        `❌ Error updating Quotation with nested relations:`,
+        `❌ Error updating PreOrder with nested relations:`,
         error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
-      throw new Error(`Failed to update Quotation: ${error.message}`);
+      throw new Error(`Failed to update PreOrder: ${error.message}`);
     }
   }
 }
 
-module.exports = new QuotationService();
+module.exports = new PreOrderService();

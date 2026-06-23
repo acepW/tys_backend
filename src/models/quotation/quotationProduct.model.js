@@ -19,6 +19,15 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to quotation category table",
       },
+      id_quotation_service: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "quotation_service",
+          key: "id",
+        },
+        comment: "Foreign key to quotation service table",
+      },
       index: {
         allowNull: false,
         type: DataTypes.FLOAT,
@@ -49,6 +58,14 @@ module.exports = (sequelize) => {
     QuotationProduct.belongsTo(models.QuotationCategory, {
       foreignKey: "id_quotation_category",
       as: "quotation_category",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // QuotationProduct belongs to Quotation Service
+    QuotationProduct.belongsTo(models.QuotationService, {
+      foreignKey: "id_quotation_service",
+      as: "quotation_service",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

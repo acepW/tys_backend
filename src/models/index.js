@@ -69,6 +69,17 @@ const VendorEditModel = require("./vendor/vendorEdit.model");
 const VendorServiceEditModel = require("./vendor/vendorServiceEdit.model");
 const VendorVerificationProgressModel = require("./vendor/vendorVerificationProgress.model");
 
+//preorder
+const PreOrderModel = require("./preOrder/preOrder.model");
+const PreOrderCategoryModel = require("./preOrder/preOrderCategory.model");
+const PreOrderServiceModel = require("./preOrder/preOrderService.model");
+const PreOrderProductModel = require("./preOrder/preOrderProduct.model");
+const PreOrderProductFieldModel = require("./preOrder/preOrderProductField.model");
+const PreOrderPaymentModel = require("./preOrder/preOrderPayment.model");
+const PreOrderPaymentListModel = require("./preOrder/preOrderPaymentList.model");
+const PreOrderPaymentServiceModel = require("./preOrder/preOrderPaymentService.model");
+const PreOrderVerificationProgressModel = require("./preOrder/preOrderVerificationProgress.model");
+
 //approval Work Flow
 const ApprovalFlowModel = require("./approvalFlow/approvalFlow.model");
 const ApprovalFlowPositionModel = require("./approvalFlow/approvalFlowPosition.model");
@@ -152,6 +163,17 @@ const initializeModels = (sequelize) => {
     VendorVerificationProgress: VendorVerificationProgressModel(sequelize),
     VendorEdit: VendorEditModel(sequelize),
     VendorServiceEdit: VendorServiceEditModel(sequelize),
+
+    //preOrder
+    PreOrder: PreOrderModel(sequelize),
+    PreOrderCategory: PreOrderCategoryModel(sequelize),
+    PreOrderService: PreOrderServiceModel(sequelize),
+    PreOrderProduct: PreOrderProductModel(sequelize),
+    PreOrderProductField: PreOrderProductFieldModel(sequelize),
+    PreOrderPayment: PreOrderPaymentModel(sequelize),
+    PreOrderPaymentList: PreOrderPaymentListModel(sequelize),
+    PreOrderPaymentService: PreOrderPaymentServiceModel(sequelize),
+    PreOrderVerificationProgress: PreOrderVerificationProgressModel(sequelize),
 
     //approval Work Flow
     ApprovalFlow: ApprovalFlowModel(sequelize),

@@ -51,6 +51,9 @@ const approvalFlowRoutes = require("./approvalFlow.route");
 const vendorRoutes = require("./vendor.route");
 const vendorEditRoutes = require("./vendorEdit.route");
 
+//PreOrder
+const preOrderRoutes = require("./preOrder.route");
+
 // Use routes
 //sync
 router.use("/sync", syncRoutes);
@@ -100,6 +103,9 @@ router.use("/approval-flows", approvalFlowRoutes);
 //vendor
 router.use("/vendors", vendorRoutes);
 router.use("/vendor-edits", vendorEditRoutes);
+
+//preOrder
+router.use("/pre-orders", preOrderRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -153,6 +159,9 @@ router.get("/", (req, res) => {
       //vendor
       vendors: "/api/vendors",
       vendorEdits: "/api/vendor-edits",
+
+      //preOrder
+      preOrders: "/api/pre-orders",
     },
   });
 });

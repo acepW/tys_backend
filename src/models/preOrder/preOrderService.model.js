@@ -1,23 +1,23 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const QuotationService = sequelize.define(
-    "QuotationService",
+  const PreOrderService = sequelize.define(
+    "PreOrderService",
     {
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
-        comment: "Primary key for Quotation Service",
+        comment: "Primary key for PreOrder Service",
       },
-      id_quotation_category: {
+      id_pre_order_category: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "quotation_category",
+          model: "pre_order_category",
           key: "id",
         },
-        comment: "Foreign key to quotation category table",
+        comment: "Foreign key to pre_order_category table",
       },
       id_service_pricing: {
         type: DataTypes.INTEGER,
@@ -27,6 +27,24 @@ module.exports = (sequelize) => {
           key: "id",
         },
         comment: "Foreign key to service pricing table",
+      },
+      id_quotation_service: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: "quotation_service",
+          key: "id",
+        },
+        comment: "Foreign key to quotation service table",
+      },
+      id_contract_service: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: "contract_service",
+          key: "id",
+        },
+        comment: "Foreign key to contract service table",
       },
       product_name_indo: {
         type: DataTypes.STRING(500),
@@ -63,26 +81,20 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(15, 0),
         comment: "Total Price in RMB",
       },
-      is_selected_contract: {
-        allowNull: false,
-        defaultValue: false,
-        type: DataTypes.BOOLEAN,
-        comment: "Status for knowing this service is created contract",
-      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of Quotation Category (active/inactive)",
+        comment: "Status of PreOrder Category (active/inactive)",
       },
     },
     {
-      tableName: "quotation_service",
+      tableName: "pre_order_service",
       timestamps: true,
       underscored: true,
       indexes: [
         {
-          name: "idx_id_quotation_category",
-          fields: ["id_quotation_category"],
+          name: "idx_id_pre_order_category",
+          fields: ["id_pre_order_category"],
         },
         {
           name: "idx_id_service_pricing",
@@ -93,63 +105,47 @@ module.exports = (sequelize) => {
   );
 
   // Define associations
-  QuotationService.associate = (models) => {
-    // QuotationService belongs to Quotation Category
-    QuotationService.belongsTo(models.QuotationCategory, {
-      foreignKey: "id_quotation_category",
-      as: "quotation_category",
+  PreOrderService.associate = (models) => {
+    // PreOrderService belongs to PreOrder Category
+    PreOrderService.belongsTo(models.PreOrderCategory, {
+      foreignKey: "id_pre_order_category",
+      as: "pre_order_category",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // QuotationService belongs to Service Pricing
-    QuotationService.belongsTo(models.ServicePricing, {
+    // PreOrderService belongs to Quotation Service
+    PreOrderService.belongsTo(models.QuotationService, {
+      foreignKey: "id_quotation_service",
+      as: "quotation_service",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // PreOrderService belongs to Contract Service
+    PreOrderService.belongsTo(models.ContractService, {
+      foreignKey: "id_contract_service",
+      as: "contract_service",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // PreOrderService belongs to Service Pricing
+    PreOrderService.belongsTo(models.ServicePricing, {
       foreignKey: "id_service_pricing",
       as: "service_pricing",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // QuotationService has one Contract Service
-    QuotationService.hasOne(models.ServicePricing, {
-      foreignKey: "id_quotation_service",
-      as: "contract_service",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Quotation Payment Services
-    QuotationService.hasMany(models.QuotationPaymentService, {
-      foreignKey: "id_quotation_service",
-      as: "quotation_payment_services",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Contract Payment Services
-    QuotationService.hasMany(models.ContractPaymentService, {
-      foreignKey: "id_quotation_service",
-      as: "contract_payment_services",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Quotation Products
-    QuotationService.hasMany(models.QuotationProduct, {
-      foreignKey: "id_quotation_service",
+    // PreOrderService has many PreOrder Products
+    PreOrderService.hasMany(models.PreOrderProduct, {
+      foreignKey: "id_pre_order_service",
       as: "products",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Invoice Services
-    QuotationService.hasMany(models.InvoiceService, {
-      foreignKey: "id_quotation_service",
-      as: "invoice_services",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
   };
 
-  return QuotationService;
+  return PreOrderService;
 };
