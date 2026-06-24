@@ -15,18 +15,28 @@ class ContractService extends DualDatabaseService {
    * @param {Number} page - Page number for pagination
    * @param {Number} limit - Number of records per page
    * @param {Boolean} isDoubleDatabase
+   * @param {Boolean} includeHistory - if true, returns all versions; if false, only latest/active version per chain
    * @returns {Array} Contracts with relations
    */
   async getAllWithRelations(
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
+    includeHistory = false
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
+    const baseWhere = options.where || {};
+
+    // 🔥 Default: hanya tampilkan versi yang masih aktif per rangkaian
+    const whereClause = includeHistory
+      ? baseWhere
+      : { ...baseWhere, is_active: true };
+
     const queryOptions = {
       ...options,
+      where: whereClause,
       include: [
         {
           model: dbModels.Quotation,
@@ -44,6 +54,22 @@ class ContractService extends DualDatabaseService {
         {
           model: dbModels.Customer,
           as: "customer",
+        },
+        // 🔥 Info ringkas versi sebelumnya
+        {
+          model: dbModels.Contract,
+          as: "previous_contract",
+          attributes: ["id", "contract_no", "version", "is_active"],
+        },
+        // 🔥 Info ringkas versi penggantinya (kalau ada)
+        {
+          model: dbModels.Contract,
+          as: "next_contract",
+          attributes: ["id", "contract_no", "version", "is_active"],
+        },
+        {
+          model: dbModels.PreOrder,
+          as: "pre_orders",
         },
         {
           model: dbModels.ContractService,
@@ -162,7 +188,6 @@ class ContractService extends DualDatabaseService {
             },
           ],
         },
-
         {
           model: dbModels.ContractPayment,
           as: "contract_payment",
@@ -191,15 +216,18 @@ class ContractService extends DualDatabaseService {
           ],
         },
       ],
-      order: [["createdAt", "DESC"]],
+      order: includeHistory
+        ? [
+            ["id_root_contract", "ASC"],
+            ["version", "DESC"],
+          ]
+        : [["createdAt", "DESC"]],
     };
 
-    //if page and limit not set, use normal findAll
     if (!page || !limit) {
       return await this.findAll(queryOptions, isDoubleDatabase);
     }
 
-    //if page and limit are set, use pagination
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
@@ -218,11 +246,7 @@ class ContractService extends DualDatabaseService {
   }
 
   /**
-   * Get contract by ID with relations
-   * @param {Number} id
-   * @param {Object} options - Query options
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Contract with relations
+   * Get contract by ID with relations (includes chain info)
    */
   async getById(id, options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
@@ -267,6 +291,33 @@ class ContractService extends DualDatabaseService {
         {
           model: dbModels.Customer,
           as: "customer",
+        },
+        {
+          model: dbModels.PreOrder,
+          as: "pre_orders",
+        },
+        // 🔥 Chain info: versi sebelumnya & berikutnya
+        {
+          model: dbModels.Contract,
+          as: "previous_contract",
+          attributes: [
+            "id",
+            "contract_no",
+            "version",
+            "is_active",
+            "createdAt",
+          ],
+        },
+        {
+          model: dbModels.Contract,
+          as: "next_contract",
+          attributes: [
+            "id",
+            "contract_no",
+            "version",
+            "is_active",
+            "createdAt",
+          ],
         },
         {
           model: dbModels.ContractService,
@@ -422,6 +473,48 @@ class ContractService extends DualDatabaseService {
   }
 
   /**
+   * Get full version history of a contract chain (all versions, oldest to newest)
+   * Can be called with the ID of ANY version in the chain - always returns the full chain
+   * @param {Number} id - Contract ID (any version in the chain)
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Array} All contract versions in the chain, ordered by version ASC
+   */
+  async getHistory(id, isDoubleDatabase = true) {
+    const dbModels = isDoubleDatabase ? models.db1 : models.db2;
+
+    const contract = await dbModels.Contract.findByPk(id, {
+      attributes: ["id", "id_root_contract"],
+    });
+
+    if (!contract) {
+      throw new Error(`Contract with ID ${id} not found`);
+    }
+
+    const rootId = contract.id_root_contract || contract.id;
+
+    const history = await dbModels.Contract.findAll({
+      where: {
+        [Op.or]: [{ id: rootId }, { id_root_contract: rootId }],
+      },
+      include: [
+        {
+          model: dbModels.Customer,
+          as: "customer",
+          attributes: ["id", "customer_name"],
+        },
+        {
+          model: dbModels.Company,
+          as: "company",
+          attributes: ["id", "company_name"],
+        },
+      ],
+      order: [["version", "ASC"]],
+    });
+
+    return history;
+  }
+
+  /**
    * Get no Contract
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Contract with relations
@@ -504,10 +597,17 @@ class ContractService extends DualDatabaseService {
 
   /**
    * Create contract with services, clauses, clause points, and clause logs
+   * Supports replacement chaining: if replaceContractId is provided,
+   * this new contract becomes the next version in that contract's chain,
+   * and the old contract is deactivated atomically.
+   *
    * @param {Object} contractData - Contract data
    * @param {Array} services - Contract services data
    * @param {Array} clauses - Contract clauses data
+   * @param {Array} payment_request_contract
+   * @param {Number} id_user_create
    * @param {Boolean} isDoubleDatabase
+   * @param {Number|null} replaceContractId - ID of contract being replaced (optional)
    * @returns {Object} Created contract with all relations
    */
   async createWithRelations(
@@ -516,7 +616,8 @@ class ContractService extends DualDatabaseService {
     clauses = [],
     payment_request_contract = [],
     id_user_create,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
+    replaceContractId = null
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -530,18 +631,64 @@ class ContractService extends DualDatabaseService {
           `🔄 Creating Contract with all relations in both databases...`
         );
 
+        // 🔥 0. Resolve chain info if this is a replacement
+        let chainData = {};
+        let oldContract1 = null;
+
+        if (replaceContractId) {
+          oldContract1 = await models.db1.Contract.findByPk(replaceContractId, {
+            transaction: transaction1,
+          });
+
+          if (!oldContract1) {
+            throw new Error(
+              `Contract to replace with ID ${replaceContractId} not found`
+            );
+          }
+
+          const rootId = oldContract1.id_root_contract || oldContract1.id;
+
+          chainData = {
+            id_previous_contract: oldContract1.id,
+            id_root_contract: rootId,
+            version: (oldContract1.version || 1) + 1,
+            is_adendum: true,
+          };
+
+          console.log(
+            `🔗 Replacement detected: old Contract ID ${oldContract1.id} -> new version ${chainData.version} (root: ${rootId})`
+          );
+        }
+
+        const finalContractData = { ...contractData, ...chainData };
+
         // 1. Create Contract in DB1
-        const contract1 = await this.Model1.create(contractData, {
+        const contract1 = await this.Model1.create(finalContractData, {
           transaction: transaction1,
         });
         console.log(`✅ Created Contract in DB1 with ID: ${contract1.id}`);
 
         // 2. Create Contract in DB2 with same ID
-        const contractDataWithId = { ...contractData, id: contract1.id };
+        const contractDataWithId = { ...finalContractData, id: contract1.id };
         await this.Model2.create(contractDataWithId, {
           transaction: transaction2,
         });
         console.log(`✅ Created Contract in DB2 with ID: ${contract1.id}`);
+
+        // 🔥 2b. Deactivate old contract (both DBs) if this is a replacement
+        if (replaceContractId) {
+          await models.db1.Contract.update(
+            { is_active: false },
+            { where: { id: replaceContractId }, transaction: transaction1 }
+          );
+          await models.db2.Contract.update(
+            { is_active: false },
+            { where: { id: replaceContractId }, transaction: transaction2 }
+          );
+          console.log(
+            `✅ Deactivated old Contract ID: ${replaceContractId} in both databases`
+          );
+        }
 
         // 3. Sync Contract Services
         const servicesData = services.map((service) => ({
@@ -680,7 +827,6 @@ class ContractService extends DualDatabaseService {
         for (const paymentData of payment_request_contract) {
           const { contract_payment_list = [], ...payment } = paymentData;
 
-          // 6a. Create ContractPayment
           const paymentDataToCreate = { ...payment, id_contract: contract1.id };
           const payment1 = await models.db1.ContractPayment.create(
             paymentDataToCreate,
@@ -694,10 +840,9 @@ class ContractService extends DualDatabaseService {
           );
           console.log(`✅ Created ContractPayment with ID: ${payment1.id}`);
 
-          // 6b. Process ContractPaymentList
           const paymentListsResult = [];
           for (const listData of contract_payment_list) {
-            const { id_quotation_service, ...paymentList } = listData; // ← destructure langsung
+            const { id_quotation_service, ...paymentList } = listData;
 
             const listDataToCreate = {
               ...paymentList,
@@ -715,7 +860,6 @@ class ContractService extends DualDatabaseService {
             );
             console.log(`✅ Created ContractPaymentList with ID: ${list1.id}`);
 
-            // Single create ContractPaymentService
             const paymentServiceData = {
               id_contract_payment: payment1.id,
               id_contract_payment_list: list1.id,
@@ -737,9 +881,14 @@ class ContractService extends DualDatabaseService {
 
             paymentListsResult.push({
               payment_list: list1.toJSON(),
-              payment_service: service1.toJSON(), // ← bukan array lagi
+              payment_service: service1.toJSON(),
             });
           }
+
+          paymentsResult.push({
+            payment: payment1.toJSON(),
+            payment_lists: paymentListsResult,
+          });
         }
 
         // 7. Create initial ContractVerificationProgress
@@ -747,7 +896,9 @@ class ContractService extends DualDatabaseService {
           id_contract: contract1.id,
           id_user: id_user_create,
           status: "created",
-          note: "Contract created",
+          note: replaceContractId
+            ? `Contract created as replacement for Contract ID ${replaceContractId}`
+            : "Contract created",
         };
         const progress1 = await models.db1.ContractVerificationProgress.create(
           progressData,
@@ -773,14 +924,54 @@ class ContractService extends DualDatabaseService {
           clauses: clausesResult,
           payments: paymentsResult,
           verification_progress: progress1.toJSON(),
+          replaced_contract_id: replaceContractId || null,
         };
       } else {
         // Single database (DB1 only)
         transaction1 = await db1.transaction();
 
-        const contract = await this.Model1.create(contractData, {
+        let chainData = {};
+        if (replaceContractId) {
+          const oldContract = await models.db1.Contract.findByPk(
+            replaceContractId,
+            { transaction: transaction1 }
+          );
+
+          if (!oldContract) {
+            throw new Error(
+              `Contract to replace with ID ${replaceContractId} not found`
+            );
+          }
+
+          const rootId = oldContract.id_root_contract || oldContract.id;
+
+          chainData = {
+            id_previous_contract: oldContract.id,
+            id_root_contract: rootId,
+            version: (oldContract.version || 1) + 1,
+            is_adendum: true,
+          };
+
+          console.log(
+            `🔗 Replacement detected: old Contract ID ${oldContract.id} -> new version ${chainData.version} (root: ${rootId})`
+          );
+        }
+
+        const finalContractData = { ...contractData, ...chainData };
+
+        const contract = await this.Model1.create(finalContractData, {
           transaction: transaction1,
         });
+
+        if (replaceContractId) {
+          await models.db1.Contract.update(
+            { is_active: false },
+            { where: { id: replaceContractId }, transaction: transaction1 }
+          );
+          console.log(
+            `✅ Deactivated old Contract ID: ${replaceContractId} in DB1 only`
+          );
+        }
 
         const servicesData = services.map((service) => ({
           ...service,
@@ -881,7 +1072,6 @@ class ContractService extends DualDatabaseService {
           });
         }
 
-        // Process Contract Payments (single DB)
         const paymentsResult = [];
         for (const paymentData of payment_request_contract) {
           const { contract_payment_list = [], ...payment } = paymentData;
@@ -936,13 +1126,20 @@ class ContractService extends DualDatabaseService {
               payment_service: createdService.toJSON(),
             });
           }
+
+          paymentsResult.push({
+            payment: createdPayment.toJSON(),
+            payment_lists: paymentListsResult,
+          });
         }
 
         const progressData = {
           id_contract: contract.id,
           id_user: id_user_create,
           status: "created",
-          note: "Contract created",
+          note: replaceContractId
+            ? `Contract created as replacement for Contract ID ${replaceContractId}`
+            : "Contract created",
         };
         const progress = await models.db1.ContractVerificationProgress.create(
           progressData,
@@ -960,6 +1157,7 @@ class ContractService extends DualDatabaseService {
           clauses: clausesResult,
           payments: paymentsResult,
           verification_progress: progress.toJSON(),
+          replaced_contract_id: replaceContractId || null,
         };
       }
     } catch (error) {

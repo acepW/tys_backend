@@ -76,7 +76,7 @@ module.exports = (sequelize) => {
           "approved",
           "sending to customer",
           "approve by customer",
-          "reject by customer",
+          "reject by customer"
         ),
         allowNull: false,
         defaultValue: "pending",
@@ -86,6 +86,39 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         comment: "Contract to (example:contract_to : 1)",
+      },
+      id_previous_contract: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "contracts",
+          key: "id",
+        },
+        comment:
+          "FK ke contract langsung sebelumnya (jika ini adalah adendum/pengganti)",
+      },
+      id_root_contract: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "contracts",
+          key: "id",
+        },
+        comment:
+          "FK ke contract pertama/original dalam rangkaian (null jika ini sendiri original)",
+      },
+      version: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+        comment: "Nomor urut versi dalam rangkaian penggantian",
+      },
+      is_adendum: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment:
+          "True jika contract ini dibuat sebagai pengganti/adendum dari contract lain",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -122,11 +155,13 @@ module.exports = (sequelize) => {
           name: "idx_contract_title_indo",
           fields: [{ name: "contract_title_indo", length: 100 }],
         },
+        { name: "idx_root_contract", fields: ["id_root_contract"] },
+        { name: "idx_previous_contract", fields: ["id_previous_contract"] },
         // Composite Index
         { name: "idx_company_active", fields: ["id_company", "is_active"] },
         { name: "idx_status_active", fields: ["status", "is_active"] },
       ],
-    },
+    }
   );
 
   // Define associations
@@ -208,6 +243,46 @@ module.exports = (sequelize) => {
       foreignKey: "id_contract",
       as: "payment_requests",
       onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Contract has many PreOrder
+    Contract.hasMany(models.PreOrder, {
+      foreignKey: "id_contract",
+      as: "pre_orders",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // 🔥 Self-referencing: Contract ini menggantikan contract sebelumnya
+    Contract.belongsTo(models.Contract, {
+      foreignKey: "id_previous_contract",
+      as: "previous_contract",
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
+    });
+
+    // 🔥 Self-referencing: Contract ini sudah diganti oleh contract berikutnya
+    Contract.hasOne(models.Contract, {
+      foreignKey: "id_previous_contract",
+      as: "next_contract",
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
+    });
+
+    // 🔥 Self-referencing: Contract original/root dalam rangkaian ini
+    Contract.belongsTo(models.Contract, {
+      foreignKey: "id_root_contract",
+      as: "root_contract",
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
+    });
+
+    // 🔥 Self-referencing: Semua versi turunan dari root ini (kebalikan dari root_contract)
+    Contract.hasMany(models.Contract, {
+      foreignKey: "id_root_contract",
+      as: "derived_versions",
+      onDelete: "SET NULL",
       onUpdate: "CASCADE",
     });
   };

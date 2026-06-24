@@ -18,6 +18,7 @@ class ContractController {
         search,
         page,
         limit,
+        is_include_history = false,
       } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
@@ -41,7 +42,8 @@ class ContractController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase
+        isDoubleDatabase,
+        is_include_history
       );
 
       return successResponse(
@@ -102,6 +104,7 @@ class ContractController {
     try {
       const {
         is_double_database,
+        replace_contract_id,
         services,
         payment_request_contract,
         clauses,
@@ -368,7 +371,8 @@ class ContractController {
         clauses || [],
         payment_request_contract || [],
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
+        replace_contract_id || null
       );
 
       return successResponse(res, result, "Contract created successfully", 201);
