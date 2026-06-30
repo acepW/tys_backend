@@ -107,6 +107,7 @@ class ContractController {
         replace_contract_id,
         services,
         payment_request_contract,
+        clause_header,
         clauses,
         ...contractData
       } = req.body;
@@ -149,6 +150,29 @@ class ContractController {
       // Validate clauses
       if (clauses && !Array.isArray(clauses)) {
         return errorResponse(res, "clauses must be an array", 400);
+      }
+
+      // Validate each clause header structure
+      if (clause_header && clause_header.length > 0) {
+        for (let i = 0; i < clause_header.length; i++) {
+          const clauseHeader = clause_header[i];
+
+          if (!clauseHeader.description_indo) {
+            return errorResponse(
+              res,
+              `description_indo is required for clause_header at index ${i}`,
+              400
+            );
+          }
+
+          if (!clauseHeader.description_mandarin) {
+            return errorResponse(
+              res,
+              `description_mandarin is required for clause_header at index ${i}`,
+              400
+            );
+          }
+        }
       }
 
       // Validate each clause structure
@@ -368,6 +392,7 @@ class ContractController {
       const result = await contractService.createWithRelations(
         contractDataToCreate,
         services || [],
+        clause_header || [],
         clauses || [],
         payment_request_contract || [],
         req.user.id,
@@ -387,8 +412,13 @@ class ContractController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database, services, clauses, ...contractData } =
-        req.body;
+      const {
+        is_double_database,
+        services,
+        clauses,
+        clause_header,
+        ...contractData
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Check if contract exists
@@ -405,6 +435,29 @@ class ContractController {
       // Validate clauses
       if (clauses && !Array.isArray(clauses)) {
         return errorResponse(res, "clauses must be an array", 400);
+      }
+
+      // Validate each clause header structure
+      if (clause_header && clause_header.length > 0) {
+        for (let i = 0; i < clause_header.length; i++) {
+          const clauseHeader = clause_header[i];
+
+          if (!clauseHeader.description_indo) {
+            return errorResponse(
+              res,
+              `description_indo is required for clause_header at index ${i}`,
+              400
+            );
+          }
+
+          if (!clauseHeader.description_mandarin) {
+            return errorResponse(
+              res,
+              `description_mandarin is required for clause_header at index ${i}`,
+              400
+            );
+          }
+        }
       }
 
       // Validate each clause structure
@@ -449,6 +502,7 @@ class ContractController {
         id,
         contractData,
         services || [],
+        clause_header || [],
         clauses || [],
         isDoubleDatabase
       );

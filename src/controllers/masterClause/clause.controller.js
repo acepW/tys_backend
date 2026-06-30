@@ -9,7 +9,8 @@ class ClauseController {
 
   /**
    * GET /clause-template
-   * Get all clause templates with nested clauses and clause points
+   * Get all clause templates with nested clauses, clause points,
+   * clause point subs, and clause headers
    *
    * Query params:
    *   is_double_database  boolean string (default: true)
@@ -60,7 +61,8 @@ class ClauseController {
 
   /**
    * GET /clause-template/:id
-   * Get a single clause template with nested clauses and clause points
+   * Get a single clause template with nested clauses, clause points,
+   * clause point subs, and clause headers
    */
   async getTemplateById(req, res) {
     try {
@@ -90,13 +92,14 @@ class ClauseController {
 
   /**
    * POST /clause-template
-   * Create a new ClauseTemplate with clauses and clause points
+   * Create a new ClauseTemplate with clauses, clause points,
+   * clause point subs, and clause headers
    *
    * Body (create):
    * {
    *   "is_double_database": true,
-   *   "description_indo": "Template Kontrak A",
-   *   "description_mandarin": "合同模板A",
+   *   "template_name": "Template Kontrak A",
+   *   "contract_type": "contract",
    *   "is_active": true,
    *   "clause_list": [
    *     {
@@ -107,9 +110,24 @@ class ClauseController {
    *         {
    *           "description_indo": "1.1 Pembayaran dilakukan dalam 30 hari",
    *           "description_mandarin": "付款应在30天内完成",
-   *           "index": 1
+   *           "index": 1,
+   *           "clause_point_sub": [
+   *             {
+   *               "description_indo": "1.1.1 Sub poin contoh",
+   *               "description_mandarin": "子条款示例",
+   *               "index": 1
+   *             }
+   *           ]
    *         }
    *       ]
+   *     }
+   *   ],
+   *   "clauses_header": [
+   *     {
+   *       "description_indo": "BAB I - Ketentuan Umum",
+   *       "description_mandarin": "第一章 - 总则",
+   *       "index": 1,
+   *       "iis_view_product": false
    *     }
    *   ]
    * }
@@ -118,8 +136,8 @@ class ClauseController {
    * {
    *   "is_double_database": true,
    *   "id_clause_template": 1,
-   *   "description_indo": "Template Kontrak A (edit)",
-   *   "description_mandarin": "合同模板A（编辑）",
+   *   "template_name": "Template Kontrak A (edit)",
+   *   "contract_type": "contract",
    *   "is_active": true,
    *   "clause_list": [
    *     {
@@ -127,7 +145,15 @@ class ClauseController {
    *       "description_indo": "1. Pembayaran edit",
    *       ...
    *       "clause_points": [
-   *         { "id": 1, ... },                // existing point → UPDATE
+   *         {
+   *           "id": 1,                       // existing point → UPDATE
+   *           ...
+   *           "clause_point_sub": [
+   *             { "id": 1, ... },             // existing sub → UPDATE
+   *             { "id": null, ... }           // no id → CREATE
+   *             // omitting an existing sub id → DELETE that sub
+   *           ]
+   *         },
    *         { "id": null, ... }              // no id → CREATE
    *         // omitting an existing point id → DELETE that point
    *       ]
@@ -138,6 +164,11 @@ class ClauseController {
    *       ...
    *     }
    *     // omitting an existing clause id → DELETE that clause
+   *   ],
+   *   "clauses_header": [
+   *     { "id": 1, ... },                    // existing header → UPDATE
+   *     { "id": null, ... }                  // no id → CREATE
+   *     // omitting an existing header id → DELETE that header
    *   ]
    * }
    */
@@ -146,6 +177,7 @@ class ClauseController {
       const {
         is_double_database = true,
         clause_list = [],
+        clauses_header = [],
         ...templateFields
       } = req.body || {};
       const isDoubleDatabase = is_double_database !== false;
@@ -201,7 +233,65 @@ class ClauseController {
                 400
               );
             }
+
+            if (
+              point.clause_point_sub &&
+              !Array.isArray(point.clause_point_sub)
+            ) {
+              return errorResponse(
+                res,
+                `clause_point_sub must be an array for clause index ${i}, point index ${j}`,
+                400
+              );
+            }
+
+            if (point.clause_point_sub && point.clause_point_sub.length > 0) {
+              for (let k = 0; k < point.clause_point_sub.length; k++) {
+                const sub = point.clause_point_sub[k];
+
+                if (!sub.description_indo) {
+                  return errorResponse(
+                    res,
+                    `description_indo is required for clause_point_sub at clause index ${i}, point index ${j}, sub index ${k}`,
+                    400
+                  );
+                }
+
+                if (!sub.description_mandarin) {
+                  return errorResponse(
+                    res,
+                    `description_mandarin is required for clause_point_sub at clause index ${i}, point index ${j}, sub index ${k}`,
+                    400
+                  );
+                }
+              }
+            }
           }
+        }
+      }
+
+      // ── Validate clauses_header ───────────────────────────────────────
+      if (!Array.isArray(clauses_header)) {
+        return errorResponse(res, "clauses_header must be an array", 400);
+      }
+
+      for (let i = 0; i < clauses_header.length; i++) {
+        const header = clauses_header[i];
+
+        if (!header.description_indo) {
+          return errorResponse(
+            res,
+            `description_indo is required for clauses_header at index ${i}`,
+            400
+          );
+        }
+
+        if (!header.description_mandarin) {
+          return errorResponse(
+            res,
+            `description_mandarin is required for clauses_header at index ${i}`,
+            400
+          );
         }
       }
 
@@ -212,7 +302,20 @@ class ClauseController {
         clause_points: (item.clause_points || []).map((point) => ({
           ...point,
           is_active: point.is_active !== undefined ? point.is_active : true,
+          clause_point_sub: (point.clause_point_sub || []).map((sub) => ({
+            ...sub,
+            is_active: sub.is_active !== undefined ? sub.is_active : true,
+          })),
         })),
+      }));
+
+      const normalizedClauseHeaderList = clauses_header.map((header) => ({
+        ...header,
+        is_active: header.is_active !== undefined ? header.is_active : true,
+        iis_view_product:
+          header.iis_view_product !== undefined
+            ? header.iis_view_product
+            : false,
       }));
 
       const payload = {
@@ -222,6 +325,7 @@ class ClauseController {
             ? templateFields.is_active
             : true,
         clause_list: normalizedClauseList,
+        clauses_header: normalizedClauseHeaderList,
       };
 
       const result = await clauseTemplateService.upsertTemplateWithClauses(
@@ -252,7 +356,8 @@ class ClauseController {
 
   /**
    * DELETE /clause-template/:id
-   * Delete a ClauseTemplate (cascades to clauses and clause points)
+   * Delete a ClauseTemplate (cascades to clauses, clause points,
+   * clause point subs and clause headers)
    */
   async deleteTemplate(req, res) {
     try {

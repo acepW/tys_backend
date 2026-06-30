@@ -12,6 +12,8 @@ const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 const ClauseTemplateModel = require("./masterClause/clauseTemplate.model");
 const ClauseModel = require("./masterClause/clause.model");
 const ClausePointModel = require("./masterClause/clausePoint.model");
+const ClausePointSubModel = require("./masterClause/clausePointSub.model");
+const ClauseHeaderModel = require("./masterClause/clauseHeader.model");
 const UserModel = require("./user.model");
 const MenuModel = require("./menu.model");
 const PositionMenuModel = require("./position/positionMenu.model");
@@ -40,7 +42,9 @@ const ContractModel = require("./contract/contract.model");
 const ContractServiceModel = require("./contract/contractService.model");
 const ContractVerificationProgressModel = require("./contract/contactVerificationProgress.mode");
 const ContractClauseModel = require("./contract/contractClause.model");
+const ContractClauseHeaderModel = require("./contract/contractClauseHeader.model");
 const ContractClausePointModel = require("./contract/contractClausePoint.model");
+const ContractClausePointSubModel = require("./contract/contractClausePointSub.model");
 const ContractClauseLogModel = require("./contract/contractClauseLog.model");
 const ContractPaymentModel = require("./contract/contractPayment.model");
 const ContractPaymentListModel = require("./contract/contractPaymentList.model");
@@ -105,6 +109,8 @@ const initializeModels = (sequelize) => {
     ClauseTemplate: ClauseTemplateModel(sequelize),
     Clause: ClauseModel(sequelize),
     ClausePoint: ClausePointModel(sequelize),
+    ClausePointSub: ClausePointSubModel(sequelize),
+    ClauseHeader: ClauseHeaderModel(sequelize),
     User: UserModel(sequelize),
     Menu: MenuModel(sequelize),
     PositionMenu: PositionMenuModel(sequelize),
@@ -134,7 +140,9 @@ const initializeModels = (sequelize) => {
     ContractService: ContractServiceModel(sequelize),
     ContractVerificationProgress: ContractVerificationProgressModel(sequelize),
     ContractClause: ContractClauseModel(sequelize),
+    ContractClauseHeader: ContractClauseHeaderModel(sequelize),
     ContractClausePoint: ContractClausePointModel(sequelize),
+    ContractClausePointSub: ContractClausePointSubModel(sequelize),
     ContractClauseLog: ContractClauseLogModel(sequelize),
     ContractPayment: ContractPaymentModel(sequelize),
     ContractPaymentList: ContractPaymentListModel(sequelize),
@@ -228,7 +236,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true },
+  options = { alter: true }
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

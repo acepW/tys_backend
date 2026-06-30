@@ -45,6 +45,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //ClauseTemplate has many Clause header
+    ClauseTemplate.hasMany(models.ClauseHeader, {
+      foreignKey: "id_clause_template",
+      as: "clauses_header",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return ClauseTemplate;

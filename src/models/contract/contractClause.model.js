@@ -29,6 +29,10 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Description is BAB for Mandarin",
       },
+      index: {
+        type: DataTypes.INTEGER,
+        comment: "Status view product (active/inactive)",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -40,7 +44,7 @@ module.exports = (sequelize) => {
       timestamps: true,
       underscored: true,
       index: [{ name: "idx_id_contract", fields: ["id_contract"] }],
-    },
+    }
   );
 
   // Define associations (untuk future development)

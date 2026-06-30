@@ -1,8 +1,8 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const ClausePoint = sequelize.define(
-    "ClausePoint",
+  const ClausePointSub = sequelize.define(
+    "ClausePointSub",
     {
       id: {
         type: DataTypes.INTEGER,
@@ -10,14 +10,14 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Clause Point",
       },
-      id_clause: {
+      id_clause_point: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "clause",
+          model: "clause_point",
           key: "id",
         },
-        comment: "Id clause from clause",
+        comment: "Id clause from clause point",
       },
       description_indo: {
         type: DataTypes.TEXT("long"),
@@ -37,37 +37,29 @@ module.exports = (sequelize) => {
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of ClausePoint (active/inactive)",
+        comment: "Status of ClausePointSub (active/inactive)",
       },
     },
     {
-      tableName: "clause_point",
+      tableName: "clause_point_sub",
       timestamps: true,
       underscored: true,
     }
   );
 
   // Define associations (untuk future development)
-  ClausePoint.associate = (models) => {
-    // Contoh: ClausePoint dapat memiliki relasi dengan Order, dll
-    // ClausePoint.hasMany(models.Order, { ... });
+  ClausePointSub.associate = (models) => {
+    // Contoh: ClausePointSub dapat memiliki relasi dengan Order, dll
+    // ClausePointSub.hasMany(models.Order, { ... });
 
     //Clause Point belongs to Clause
-    ClausePoint.belongsTo(models.Clause, {
-      foreignKey: "id_clause",
-      as: "clause",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Clause Point has many Clause point
-    ClausePoint.hasMany(models.ClausePointSub, {
+    ClausePointSub.belongsTo(models.ClausePoint, {
       foreignKey: "id_clause_point",
-      as: "clause_point_sub",
+      as: "clause_point",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
   };
 
-  return ClausePoint;
+  return ClausePointSub;
 };

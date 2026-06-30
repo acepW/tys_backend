@@ -1,20 +1,20 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const ClausePoint = sequelize.define(
-    "ClausePoint",
+  const ContractClausePointSub = sequelize.define(
+    "ContractClausePointSub",
     {
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
-        comment: "Primary key for Clause Point",
+        comment: "Primary key for Contract Clause Point",
       },
-      id_clause: {
+      id_contract_clause_point: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "clause",
+          model: "contract_clause_point",
           key: "id",
         },
         comment: "Id clause from clause",
@@ -31,43 +31,40 @@ module.exports = (sequelize) => {
       },
       index: {
         type: DataTypes.INTEGER,
-        allowNull: true,
-        comment: "Index for clause point",
+        comment: "Status view product (active/inactive)",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of ClausePoint (active/inactive)",
+        comment: "Status of ContractClausePointSub (active/inactive)",
       },
     },
     {
-      tableName: "clause_point",
+      tableName: "contract_clause_point_sub",
       timestamps: true,
       underscored: true,
+      index: [
+        {
+          name: "idx_id_contract_clause_point",
+          fields: ["id_contract_clause_point"],
+        },
+      ],
     }
   );
 
   // Define associations (untuk future development)
-  ClausePoint.associate = (models) => {
-    // Contoh: ClausePoint dapat memiliki relasi dengan Order, dll
-    // ClausePoint.hasMany(models.Order, { ... });
+  ContractClausePointSub.associate = (models) => {
+    // Contoh: ContractClausePointSub dapat memiliki relasi dengan Order, dll
+    // ContractClausePointSub.hasMany(models.Order, { ... });
 
     //Clause Point belongs to Clause
-    ClausePoint.belongsTo(models.Clause, {
-      foreignKey: "id_clause",
-      as: "clause",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Clause Point has many Clause point
-    ClausePoint.hasMany(models.ClausePointSub, {
-      foreignKey: "id_clause_point",
-      as: "clause_point_sub",
+    ContractClausePointSub.belongsTo(models.ContractClausePoint, {
+      foreignKey: "id_contract_clause_point",
+      as: "contract_clause_point",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
   };
 
-  return ClausePoint;
+  return ContractClausePointSub;
 };

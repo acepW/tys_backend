@@ -29,6 +29,10 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Description is BAB for Mandarin",
       },
+      index: {
+        type: DataTypes.INTEGER,
+        comment: "Status view product (active/inactive)",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -42,7 +46,7 @@ module.exports = (sequelize) => {
       index: [
         { name: "idx_id_contract_clause", fields: ["id_contract_clause"] },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
@@ -62,6 +66,14 @@ module.exports = (sequelize) => {
     ContractClausePoint.hasMany(models.ContractClauseLog, {
       foreignKey: "id_contract_clause_point",
       as: "clause_logs",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Contract Clause point has many Contract Clause Point sub
+    ContractClausePoint.hasMany(models.ContractClausePointSub, {
+      foreignKey: "id_contract_clause_point",
+      as: "clause_point_sub",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
