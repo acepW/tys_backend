@@ -4,10 +4,11 @@ const fileUploadController = require("../controllers/fileUpload.controller");
 const {
   uploadSingle,
   uploadMultiple,
-} = require("../middlewares/upload.middleware");
+} = require("../middleware/upload.middleware");
 
 // GET routes
 router.get("/info", fileUploadController.getInfo); // ?url=...
+router.get("/preview", fileUploadController.preview); // ?url=...
 router.get("/download", fileUploadController.download); // ?url=...
 router.get("/:folderAlias", fileUploadController.list); // list isi folder
 

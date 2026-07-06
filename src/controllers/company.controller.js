@@ -1,4 +1,3 @@
-const { where } = require("sequelize");
 const companyService = require("../services/company.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
@@ -9,8 +8,10 @@ class CompanyController {
   async getAll(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const companies = await companyService.findAll(
+      const companies = await companyService.getAllWithRelations(
         { where: { is_active: true } },
+        null,
+        null,
         isDoubleDatabase
       );
 
@@ -52,7 +53,7 @@ class CompanyController {
       const { id } = req.params;
       const isDoubleDatabase = req.query.is_double_database !== "false";
 
-      const company = await companyService.findById(id, {}, isDoubleDatabase);
+      const company = await companyService.getById(id, {}, isDoubleDatabase);
 
       if (!company) {
         return errorResponse(res, "Company not found", 404);
@@ -92,111 +93,21 @@ class CompanyController {
    */
   async create(req, res) {
     try {
-      const {
-        company_name,
-        address,
-        contact,
-        email,
-        tax_ppn,
-        tax_pph_23,
-        initial_company,
-        director_name,
-        main_note,
-        document_watermark,
-        logo_header,
-        company_name_header_quotation,
-        address_header_quotation,
-        wechat_header_quotation,
-        wa_header_quotation,
-        email_header_quotation,
-        company_name_header_contract,
-        address_header_contract,
-        wechat_header_contract,
-        wa_header_contract,
-        email_header_contract,
-        company_name_header_invoice,
-        address_header_invoice,
-        wechat_header_invoice,
-        wa_header_invoice,
-        email_header_invoice,
-        bank_name_rmb,
-        bank_name_rmb_mandarin,
-        account_name_rmb,
-        account_no_rmb,
-        swift_no_rmb,
-        bank_name_idr,
-        bank_name_idr_mandarin,
-        account_name_idr,
-        account_no_idr,
-        swift_no_idr,
-        is_active,
-        is_double_database,
-      } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
-
-      // Validation
-      if (!req.body.company_name) {
-        return errorResponse(res, "Company name is required", 400);
-      }
-
-      // Check if email already exists
-      if (req.body.email) {
-        const emailExists = await companyService.checkEmailExists(
-          req.body.email,
-          null,
-          isDoubleDatabase
-        );
-
-        if (emailExists) {
-          return errorResponse(res, "Email already exists", 400);
-        }
-      }
-
-      const data = {
-        company_name: company_name,
-        address: address,
-        contact: contact,
-        email: email,
-        tax_ppn: tax_ppn !== undefined ? tax_ppn : false,
-        tax_pph_23: tax_pph_23 !== undefined ? tax_pph_23 : false,
-        initial_company: initial_company,
-        director_name: director_name,
-        main_note: main_note,
-        document_watermark: document_watermark,
-        logo_header: logo_header,
-        company_name_header_quotation: company_name_header_quotation,
-        address_header_quotation: address_header_quotation,
-        wechat_header_quotation: wechat_header_quotation,
-        wa_header_quotation: wa_header_quotation,
-        email_header_quotation: email_header_quotation,
-        company_name_header_contract: company_name_header_contract,
-        address_header_contract: address_header_contract,
-        wechat_header_contract: wechat_header_contract,
-        wa_header_contract: wa_header_contract,
-        email_header_contract: email_header_contract,
-        company_name_header_invoice: company_name_header_invoice,
-        address_header_invoice: address_header_invoice,
-        wechat_header_invoice: wechat_header_invoice,
-        wa_header_invoice: wa_header_invoice,
-        email_header_invoice: email_header_invoice,
-        bank_name_rmb: bank_name_rmb,
-        bank_name_rmb_mandarin: bank_name_rmb_mandarin,
-        account_name_rmb: account_name_rmb,
-        account_no_rmb: account_no_rmb,
-        swift_no_rmb: swift_no_rmb,
-        bank_name_idr: bank_name_idr,
-        bank_name_idr_mandarin: bank_name_idr_mandarin,
-        account_name_idr: account_name_idr,
-        account_no_idr: account_no_idr,
-        swift_no_idr: swift_no_idr,
-        is_active: is_active !== undefined ? is_active : true,
-      };
-
-      const company = await companyService.create(data, isDoubleDatabase);
+      const isDoubleDatabase = true;
+      const company = await companyService.createWithRelations(
+        req.body,
+        req.user.id,
+        isDoubleDatabase
+      );
 
       return successResponse(res, company, "Company created successfully", 201);
     } catch (error) {
-      return errorResponse(res, error.message);
+      const statusCode =
+        error.message === "Company name is required" ||
+        error.message === "Email already exists"
+          ? 400
+          : 500;
+      return errorResponse(res, error.message, statusCode);
     }
   }
 
@@ -206,131 +117,23 @@ class CompanyController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const {
-        company_name,
-        address,
-        contact,
-        email,
-        tax_ppn,
-        tax_pph_23,
-        initial_company,
-        director_name,
-        main_note,
-        document_watermark,
-        logo_header,
-        company_name_header_quotation,
-        address_header_quotation,
-        wechat_header_quotation,
-        wa_header_quotation,
-        email_header_quotation,
-        company_name_header_contract,
-        address_header_contract,
-        wechat_header_contract,
-        wa_header_contract,
-        email_header_contract,
-        company_name_header_invoice,
-        address_header_invoice,
-        wechat_header_invoice,
-        wa_header_invoice,
-        email_header_invoice,
-        bank_name_rmb,
-        bank_name_rmb_mandarin,
-        account_name_rmb,
-        account_no_rmb,
-        swift_no_rmb,
-        bank_name_idr,
-        bank_name_idr_mandarin,
-        account_name_idr,
-        account_no_idr,
-        swift_no_idr,
-        is_active,
-        is_double_database,
-      } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+      const isDoubleDatabase = true;
 
-      // Check if company exists
-      const existing = await companyService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Company not found", 404);
-      }
-
-      // Check if email already exists
-      if (req.body.email) {
-        const emailExists = await companyService.checkEmailExists(
-          req.body.email,
-          id,
-          isDoubleDatabase
-        );
-
-        if (emailExists) {
-          return errorResponse(res, "Email already exists", 400);
-        }
-      }
-
-      const data = {};
-      if (company_name) data.company_name = company_name;
-      if (address !== undefined) data.address = address;
-      if (contact !== undefined) data.contact = contact;
-      if (email !== undefined) data.email = email;
-      if (tax_ppn !== undefined) data.tax_ppn = tax_ppn;
-      if (tax_pph_23 !== undefined) data.tax_pph_23 = tax_pph_23;
-      if (initial_company !== undefined) data.initial_company = initial_company;
-      if (director_name !== undefined) data.director_name = director_name;
-      if (main_note !== undefined) data.main_note = main_note;
-      if (document_watermark !== undefined)
-        data.document_watermark = document_watermark;
-      if (logo_header !== undefined) data.logo_header = logo_header;
-      if (company_name_header_quotation !== undefined)
-        data.company_name_header_quotation = company_name_header_quotation;
-      if (address_header_quotation !== undefined)
-        data.address_header_quotation = address_header_quotation;
-      if (wechat_header_quotation !== undefined)
-        data.wechat_header_quotation = wechat_header_quotation;
-      if (wa_header_quotation !== undefined)
-        data.wa_header_quotation = wa_header_quotation;
-      if (email_header_quotation !== undefined)
-        data.email_header_quotation = email_header_quotation;
-      if (company_name_header_contract !== undefined)
-        data.company_name_header_contract = company_name_header_contract;
-      if (address_header_contract !== undefined)
-        data.address_header_contract = address_header_contract;
-      if (wechat_header_contract !== undefined)
-        data.wechat_header_contract = wechat_header_contract;
-      if (wa_header_contract !== undefined)
-        data.wa_header_contract = wa_header_contract;
-      if (email_header_contract !== undefined)
-        data.email_header_contract = email_header_contract;
-      if (company_name_header_invoice !== undefined)
-        data.company_name_header_invoice = company_name_header_invoice;
-      if (address_header_invoice !== undefined)
-        data.address_header_invoice = address_header_invoice;
-      if (wechat_header_invoice !== undefined)
-        data.wechat_header_invoice = wechat_header_invoice;
-      if (wa_header_invoice !== undefined)
-        data.wa_header_invoice = wa_header_invoice;
-      if (email_header_invoice !== undefined)
-        data.email_header_invoice = email_header_invoice;
-      if (bank_name_rmb !== undefined) data.bank_name_rmb = bank_name_rmb;
-      if (bank_name_rmb_mandarin !== undefined)
-        data.bank_name_rmb_mandarin = bank_name_rmb_mandarin;
-      if (account_name_rmb !== undefined)
-        data.account_name_rmb = account_name_rmb;
-      if (account_no_rmb !== undefined) data.account_no_rmb = account_no_rmb;
-      if (swift_no_rmb !== undefined) data.swift_no_rmb = swift_no_rmb;
-      if (bank_name_idr !== undefined) data.bank_name_idr = bank_name_idr;
-      if (bank_name_idr_mandarin !== undefined)
-        data.bank_name_idr_mandarin = bank_name_idr_mandarin;
-      if (account_name_idr !== undefined)
-        data.account_name_idr = account_name_idr;
-      if (account_no_idr !== undefined) data.account_no_idr = account_no_idr;
-      if (swift_no_idr !== undefined) data.swift_no_idr = swift_no_idr;
-      if (is_active !== undefined) data.is_active = is_active;
-
-      const company = await companyService.update(id, data, isDoubleDatabase);
+      const company = await companyService.updateWithRelations(
+        id,
+        req.body,
+        req.user.id,
+        isDoubleDatabase
+      );
 
       return successResponse(res, company, "Company updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      const statusCode = error.message.includes("not found")
+        ? 404
+        : error.message === "Email already exists"
+        ? 400
+        : 500;
+      return errorResponse(res, error.message, statusCode);
     }
   }
 
@@ -342,17 +145,12 @@ class CompanyController {
       const { id } = req.params;
       const isDoubleDatabase = req.query.is_double_database !== "false";
 
-      // Check if company exists
-      const existing = await companyService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Company not found", 404);
-      }
-
-      await companyService.update(id, { is_active: false }, isDoubleDatabase);
+      await companyService.deleteCompany(id, isDoubleDatabase);
 
       return successResponse(res, null, "Company deleted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      const statusCode = error.message.includes("not found") ? 404 : 500;
+      return errorResponse(res, error.message, statusCode);
     }
   }
 }

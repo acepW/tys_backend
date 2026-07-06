@@ -228,6 +228,14 @@ module.exports = (sequelize) => {
     // Contoh: Company dapat memiliki relasi dengan Order, Invoice, dll
     // Company.hasMany(models.Order, { ... });
 
+    // Company has many File
+    Company.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false, // wajib: karena fileable_id bukan FK asli ke satu tabel
+      scope: { fileable_type: "companies" }, // otomatis filter WHERE fileable_type='Company'
+      as: "files",
+    });
+
     // Company has many quotation
     Company.hasMany(models.Quotation, {
       foreignKey: "id_company",

@@ -88,6 +88,9 @@ const PreOrderVerificationProgressModel = require("./preOrder/preOrderVerificati
 const ApprovalFlowModel = require("./approvalFlow/approvalFlow.model");
 const ApprovalFlowPositionModel = require("./approvalFlow/approvalFlowPosition.model");
 
+//file
+const FileModel = require("./files.model");
+
 /**
  * Initialize all models for a given sequelize instance
  * @param {Sequelize} sequelize - Sequelize instance
@@ -186,6 +189,9 @@ const initializeModels = (sequelize) => {
     //approval Work Flow
     ApprovalFlow: ApprovalFlowModel(sequelize),
     ApprovalFlowPosition: ApprovalFlowPositionModel(sequelize),
+
+    //file
+    File: FileModel(sequelize),
   };
 
   // Setup associations for all models

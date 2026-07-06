@@ -1,20 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const companyController = require("../controllers/company.controller");
+const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
-router.get("/", companyController.getAll);
-router.get("/active", companyController.getActive);
-router.get("/search", companyController.search);
-router.get("/:id", companyController.getById);
+router.get("/", authenticate, companyController.getAll);
+router.get("/active", authenticate, companyController.getActive);
+router.get("/search", authenticate, companyController.search);
+router.get("/:id", authenticate, companyController.getById);
 
 // POST routes
-router.post("/", companyController.create);
+router.post("/", authenticate, companyController.create);
 
 // PUT routes
-router.put("/:id", companyController.update);
+router.put("/:id", authenticate, companyController.update);
 
 // DELETE routes
-router.delete("/:id", companyController.delete);
+router.delete("/:id", authenticate, companyController.delete);
 
 module.exports = router;

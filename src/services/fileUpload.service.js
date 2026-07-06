@@ -8,7 +8,7 @@ const {
   ALLOWED_FOLDERS,
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE,
-} = require("../config/config");
+} = require("../config/upload");
 
 class FileUploadService {
   constructor() {
@@ -91,6 +91,30 @@ class FileUploadService {
     cb(null, true);
   }
 
+  /**
+   * Reverse lookup: cari mimeType asli dari extension file di disk
+   */
+  _getMimeTypeFromExt(ext) {
+    const entry = Object.entries(ALLOWED_MIME_TYPES).find(
+      ([, extension]) => extension === ext
+    );
+    return entry ? entry[0] : "application/octet-stream";
+  }
+
+  /**
+   * Tentukan apakah tipe file boleh ditampilkan inline di browser (preview)
+   * Selain tipe ini akan ditolak (misal .docx, .zip -> tidak masuk akal di-preview)
+   */
+  _isPreviewableMime(mimeType) {
+    const previewablePrefixes = [
+      "image/",
+      "video/",
+      "audio/",
+      "text/plain",
+      "application/pdf",
+    ];
+    return previewablePrefixes.some((p) => mimeType.startsWith(p));
+  }
   singleUploadMiddleware(folderAlias, fieldName = "file") {
     this._resolveSafeFolder(folderAlias); // validasi awal
     const upload = multer({
@@ -115,11 +139,11 @@ class FileUploadService {
     if (!file) throw new Error("File tidak ditemukan pada request");
     const physicalFolder = ALLOWED_FOLDERS[folderAlias];
     return {
-      url: `/uploads/${physicalFolder}/${file.filename}`,
-      type: file.mimetype,
+      url: `/files/${physicalFolder}/${file.filename}`,
+      mime_type: file.mimetype,
       size: file.size,
-      originalName: file.originalname,
-      storedName: file.filename,
+      original_name: file.originalname,
+      stored_name: file.filename,
     };
   }
 
@@ -136,12 +160,12 @@ class FileUploadService {
     if (
       !fileUrl ||
       typeof fileUrl !== "string" ||
-      !fileUrl.startsWith("/uploads/")
+      !fileUrl.startsWith("/files/")
     ) {
       throw new Error("URL file tidak valid");
     }
 
-    const relativePath = fileUrl.replace(/^\/uploads\//, "");
+    const relativePath = fileUrl.replace(/^\/files\//, "");
     const base = path.resolve(UPLOAD_BASE_DIR);
     const fullPath = path.resolve(base, relativePath);
 
@@ -172,6 +196,31 @@ class FileUploadService {
     }
   }
 
+  async getPreviewData(fileUrl) {
+    const fullPath = this._resolveSafePathFromUrl(fileUrl);
+
+    let stat;
+    try {
+      stat = await fsp.stat(fullPath);
+    } catch (err) {
+      if (err.code === "ENOENT") throw new Error("File tidak ditemukan");
+      throw err;
+    }
+
+    if (!stat.isFile()) throw new Error("Bukan file yang valid");
+
+    const ext = path.extname(fullPath).toLowerCase();
+    const mimeType = this._getMimeTypeFromExt(ext);
+
+    if (!this._isPreviewableMime(mimeType)) {
+      throw new Error(
+        `Tipe file '${mimeType}' tidak didukung untuk preview. Gunakan endpoint /download.`
+      );
+    }
+
+    return { fullPath, mimeType, size: stat.size };
+  }
+
   /**
    * Dapatkan absolute path aman untuk di-stream/serve (dipakai controller GET download)
    */
@@ -194,7 +243,7 @@ class FileUploadService {
       files.map(async (entry) => {
         const stat = await fsp.stat(path.join(safeFolder, entry.name));
         return {
-          url: `/uploads/${physicalFolder}/${entry.name}`,
+          url: `/files/${physicalFolder}/${entry.name}`,
           storedName: entry.name,
           size: stat.size,
           modifiedAt: stat.mtime,

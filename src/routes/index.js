@@ -55,7 +55,7 @@ const vendorEditRoutes = require("./vendorEdit.route");
 const preOrderRoutes = require("./preOrder.route");
 
 //file upload
-//const fileUploadRoutes = require("./fileUpload.route");
+const fileUploadRoutes = require("./fileUpload.route");
 
 // Use routes
 //sync
@@ -111,7 +111,7 @@ router.use("/vendor-edits", vendorEditRoutes);
 router.use("/pre-orders", preOrderRoutes);
 
 //file upload
-// router.use("/upload", fileUploadRoutes);
+router.use("/uploads", fileUploadRoutes);
 
 // API Documentation route
 router.get("/", (req, res) => {
@@ -170,7 +170,7 @@ router.get("/", (req, res) => {
       preOrders: "/api/pre-orders",
 
       //file upload
-      fileUpload: "api/upload",
+      fileUpload: "api/uploads",
     },
   });
 });

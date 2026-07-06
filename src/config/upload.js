@@ -1,6 +1,6 @@
 const path = require("path");
 
-const UPLOAD_BASE_DIR = path.join(__dirname, "..", "uploads");
+const UPLOAD_BASE_DIR = path.join(__dirname, "..", "files");
 
 // Whitelist folder — key = alias dipakai di URL, value = nama folder fisik di disk
 const ALLOWED_FOLDERS = {
