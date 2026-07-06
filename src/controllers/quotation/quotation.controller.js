@@ -521,6 +521,197 @@ class QuotationController {
   }
 
   /**
+   * revision quotation: simpan snapshot lama sebagai history, lalu update
+   * data aktif (quotation + category/service/product/field + payment)
+   * Body: {
+   *   is_double_database,
+   *   quotation_category: [...],
+   *   payments: [...],
+   *   ...quotationData
+   * }
+   */
+  async revision(req, res) {
+    try {
+      const { id } = req.params;
+      const {
+        is_double_database,
+        quotation_category,
+        quotation_payment,
+        ...quotationData
+      } = req.body;
+      const isDoubleDatabase = is_double_database !== false;
+
+      // Check if quotation exists
+      const existing = await quotationService.findById(
+        id,
+        {},
+        isDoubleDatabase,
+      );
+      if (!existing) {
+        return errorResponse(res, "Quotation not found", 404);
+      }
+
+      // ── Validasi quotation_category (sama seperti create) ──────────
+      if (quotation_category && !Array.isArray(quotation_category)) {
+        return errorResponse(res, "quotation_category must be an array", 400);
+      }
+
+      if (quotation_category && quotation_category.length > 0) {
+        for (let i = 0; i < quotation_category.length; i++) {
+          const category = quotation_category[i];
+
+          if (category.services && !Array.isArray(category.services)) {
+            return errorResponse(
+              res,
+              `services must be an array for category at index ${i}`,
+              400,
+            );
+          }
+
+          if (category.services) {
+            for (let j = 0; j < category.services.length; j++) {
+              const service = category.services[j];
+
+              if (service.products && !Array.isArray(service.products)) {
+                return errorResponse(
+                  res,
+                  `products must be an array for service at index ${j} in category ${i}`,
+                  400,
+                );
+              }
+
+              if (service.products) {
+                for (let k = 0; k < service.products.length; k++) {
+                  const product = service.products[k];
+
+                  if (product.fields && !Array.isArray(product.fields)) {
+                    return errorResponse(
+                      res,
+                      `fields must be an array for product at index ${k} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // ── Validasi quotation_payment (sama seperti syncPayment) ────────────────
+      if (
+        quotation_payment !== undefined &&
+        !Array.isArray(quotation_payment)
+      ) {
+        return errorResponse(res, "quotation_payment must be an array", 400);
+      }
+
+      const requiredPaymentFields = [
+        "payment_time_indo",
+        "payment_time_mandarin",
+        "total_payment_idr",
+        "total_payment_rmb",
+        "currency_type",
+        "payment_to",
+      ];
+
+      if (quotation_payment && quotation_payment.length > 0) {
+        for (let i = 0; i < quotation_payment.length; i++) {
+          const payment = quotation_payment[i];
+
+          for (const field of requiredPaymentFields) {
+            if (payment[field] == null || payment[field] === "") {
+              return errorResponse(
+                res,
+                `${field} is required for payment at index ${i}`,
+                400,
+              );
+            }
+          }
+
+          if (!["idr", "rmb"].includes(payment.currency_type)) {
+            return errorResponse(
+              res,
+              `currency_type must be 'idr' or 'rmb' for payment at index ${i}`,
+              400,
+            );
+          }
+
+          if (
+            payment.payment_list !== undefined &&
+            !Array.isArray(payment.payment_list)
+          ) {
+            return errorResponse(
+              res,
+              `payment_list must be an array for payment at index ${i}`,
+              400,
+            );
+          }
+
+          if (payment.payment_list) {
+            for (let j = 0; j < payment.payment_list.length; j++) {
+              const list = payment.payment_list[j];
+              const requiredListFields = [
+                "service_name_indo",
+                "service_name_mandarin",
+                "price_idr",
+                "price_rmb",
+                "payment_type",
+              ];
+
+              for (const field of requiredListFields) {
+                if (list[field] == null || list[field] === "") {
+                  return errorResponse(
+                    res,
+                    `${field} is required for payment_list at index ${j} in payment ${i}`,
+                    400,
+                  );
+                }
+              }
+
+              if (
+                list.services !== undefined &&
+                !Array.isArray(list.services)
+              ) {
+                return errorResponse(
+                  res,
+                  `services must be an array for payment_list at index ${j} in payment ${i}`,
+                  400,
+                );
+              }
+
+              if (list.services) {
+                for (let k = 0; k < list.services.length; k++) {
+                  if (!list.services[k].id_quotation_service) {
+                    return errorResponse(
+                      res,
+                      `id_quotation_service is required for service at index ${k} in payment_list ${j} in payment ${i}`,
+                      400,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const result = await quotationService.reviseWithNested(
+        id,
+        quotationData,
+        quotation_category || [],
+        quotation_payment || [],
+        req.user.id,
+        isDoubleDatabase,
+      );
+
+      return successResponse(res, result, "Quotation revised successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  /**
    * Approve quotation
    */
   async approve(req, res) {

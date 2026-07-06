@@ -277,6 +277,10 @@ class QuotationService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.Quotation,
+          as: "history_revision",
+        },
       ],
     };
 
@@ -633,303 +637,14 @@ class QuotationService extends DualDatabaseService {
         `🔄 Syncing ${paymentsData.length} Payment(s) for Quotation ID: ${quotationId}...`,
       );
 
-      // ── 1. Sync QuotationPayment (array) via syncChildRecords ───────
-      const preparedPayments = paymentsData.map((payment) => {
-        const { payment_list, ...paymentData } = payment;
-        return { ...paymentData, id_quotation: quotationId };
-      });
-
-      const paymentsResult = await syncChildRecords({
-        Model1: models.db1.QuotationPayment,
-        Model2: isDoubleDatabase ? models.db2.QuotationPayment : null,
-        foreignKey: "id_quotation",
-        parentId: quotationId,
-        newData: preparedPayments,
+      await this._syncQuotationPayments(
+        quotationId,
+        paymentsData,
         transaction1,
         transaction2,
         isDoubleDatabase,
-      });
-
-      const syncedPayments = [
-        ...(paymentsResult.created || []),
-        ...(paymentsResult.updated || []),
-      ];
-
-      console.log(
-        `📦 Synced ${syncedPayments.length} payment(s) ` +
-          `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`,
       );
 
-      // Cleanup lists & services milik payment yang dihapus
-      const keepPaymentIds = syncedPayments.map((p) => p.id);
-      const existingPayments = await models.db1.QuotationPayment.findAll({
-        where: { id_quotation: quotationId },
-        attributes: ["id"],
-        transaction: transaction1,
-      });
-      const deletedPaymentIds = existingPayments
-        .map((p) => p.id)
-        .filter((id) => !keepPaymentIds.includes(id));
-
-      if (deletedPaymentIds.length > 0) {
-        console.log(
-          `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`,
-        );
-
-        // Ambil list ids yang akan ikut terhapus
-        const listsToDelete = await models.db1.QuotationPaymentList.findAll({
-          where: { id_quotation_payment: deletedPaymentIds },
-          attributes: ["id"],
-          transaction: transaction1,
-        });
-        const deletedListIds = listsToDelete.map((l) => l.id);
-
-        // Hapus services dulu (terdalam)
-        if (deletedListIds.length > 0) {
-          await models.db1.QuotationPaymentService.destroy({
-            where: { id_quotation_payment_list: deletedListIds },
-            transaction: transaction1,
-          });
-
-          if (isDoubleDatabase) {
-            await models.db2.QuotationPaymentService.destroy({
-              where: { id_quotation_payment_list: deletedListIds },
-              transaction: transaction2,
-            });
-          }
-        }
-
-        // Hapus lists
-        await models.db1.QuotationPaymentList.destroy({
-          where: { id_quotation_payment: deletedPaymentIds },
-          transaction: transaction1,
-        });
-
-        if (isDoubleDatabase) {
-          await models.db2.QuotationPaymentList.destroy({
-            where: { id_quotation_payment: deletedPaymentIds },
-            transaction: transaction2,
-          });
-        }
-
-        console.log(`   ✓ Cleaned up lists and services for deleted payments`);
-      }
-
-      // ── 2. Map paymentsData → syncedPayments ────────────────────────
-      const paymentMapping = new Map();
-      let paymentCreatedIndex = 0;
-
-      for (let i = 0; i < paymentsData.length; i++) {
-        const paymentData = paymentsData[i];
-
-        if (paymentData.id) {
-          const synced = syncedPayments.find((sp) => sp.id === paymentData.id);
-          if (synced) paymentMapping.set(i, synced);
-        } else {
-          const createdPayments = paymentsResult.created || [];
-          if (paymentCreatedIndex < createdPayments.length) {
-            paymentMapping.set(i, createdPayments[paymentCreatedIndex]);
-            paymentCreatedIndex++;
-          }
-        }
-      }
-
-      // ── 3. Sync QuotationPaymentList per payment ────────────────────
-      for (let i = 0; i < paymentsData.length; i++) {
-        const paymentData = paymentsData[i];
-        const syncedPayment = paymentMapping.get(i);
-
-        if (!syncedPayment?.id) {
-          console.warn(`⚠️ Payment at index ${i} was not synced properly`);
-          continue;
-        }
-
-        const paymentId = syncedPayment.id;
-        const paymentListData = paymentData.payment_list || [];
-
-        console.log(
-          `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`,
-        );
-
-        if (paymentListData.length > 0) {
-          const preparedLists = paymentListData.map((list) => {
-            const { services, ...listData } = list;
-            return { ...listData, id_quotation_payment: paymentId };
-          });
-
-          const listsResult = await syncChildRecords({
-            Model1: models.db1.QuotationPaymentList,
-            Model2: isDoubleDatabase ? models.db2.QuotationPaymentList : null,
-            foreignKey: "id_quotation_payment",
-            parentId: paymentId,
-            newData: preparedLists,
-            transaction1,
-            transaction2,
-            isDoubleDatabase,
-          });
-
-          const syncedLists = [
-            ...(listsResult.created || []),
-            ...(listsResult.updated || []),
-          ];
-
-          console.log(
-            `✅ Synced ${syncedLists.length} list(s) for Payment ID: ${paymentId} ` +
-              `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`,
-          );
-
-          // Cleanup services milik list yang dihapus
-          const keepListIds = syncedLists.map((l) => l.id);
-          const existingLists = await models.db1.QuotationPaymentList.findAll({
-            where: { id_quotation_payment: paymentId },
-            attributes: ["id"],
-            transaction: transaction1,
-          });
-          const deletedListIds = existingLists
-            .map((l) => l.id)
-            .filter((id) => !keepListIds.includes(id));
-
-          if (deletedListIds.length > 0) {
-            await models.db1.QuotationPaymentService.destroy({
-              where: { id_quotation_payment_list: deletedListIds },
-              transaction: transaction1,
-            });
-
-            if (isDoubleDatabase) {
-              await models.db2.QuotationPaymentService.destroy({
-                where: { id_quotation_payment_list: deletedListIds },
-                transaction: transaction2,
-              });
-            }
-
-            console.log(
-              `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`,
-            );
-          }
-
-          // ── 4. Map paymentListData → syncedLists ───────────────────
-          const listMapping = new Map();
-          let listCreatedIndex = 0;
-
-          for (let j = 0; j < paymentListData.length; j++) {
-            const listData = paymentListData[j];
-
-            if (listData.id) {
-              const synced = syncedLists.find((sl) => sl.id === listData.id);
-              if (synced) listMapping.set(j, synced);
-            } else {
-              const createdLists = listsResult.created || [];
-              if (listCreatedIndex < createdLists.length) {
-                listMapping.set(j, createdLists[listCreatedIndex]);
-                listCreatedIndex++;
-              }
-            }
-          }
-
-          // ── 5. Sync QuotationPaymentService per list ───────────────
-          for (let j = 0; j < paymentListData.length; j++) {
-            const listData = paymentListData[j];
-            const syncedList = listMapping.get(j);
-
-            if (!syncedList?.id) {
-              console.warn(
-                `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`,
-              );
-              continue;
-            }
-
-            const listId = syncedList.id;
-            const services = listData.services || [];
-
-            if (services.length > 0) {
-              const preparedServices = services.map((svc) => ({
-                ...svc,
-                id_quotation_payment: paymentId,
-                id_quotation_payment_list: listId,
-              }));
-
-              const servicesResult = await syncChildRecords({
-                Model1: models.db1.QuotationPaymentService,
-                Model2: isDoubleDatabase
-                  ? models.db2.QuotationPaymentService
-                  : null,
-                foreignKey: "id_quotation_payment_list",
-                parentId: listId,
-                newData: preparedServices,
-                transaction1,
-                transaction2,
-                isDoubleDatabase,
-              });
-
-              const syncedCount =
-                (servicesResult.created?.length || 0) +
-                (servicesResult.updated?.length || 0);
-
-              console.log(
-                `✅ Synced ${syncedCount} service(s) for PaymentList ID: ${listId} ` +
-                  `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
-              );
-            } else {
-              // Tidak ada services → hapus semua yang ada
-              await models.db1.QuotationPaymentService.destroy({
-                where: { id_quotation_payment_list: listId },
-                transaction: transaction1,
-              });
-
-              if (isDoubleDatabase) {
-                await models.db2.QuotationPaymentService.destroy({
-                  where: { id_quotation_payment_list: listId },
-                  transaction: transaction2,
-                });
-              }
-
-              console.log(
-                `🗑️ Cleared all services for PaymentList ID: ${listId}`,
-              );
-            }
-          }
-        } else {
-          // Tidak ada list → hapus semua list & services yang ada
-          const existingLists = await models.db1.QuotationPaymentList.findAll({
-            where: { id_quotation_payment: paymentId },
-            attributes: ["id"],
-            transaction: transaction1,
-          });
-          const existingListIds = existingLists.map((l) => l.id);
-
-          if (existingListIds.length > 0) {
-            await models.db1.QuotationPaymentService.destroy({
-              where: { id_quotation_payment_list: existingListIds },
-              transaction: transaction1,
-            });
-
-            if (isDoubleDatabase) {
-              await models.db2.QuotationPaymentService.destroy({
-                where: { id_quotation_payment_list: existingListIds },
-                transaction: transaction2,
-              });
-            }
-
-            await models.db1.QuotationPaymentList.destroy({
-              where: { id_quotation_payment: paymentId },
-              transaction: transaction1,
-            });
-
-            if (isDoubleDatabase) {
-              await models.db2.QuotationPaymentList.destroy({
-                where: { id_quotation_payment: paymentId },
-                transaction: transaction2,
-              });
-            }
-
-            console.log(
-              `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`,
-            );
-          }
-        }
-      }
-
-      // ── Commit ──────────────────────────────────────────────────────
       await transaction1.commit();
       if (isDoubleDatabase) await transaction2.commit();
 
@@ -942,6 +657,680 @@ class QuotationService extends DualDatabaseService {
       if (transaction2) await transaction2.rollback();
       throw new Error(`Failed to sync Payment: ${error.message}`);
     }
+  }
+
+  /**
+   * Revisi quotation: simpan data lama sebagai history, lalu update data aktif
+   * @param {Number} id - ID quotation yang direvisi (tetap sama)
+   * @param {Object} quotationData - Data quotation baru
+   * @param {Array} categoriesData - Data category baru
+   * @param {Number} id_user_revise
+   * @param {Boolean} isDoubleDatabase
+   */
+  async reviseWithNested(
+    id,
+    quotationData,
+    categoriesData = [],
+    paymentsData = [], // ⬅️ tambahan baru
+    id_user_revise,
+    isDoubleDatabase = true,
+  ) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      const snapshot = await this.getById(id, {}, isDoubleDatabase);
+      if (!snapshot) {
+        throw new Error(`Quotation with ID ${id} not found`);
+      }
+
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+
+      console.log(`🔄 Membuat history snapshot untuk Quotation ID ${id}...`);
+
+      await this._cloneQuotationAsHistory(
+        snapshot,
+        id,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
+      console.log(`✅ History snapshot berhasil dibuat`);
+
+      const dataToUpdate = {
+        ...quotationData,
+        status: "pending",
+        id_user_approve: null,
+        id_user_reject: null,
+      };
+
+      const [updatedRows1] = await this.Model1.update(dataToUpdate, {
+        where: { id },
+        transaction: transaction1,
+      });
+
+      if (isDoubleDatabase) {
+        await this.Model2.update(dataToUpdate, {
+          where: { id },
+          transaction: transaction2,
+        });
+      }
+
+      if (updatedRows1 === 0) {
+        throw new Error(`Quotation with ID ${id} not found`);
+      }
+
+      await this.Model1.increment("revision_number", {
+        where: { id },
+        transaction: transaction1,
+      });
+      if (isDoubleDatabase) {
+        await this.Model2.increment("revision_number", {
+          where: { id },
+          transaction: transaction2,
+        });
+      }
+
+      // Sync ulang category/service/product/field
+      await this._syncQuotationCategories(
+        id,
+        categoriesData,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
+
+      // ⬅️ Sync ulang payment/payment_list/payment_service (baru)
+      console.log(
+        `🔄 Syncing ${paymentsData.length} Payment(s) untuk revisi...`,
+      );
+      await this._syncQuotationPayments(
+        id,
+        paymentsData,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
+
+      const progressData = {
+        id_quotation: id,
+        id_user: id_user_revise,
+        status: "revision",
+        note: "Quotation Revision",
+      };
+
+      const progress1 = await models.db1.QuotationVerificationProgress.create(
+        progressData,
+        { transaction: transaction1 },
+      );
+
+      if (isDoubleDatabase) {
+        await models.db2.QuotationVerificationProgress.create(
+          { ...progressData, id: progress1.id },
+          { transaction: transaction2 },
+        );
+      }
+
+      await transaction1.commit();
+      if (isDoubleDatabase) await transaction2.commit();
+
+      console.log(`✅ Quotation ID ${id} berhasil direvisi`);
+
+      return await this.getById(id, {}, isDoubleDatabase);
+    } catch (error) {
+      console.error(`❌ Error revising Quotation:`, error.message);
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+      throw new Error(`Failed to revise Quotation: ${error.message}`);
+    }
+  }
+
+  async approve(id, id_user_approve, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      if (isDoubleDatabase) {
+        transaction1 = await db1.transaction();
+        transaction2 = await db2.transaction();
+
+        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+
+        // 1. Update Quotation in both databases
+        const [updatedRows1] = await this.Model1.update(
+          { status: "approved", id_user_approve },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        const [updatedRows2] = await this.Model2.update(
+          { status: "approved", id_user_approve },
+          {
+            where: { id },
+            transaction: transaction2,
+          },
+        );
+
+        if (updatedRows1 === 0 && updatedRows2 === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        console.log(`✅ Updated Quotation in both databases`);
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_approve,
+          status: "approved",
+          note: "Quotation approved",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.QuotationVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ approved QuotationVerificationProgress with status "approved"`,
+        );
+
+        // Commit both transactions
+        await transaction1.commit();
+        await transaction2.commit();
+        console.log(`✅ Quotation with nested relations successfully updated`);
+
+        // Get updated quotation
+        const result = await this.getById(id, {}, isDoubleDatabase);
+        return result;
+      } else {
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
+
+        const [updatedRows] = await this.Model1.update(
+          { status: "approved", id_user_approve },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        if (updatedRows === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_approve,
+          status: "approved",
+          note: "Quotation approved",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        console.log(
+          `✅ Approved QuotationVerificationProgress with status "approved"`,
+        );
+
+        await transaction1.commit();
+        console.log(`✅ Quotation updated in DB1 only`);
+
+        const result = await this.getById(id, {}, false);
+        return result;
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error updating Quotation with nested relations:`,
+        error.message,
+      );
+
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+
+      throw new Error(`Failed to update Quotation: ${error.message}`);
+    }
+  }
+
+  async reject(id, id_user_reject, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      if (isDoubleDatabase) {
+        transaction1 = await db1.transaction();
+        transaction2 = await db2.transaction();
+
+        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+
+        // 1. Update Quotation in both databases
+        const [updatedRows1] = await this.Model1.update(
+          { status: "rejected", id_user_reject },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        const [updatedRows2] = await this.Model2.update(
+          { status: "rejected", id_user_reject },
+          {
+            where: { id },
+            transaction: transaction2,
+          },
+        );
+
+        if (updatedRows1 === 0 && updatedRows2 === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        console.log(`✅ Updated Quotation in both databases`);
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_reject,
+          status: "rejected",
+          note: "Quotation rejected",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        const progressDataWithId = {
+          ...progressData,
+          id: progress1.id,
+        };
+        await models.db2.QuotationVerificationProgress.create(
+          progressDataWithId,
+          {
+            transaction: transaction2,
+          },
+        );
+
+        console.log(
+          `✅ rejected QuotationVerificationProgress with status "rejected"`,
+        );
+
+        // Commit both transactions
+        await transaction1.commit();
+        await transaction2.commit();
+        console.log(`✅ Quotation with nested relations successfully rejected`);
+
+        // Get updated quotation
+        const result = await this.getById(id, {}, isDoubleDatabase);
+        return result;
+      } else {
+        // Single database (DB1 only)
+        transaction1 = await db1.transaction();
+
+        const [updatedRows] = await this.Model1.update(
+          { status: "rejected", id_user_reject },
+          {
+            where: { id },
+            transaction: transaction1,
+          },
+        );
+
+        if (updatedRows === 0) {
+          throw new Error(`Quotation with ID ${id} not found`);
+        }
+
+        const progressData = {
+          id_quotation: id,
+          id_user: id_user_reject,
+          status: "rejected",
+          note: "Quotation rejected",
+        };
+
+        const progress1 = await models.db1.QuotationVerificationProgress.create(
+          progressData,
+          { transaction: transaction1 },
+        );
+
+        console.log(
+          `✅ rejected QuotationVerificationProgress with status "rejected"`,
+        );
+
+        await transaction1.commit();
+        console.log(`✅ Quotation updated in DB1 only`);
+
+        const result = await this.getById(id, {}, false);
+        return result;
+      }
+    } catch (error) {
+      console.error(
+        `❌ Error updating Quotation with nested relations:`,
+        error.message,
+      );
+
+      if (transaction1) await transaction1.rollback();
+      if (transaction2) await transaction2.rollback();
+
+      throw new Error(`Failed to update Quotation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Core logic to sync payments + nested lists + nested services.
+   * Tidak membuat/commit transaction sendiri — dipakai baik oleh syncPayment()
+   * maupun reviseWithNested() supaya bisa satu transaction yang sama.
+   * @private
+   */
+  async _syncQuotationPayments(
+    quotationId,
+    paymentsData = [],
+    transaction1,
+    transaction2,
+    isDoubleDatabase,
+  ) {
+    // ── 1. Sync QuotationPayment (array) via syncChildRecords ───────
+    const preparedPayments = paymentsData.map((payment) => {
+      const { payment_list, ...paymentData } = payment;
+      return { ...paymentData, id_quotation: quotationId };
+    });
+
+    const paymentsResult = await syncChildRecords({
+      Model1: models.db1.QuotationPayment,
+      Model2: isDoubleDatabase ? models.db2.QuotationPayment : null,
+      foreignKey: "id_quotation",
+      parentId: quotationId,
+      newData: preparedPayments,
+      transaction1,
+      transaction2,
+      isDoubleDatabase,
+    });
+
+    const syncedPayments = [
+      ...(paymentsResult.created || []),
+      ...(paymentsResult.updated || []),
+    ];
+
+    console.log(
+      `📦 Synced ${syncedPayments.length} payment(s) ` +
+        `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`,
+    );
+
+    // Cleanup lists & services milik payment yang dihapus
+    const keepPaymentIds = syncedPayments.map((p) => p.id);
+    const existingPayments = await models.db1.QuotationPayment.findAll({
+      where: { id_quotation: quotationId },
+      attributes: ["id"],
+      transaction: transaction1,
+    });
+    const deletedPaymentIds = existingPayments
+      .map((p) => p.id)
+      .filter((id) => !keepPaymentIds.includes(id));
+
+    if (deletedPaymentIds.length > 0) {
+      console.log(
+        `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`,
+      );
+
+      const listsToDelete = await models.db1.QuotationPaymentList.findAll({
+        where: { id_quotation_payment: deletedPaymentIds },
+        attributes: ["id"],
+        transaction: transaction1,
+      });
+      const deletedListIds = listsToDelete.map((l) => l.id);
+
+      if (deletedListIds.length > 0) {
+        await models.db1.QuotationPaymentService.destroy({
+          where: { id_quotation_payment_list: deletedListIds },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.QuotationPaymentService.destroy({
+            where: { id_quotation_payment_list: deletedListIds },
+            transaction: transaction2,
+          });
+        }
+      }
+
+      await models.db1.QuotationPaymentList.destroy({
+        where: { id_quotation_payment: deletedPaymentIds },
+        transaction: transaction1,
+      });
+
+      if (isDoubleDatabase) {
+        await models.db2.QuotationPaymentList.destroy({
+          where: { id_quotation_payment: deletedPaymentIds },
+          transaction: transaction2,
+        });
+      }
+
+      console.log(`   ✓ Cleaned up lists and services for deleted payments`);
+    }
+
+    // ── 2. Map paymentsData → syncedPayments ────────────────────────
+    const paymentMapping = new Map();
+    let paymentCreatedIndex = 0;
+
+    for (let i = 0; i < paymentsData.length; i++) {
+      const paymentData = paymentsData[i];
+
+      if (paymentData.id) {
+        const synced = syncedPayments.find((sp) => sp.id === paymentData.id);
+        if (synced) paymentMapping.set(i, synced);
+      } else {
+        const createdPayments = paymentsResult.created || [];
+        if (paymentCreatedIndex < createdPayments.length) {
+          paymentMapping.set(i, createdPayments[paymentCreatedIndex]);
+          paymentCreatedIndex++;
+        }
+      }
+    }
+
+    // ── 3. Sync QuotationPaymentList per payment ────────────────────
+    for (let i = 0; i < paymentsData.length; i++) {
+      const paymentData = paymentsData[i];
+      const syncedPayment = paymentMapping.get(i);
+
+      if (!syncedPayment?.id) {
+        console.warn(`⚠️ Payment at index ${i} was not synced properly`);
+        continue;
+      }
+
+      const paymentId = syncedPayment.id;
+      const paymentListData = paymentData.payment_list || [];
+
+      console.log(
+        `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`,
+      );
+
+      if (paymentListData.length > 0) {
+        const preparedLists = paymentListData.map((list) => {
+          const { services, ...listData } = list;
+          return { ...listData, id_quotation_payment: paymentId };
+        });
+
+        const listsResult = await syncChildRecords({
+          Model1: models.db1.QuotationPaymentList,
+          Model2: isDoubleDatabase ? models.db2.QuotationPaymentList : null,
+          foreignKey: "id_quotation_payment",
+          parentId: paymentId,
+          newData: preparedLists,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
+        const syncedLists = [
+          ...(listsResult.created || []),
+          ...(listsResult.updated || []),
+        ];
+
+        console.log(
+          `✅ Synced ${syncedLists.length} list(s) for Payment ID: ${paymentId} ` +
+            `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`,
+        );
+
+        // Cleanup services milik list yang dihapus
+        const keepListIds = syncedLists.map((l) => l.id);
+        const existingLists = await models.db1.QuotationPaymentList.findAll({
+          where: { id_quotation_payment: paymentId },
+          attributes: ["id"],
+          transaction: transaction1,
+        });
+        const deletedListIds = existingLists
+          .map((l) => l.id)
+          .filter((id) => !keepListIds.includes(id));
+
+        if (deletedListIds.length > 0) {
+          await models.db1.QuotationPaymentService.destroy({
+            where: { id_quotation_payment_list: deletedListIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationPaymentService.destroy({
+              where: { id_quotation_payment_list: deletedListIds },
+              transaction: transaction2,
+            });
+          }
+
+          console.log(
+            `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`,
+          );
+        }
+
+        // ── 4. Map paymentListData → syncedLists ───────────────────
+        const listMapping = new Map();
+        let listCreatedIndex = 0;
+
+        for (let j = 0; j < paymentListData.length; j++) {
+          const listData = paymentListData[j];
+
+          if (listData.id) {
+            const synced = syncedLists.find((sl) => sl.id === listData.id);
+            if (synced) listMapping.set(j, synced);
+          } else {
+            const createdLists = listsResult.created || [];
+            if (listCreatedIndex < createdLists.length) {
+              listMapping.set(j, createdLists[listCreatedIndex]);
+              listCreatedIndex++;
+            }
+          }
+        }
+
+        // ── 5. Sync QuotationPaymentService per list ───────────────
+        for (let j = 0; j < paymentListData.length; j++) {
+          const listData = paymentListData[j];
+          const syncedList = listMapping.get(j);
+
+          if (!syncedList?.id) {
+            console.warn(
+              `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`,
+            );
+            continue;
+          }
+
+          const listId = syncedList.id;
+          const services = listData.services || [];
+
+          if (services.length > 0) {
+            const preparedServices = services.map((svc) => ({
+              ...svc,
+              id_quotation_payment: paymentId,
+              id_quotation_payment_list: listId,
+            }));
+
+            const servicesResult = await syncChildRecords({
+              Model1: models.db1.QuotationPaymentService,
+              Model2: isDoubleDatabase
+                ? models.db2.QuotationPaymentService
+                : null,
+              foreignKey: "id_quotation_payment_list",
+              parentId: listId,
+              newData: preparedServices,
+              transaction1,
+              transaction2,
+              isDoubleDatabase,
+            });
+
+            const syncedCount =
+              (servicesResult.created?.length || 0) +
+              (servicesResult.updated?.length || 0);
+
+            console.log(
+              `✅ Synced ${syncedCount} service(s) for PaymentList ID: ${listId} ` +
+                `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
+            );
+          } else {
+            await models.db1.QuotationPaymentService.destroy({
+              where: { id_quotation_payment_list: listId },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationPaymentService.destroy({
+                where: { id_quotation_payment_list: listId },
+                transaction: transaction2,
+              });
+            }
+
+            console.log(
+              `🗑️ Cleared all services for PaymentList ID: ${listId}`,
+            );
+          }
+        }
+      } else {
+        const existingLists = await models.db1.QuotationPaymentList.findAll({
+          where: { id_quotation_payment: paymentId },
+          attributes: ["id"],
+          transaction: transaction1,
+        });
+        const existingListIds = existingLists.map((l) => l.id);
+
+        if (existingListIds.length > 0) {
+          await models.db1.QuotationPaymentService.destroy({
+            where: { id_quotation_payment_list: existingListIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationPaymentService.destroy({
+              where: { id_quotation_payment_list: existingListIds },
+              transaction: transaction2,
+            });
+          }
+
+          await models.db1.QuotationPaymentList.destroy({
+            where: { id_quotation_payment: paymentId },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationPaymentList.destroy({
+              where: { id_quotation_payment: paymentId },
+              transaction: transaction2,
+            });
+          }
+
+          console.log(
+            `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`,
+          );
+        }
+      }
+    }
+
+    return syncedPayments;
   }
 
   /**
@@ -1498,244 +1887,187 @@ class QuotationService extends DualDatabaseService {
     return syncedCategories;
   }
 
-  async approve(id, id_user_approve, isDoubleDatabase = true) {
-    let transaction1 = null;
-    let transaction2 = null;
+  /**
+   * Clone snapshot quotation lama menjadi record history (is_active=false, is_history=true)
+   * @private
+   */
+  async _cloneQuotationAsHistory(
+    snapshot,
+    parentId,
+    transaction1,
+    transaction2,
+    isDoubleDatabase,
+  ) {
+    const plain = snapshot.toJSON ? snapshot.toJSON() : snapshot;
+    const {
+      id,
+      createdAt,
+      updatedAt,
+      company,
+      customer,
+      quotation_category,
+      quotation_payment,
+      user_create,
+      user_approve,
+      user_reject,
+      verification_progress,
+      ...quotationFields
+    } = plain;
 
-    try {
-      if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
+    const historyData = {
+      ...quotationFields,
+      id_quotation_parent: parentId,
+      is_active: false,
+      is_history: true,
+    };
 
-        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
+    // 1. Quotation history
+    const historyQuotation1 = await this.Model1.create(historyData, {
+      transaction: transaction1,
+    });
+    const historyQuotationId = historyQuotation1.id;
 
-        // 1. Update Quotation in both databases
-        const [updatedRows1] = await this.Model1.update(
-          { status: "approved", id_user_approve },
-          {
-            where: { id },
-            transaction: transaction1,
-          },
-        );
-
-        const [updatedRows2] = await this.Model2.update(
-          { status: "approved", id_user_approve },
-          {
-            where: { id },
-            transaction: transaction2,
-          },
-        );
-
-        if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
-        }
-
-        console.log(`✅ Updated Quotation in both databases`);
-
-        const progressData = {
-          id_quotation: id,
-          id_user: id_user_approve,
-          status: "approved",
-          note: "Quotation approved",
-        };
-
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        const progressDataWithId = {
-          ...progressData,
-          id: progress1.id,
-        };
-        await models.db2.QuotationVerificationProgress.create(
-          progressDataWithId,
-          {
-            transaction: transaction2,
-          },
-        );
-
-        console.log(
-          `✅ approved QuotationVerificationProgress with status "approved"`,
-        );
-
-        // Commit both transactions
-        await transaction1.commit();
-        await transaction2.commit();
-        console.log(`✅ Quotation with nested relations successfully updated`);
-
-        // Get updated quotation
-        const result = await this.getById(id, {}, isDoubleDatabase);
-        return result;
-      } else {
-        // Single database (DB1 only)
-        transaction1 = await db1.transaction();
-
-        const [updatedRows] = await this.Model1.update(
-          { status: "approved", id_user_approve },
-          {
-            where: { id },
-            transaction: transaction1,
-          },
-        );
-
-        if (updatedRows === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
-        }
-
-        const progressData = {
-          id_quotation: id,
-          id_user: id_user_approve,
-          status: "approved",
-          note: "Quotation approved",
-        };
-
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        console.log(
-          `✅ Approved QuotationVerificationProgress with status "approved"`,
-        );
-
-        await transaction1.commit();
-        console.log(`✅ Quotation updated in DB1 only`);
-
-        const result = await this.getById(id, {}, false);
-        return result;
-      }
-    } catch (error) {
-      console.error(
-        `❌ Error updating Quotation with nested relations:`,
-        error.message,
+    if (isDoubleDatabase) {
+      await this.Model2.create(
+        { ...historyData, id: historyQuotationId },
+        { transaction: transaction2 },
       );
-
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
-
-      throw new Error(`Failed to update Quotation: ${error.message}`);
     }
-  }
 
-  async reject(id, id_user_reject, isDoubleDatabase = true) {
-    let transaction1 = null;
-    let transaction2 = null;
+    // 2. Clone category -> service -> product -> field
+    for (const cat of quotation_category || []) {
+      const { id: catId, category, services, ...catFields } = cat;
 
-    try {
-      if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
-
-        console.log(`🔄 Updating Quotation ID ${id} with nested relations...`);
-
-        // 1. Update Quotation in both databases
-        const [updatedRows1] = await this.Model1.update(
-          { status: "rejected", id_user_reject },
-          {
-            where: { id },
-            transaction: transaction1,
-          },
-        );
-
-        const [updatedRows2] = await this.Model2.update(
-          { status: "rejected", id_user_reject },
-          {
-            where: { id },
-            transaction: transaction2,
-          },
-        );
-
-        if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
-        }
-
-        console.log(`✅ Updated Quotation in both databases`);
-
-        const progressData = {
-          id_quotation: id,
-          id_user: id_user_reject,
-          status: "rejected",
-          note: "Quotation rejected",
-        };
-
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        const progressDataWithId = {
-          ...progressData,
-          id: progress1.id,
-        };
-        await models.db2.QuotationVerificationProgress.create(
-          progressDataWithId,
-          {
-            transaction: transaction2,
-          },
-        );
-
-        console.log(
-          `✅ rejected QuotationVerificationProgress with status "rejected"`,
-        );
-
-        // Commit both transactions
-        await transaction1.commit();
-        await transaction2.commit();
-        console.log(`✅ Quotation with nested relations successfully rejected`);
-
-        // Get updated quotation
-        const result = await this.getById(id, {}, isDoubleDatabase);
-        return result;
-      } else {
-        // Single database (DB1 only)
-        transaction1 = await db1.transaction();
-
-        const [updatedRows] = await this.Model1.update(
-          { status: "rejected", id_user_reject },
-          {
-            where: { id },
-            transaction: transaction1,
-          },
-        );
-
-        if (updatedRows === 0) {
-          throw new Error(`Quotation with ID ${id} not found`);
-        }
-
-        const progressData = {
-          id_quotation: id,
-          id_user: id_user_reject,
-          status: "rejected",
-          note: "Quotation rejected",
-        };
-
-        const progress1 = await models.db1.QuotationVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        console.log(
-          `✅ rejected QuotationVerificationProgress with status "rejected"`,
-        );
-
-        await transaction1.commit();
-        console.log(`✅ Quotation updated in DB1 only`);
-
-        const result = await this.getById(id, {}, false);
-        return result;
-      }
-    } catch (error) {
-      console.error(
-        `❌ Error updating Quotation with nested relations:`,
-        error.message,
+      const newCat1 = await models.db1.QuotationCategory.create(
+        { ...catFields, id_quotation: historyQuotationId },
+        { transaction: transaction1 },
       );
+      if (isDoubleDatabase) {
+        await models.db2.QuotationCategory.create(
+          { ...catFields, id_quotation: historyQuotationId, id: newCat1.id },
+          { transaction: transaction2 },
+        );
+      }
 
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
+      for (const svc of services || []) {
+        const { id: svcId, service_pricing, products, ...svcFields } = svc;
 
-      throw new Error(`Failed to update Quotation: ${error.message}`);
+        const newSvc1 = await models.db1.QuotationService.create(
+          { ...svcFields, id_quotation_category: newCat1.id },
+          { transaction: transaction1 },
+        );
+        if (isDoubleDatabase) {
+          await models.db2.QuotationService.create(
+            { ...svcFields, id_quotation_category: newCat1.id, id: newSvc1.id },
+            { transaction: transaction2 },
+          );
+        }
+
+        for (const prod of products || []) {
+          const { id: prodId, fields, ...prodFields } = prod;
+
+          const newProd1 = await models.db1.QuotationProduct.create(
+            {
+              ...prodFields,
+              id_quotation_category: newCat1.id,
+              id_quotation_service: newSvc1.id,
+            },
+            { transaction: transaction1 },
+          );
+          if (isDoubleDatabase) {
+            await models.db2.QuotationProduct.create(
+              {
+                ...prodFields,
+                id_quotation_category: newCat1.id,
+                id_quotation_service: newSvc1.id,
+                id: newProd1.id,
+              },
+              { transaction: transaction2 },
+            );
+          }
+
+          for (const field of fields || []) {
+            const { id: fieldId, ...fieldFields } = field;
+
+            const newField1 = await models.db1.QuotationProductField.create(
+              { ...fieldFields, id_quotation_product: newProd1.id },
+              { transaction: transaction1 },
+            );
+            if (isDoubleDatabase) {
+              await models.db2.QuotationProductField.create(
+                {
+                  ...fieldFields,
+                  id_quotation_product: newProd1.id,
+                  id: newField1.id,
+                },
+                { transaction: transaction2 },
+              );
+            }
+          }
+        }
+      }
     }
+
+    // 3. Clone payment -> payment_list -> payment_services
+    for (const pay of quotation_payment || []) {
+      const { id: payId, quotation_payment_list, ...payFields } = pay;
+
+      const newPay1 = await models.db1.QuotationPayment.create(
+        { ...payFields, id_quotation: historyQuotationId },
+        { transaction: transaction1 },
+      );
+      if (isDoubleDatabase) {
+        await models.db2.QuotationPayment.create(
+          { ...payFields, id_quotation: historyQuotationId, id: newPay1.id },
+          { transaction: transaction2 },
+        );
+      }
+
+      for (const list of quotation_payment_list || []) {
+        const { id: listId, quotation_payment_services, ...listFields } = list;
+
+        const newList1 = await models.db1.QuotationPaymentList.create(
+          { ...listFields, id_quotation_payment: newPay1.id },
+          { transaction: transaction1 },
+        );
+        if (isDoubleDatabase) {
+          await models.db2.QuotationPaymentList.create(
+            {
+              ...listFields,
+              id_quotation_payment: newPay1.id,
+              id: newList1.id,
+            },
+            { transaction: transaction2 },
+          );
+        }
+
+        for (const svc of quotation_payment_services || []) {
+          const { id: svcId, ...svcFields } = svc;
+
+          const newSvc1 = await models.db1.QuotationPaymentService.create(
+            {
+              ...svcFields,
+              id_quotation_payment: newPay1.id,
+              id_quotation_payment_list: newList1.id,
+            },
+            { transaction: transaction1 },
+          );
+          if (isDoubleDatabase) {
+            await models.db2.QuotationPaymentService.create(
+              {
+                ...svcFields,
+                id_quotation_payment: newPay1.id,
+                id_quotation_payment_list: newList1.id,
+                id: newSvc1.id,
+              },
+              { transaction: transaction2 },
+            );
+          }
+        }
+      }
+    }
+
+    return historyQuotationId;
   }
 }
 

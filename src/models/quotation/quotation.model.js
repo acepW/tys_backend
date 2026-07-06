@@ -55,6 +55,23 @@ module.exports = (sequelize) => {
         },
         comment: "Id user who reject the service pricing",
       },
+      // tambahkan di attributes
+      id_quotation_parent: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "quotations",
+          key: "id",
+        },
+        comment:
+          "Filled in if this record is a history/revision of this quotation",
+      },
+      revision_number: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Increases each time the quotation is revised",
+      },
       date: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -75,6 +92,11 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(100),
         allowNull: false,
         comment: "Quotation title for Mandarin",
+      },
+      is_history: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "history for quotation revision",
       },
       status: {
         type: DataTypes.ENUM("pending", "approved", "rejected"),
@@ -132,6 +154,19 @@ module.exports = (sequelize) => {
 
   // Define associations
   Quotation.associate = (models) => {
+    // association with itself
+    Quotation.hasMany(models.Quotation, {
+      foreignKey: "id_quotation_parent",
+      as: "history_revision",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    Quotation.belongsTo(models.Quotation, {
+      foreignKey: "id_quotation_parent",
+      as: "parent_quotation",
+    });
+
     // Quotation belongs to Company
     Quotation.belongsTo(models.Company, {
       foreignKey: "id_company",

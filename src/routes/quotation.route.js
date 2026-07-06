@@ -17,6 +17,9 @@ router.put("/:id", authenticate, QuotationController.update);
 //PATCH payment
 router.patch("/payment/:id", authenticate, QuotationController.syncPayment);
 
+//PUT revision
+router.put("/revision/:id", authenticate, QuotationController.revision);
+
 // DELETE routes
 router.delete("/:id", authenticate, QuotationController.delete);
 
