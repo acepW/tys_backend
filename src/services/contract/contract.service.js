@@ -42,6 +42,7 @@ class ContractService extends DualDatabaseService {
           model: dbModels.Quotation,
           as: "quotation",
           attributes: [
+            "status",
             "quotation_no",
             "quotation_title_indo",
             "quotation_title_mandarin",
