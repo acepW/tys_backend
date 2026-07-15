@@ -2499,7 +2499,6 @@ class ContractService extends DualDatabaseService {
 
           const contractServiceDataWithId = {
             is_can_processed: true,
-            id: contractService1.id,
           };
           await models.db2.ContractService.update(contractServiceDataWithId, {
             where: { id_contract: id },
