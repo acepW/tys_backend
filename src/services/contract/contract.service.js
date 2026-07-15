@@ -572,29 +572,6 @@ class ContractService extends DualDatabaseService {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
-    // 🔥 1. Ambil total per company
-    const dataTotal = await dbModels.Contract.findAll({
-      attributes: ["id_company", [fn("COUNT", col("id")), "total"]],
-      where: {
-        is_active: true,
-        createdAt: {
-          [Op.gte]: new Date(`${year}-01-01`),
-          [Op.lt]: new Date(`${year + 1}-01-01`),
-        },
-      },
-      group: ["id_company"],
-      raw: true,
-    });
-
-    // 🔥 2. Ambil data company
-    const dataCompany = await companyService.findAll(
-      {
-        attributes: ["id", "company_name", "initial_company"],
-      },
-      isDoubleDatabase,
-    );
-
-    // 🔥 function bulan romawi
     function getRomanMonth(month) {
       const romans = [
         "I",
@@ -612,29 +589,64 @@ class ContractService extends DualDatabaseService {
       ];
       return romans[month - 1];
     }
-
     const bulanRomawi = getRomanMonth(month);
 
-    // 🔥 3. Merge + format nomor
-    const result = dataCompany.map((company) => {
-      const found = dataTotal.find((d) => d.id_company === company.id);
+    // 🔥 1. Ambil SEMUA contract di tahun ini per company (tanpa filter is_active)
+    //    Urutkan terbaru dulu supaya gampang ambil contract_no terakhir
+    const allContracts = await dbModels.Contract.findAll({
+      attributes: ["id", "id_company", "contract_no", "createdAt"],
+      where: {
+        createdAt: {
+          [Op.gte]: new Date(`${year}-01-01`),
+          [Op.lt]: new Date(`${year + 1}-01-01`),
+        },
+        is_active: true,
+      },
+      order: [
+        ["id_company", "ASC"],
+        ["id", "DESC"],
+      ],
+      raw: true,
+    });
 
-      const total = found ? parseInt(found.total) : 0;
-      const nomorUrut = String(total + 1).padStart(3, "0");
+    // 🔥 2. Cari nomor urut TERBESAR per company (bukan cuma yang terakhir dibuat)
+    //    Karena adendum kadang dibuat dari versi lama, createdAt terbaru belum tentu
+    //    nomor urut terbesar. Jadi parse semua & ambil MAX per company.
+    const maxNumberMap = {};
+    for (const c of allContracts) {
+      const match = c.contract_no?.match(/^(\d+)\//);
+      if (!match) continue;
+      const num = parseInt(match[1], 10);
+
+      if (!maxNumberMap[c.id_company] || num > maxNumberMap[c.id_company]) {
+        maxNumberMap[c.id_company] = num;
+      }
+    }
+
+    // 🔥 3. Ambil data company
+    const dataCompany = await companyService.findAll(
+      { attributes: ["id", "company_name", "initial_company"] },
+      isDoubleDatabase,
+    );
+
+    // 🔥 4. Merge + format nomor
+    const result = dataCompany.map((company) => {
+      const lastNumber = maxNumberMap[company.id] || 0;
+      const nomorUrut = String(lastNumber + 1).padStart(3, "0");
 
       const initial = company.initial_company
         ? company.initial_company.toUpperCase()
         : "-";
 
-      const noQuotation = `${nomorUrut}/KPJ/${initial}/${bulanRomawi}/${year}`;
+      const noContract = `${nomorUrut}/KPJ/${initial}/${bulanRomawi}/${year}`;
 
       return {
         id_company: company.id,
         company_name: company.company_name,
         initial_company: initial,
-        total,
+        total: lastNumber,
         next_number: nomorUrut,
-        no_contract: noQuotation,
+        no_contract: noContract,
       };
     });
 
@@ -708,6 +720,16 @@ class ContractService extends DualDatabaseService {
         }
 
         const finalContractData = { ...contractData, ...chainData };
+
+        const checkNoContract = await models.db1.Contract.findOne({
+          where: { contract_no: contractData.contract_no },
+        });
+
+        if (checkNoContract) {
+          throw new Error(
+            `Contract with number ${contractData.contract_no} already exists`,
+          );
+        }
 
         // 1. Create Contract in DB1
         const contract1 = await this.Model1.create(finalContractData, {
