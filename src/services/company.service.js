@@ -39,6 +39,7 @@ class CompanyService extends DualDatabaseService {
         {
           model: dbModels.File,
           as: "files",
+          required: false,
           where: { is_active: true },
         },
       ],

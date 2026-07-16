@@ -7,7 +7,8 @@ class CompanyController {
    */
   async getAll(req, res) {
     try {
-      const isDoubleDatabase = req.query.is_double_database !== "false";
+      const { is_double_database = true } = req.query || {};
+      const isDoubleDatabase = is_double_database;
       const companies = await companyService.getAllWithRelations(
         { where: { is_active: true } },
         null,
