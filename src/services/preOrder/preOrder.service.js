@@ -21,7 +21,7 @@ class PreOrderService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -128,7 +128,7 @@ class PreOrderService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     return {
@@ -304,7 +304,7 @@ class PreOrderService extends DualDatabaseService {
       {
         attributes: ["id", "company_name", "initial_company"],
       },
-      isDoubleDatabase,
+      isDoubleDatabase
     );
 
     // 🔥 function bulan romawi
@@ -366,7 +366,7 @@ class PreOrderService extends DualDatabaseService {
     preOrderData,
     categoriesData = [],
     id_user_create,
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -377,7 +377,7 @@ class PreOrderService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating PreOrder with nested relations in both databases...`,
+          `🔄 Creating PreOrder with nested relations in both databases...`
         );
         console.log(`📋 Categories to create: ${categoriesData.length}`);
 
@@ -400,17 +400,17 @@ class PreOrderService extends DualDatabaseService {
         // 3. Process PreOrder Categories
         if (categoriesData && categoriesData.length > 0) {
           console.log(
-            `🔄 Starting to sync ${categoriesData.length} categories...`,
+            `🔄 Starting to sync ${categoriesData.length} categories...`
           );
           const syncedCategories = await this._syncPreOrderCategories(
             preOrder1.id,
             categoriesData,
             transaction1,
             transaction2,
-            isDoubleDatabase,
+            isDoubleDatabase
           );
           console.log(
-            `✅ Categories sync completed: ${syncedCategories.length} categories processed`,
+            `✅ Categories sync completed: ${syncedCategories.length} categories processed`
           );
         } else {
           console.log(`ℹ️ No categories to sync`);
@@ -425,7 +425,7 @@ class PreOrderService extends DualDatabaseService {
 
         const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
-          { transaction: transaction1 },
+          { transaction: transaction1 }
         );
 
         const progressDataWithId = {
@@ -436,11 +436,11 @@ class PreOrderService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          },
+          }
         );
 
         console.log(
-          `✅ Created PreOrderVerificationProgress with status "created"`,
+          `✅ Created PreOrderVerificationProgress with status "created"`
         );
 
         // Commit both transactions
@@ -466,7 +466,7 @@ class PreOrderService extends DualDatabaseService {
             categoriesData,
             transaction1,
             null,
-            false,
+            false
           );
         }
 
@@ -479,11 +479,11 @@ class PreOrderService extends DualDatabaseService {
 
         const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
-          { transaction: transaction1 },
+          { transaction: transaction1 }
         );
 
         console.log(
-          `✅ Created PreOrderVerificationProgress with status "created"`,
+          `✅ Created PreOrderVerificationProgress with status "created"`
         );
 
         await transaction1.commit();
@@ -495,7 +495,7 @@ class PreOrderService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating PreOrder with nested relations:`,
-        error.message,
+        error.message
       );
       console.error(`❌ Error stack:`, error.stack);
 
@@ -518,7 +518,7 @@ class PreOrderService extends DualDatabaseService {
     id,
     preOrderData,
     categoriesData = [],
-    isDoubleDatabase = true,
+    isDoubleDatabase = true
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -553,7 +553,7 @@ class PreOrderService extends DualDatabaseService {
           categoriesData,
           transaction1,
           transaction2,
-          isDoubleDatabase,
+          isDoubleDatabase
         );
 
         // Commit both transactions
@@ -582,7 +582,7 @@ class PreOrderService extends DualDatabaseService {
           categoriesData,
           transaction1,
           null,
-          false,
+          false
         );
 
         await transaction1.commit();
@@ -594,7 +594,7 @@ class PreOrderService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating PreOrder with nested relations:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
@@ -621,7 +621,7 @@ class PreOrderService extends DualDatabaseService {
       if (isDoubleDatabase) transaction2 = await db2.transaction();
 
       console.log(
-        `🔄 Syncing ${paymentsData.length} Payment(s) for PreOrder ID: ${preOrderId}...`,
+        `🔄 Syncing ${paymentsData.length} Payment(s) for PreOrder ID: ${preOrderId}...`
       );
 
       // ── 1. Sync PreOrderPayment (array) via syncChildRecords ───────
@@ -648,7 +648,7 @@ class PreOrderService extends DualDatabaseService {
 
       console.log(
         `📦 Synced ${syncedPayments.length} payment(s) ` +
-          `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`,
+          `(${paymentsResult.summary.totalCreated} created, ${paymentsResult.summary.totalUpdated} updated)`
       );
 
       // Cleanup lists & services milik payment yang dihapus
@@ -664,7 +664,7 @@ class PreOrderService extends DualDatabaseService {
 
       if (deletedPaymentIds.length > 0) {
         console.log(
-          `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`,
+          `🗑️ Cleaning up lists & services for ${deletedPaymentIds.length} deleted payment(s)...`
         );
 
         // Ambil list ids yang akan ikut terhapus
@@ -739,7 +739,7 @@ class PreOrderService extends DualDatabaseService {
         const paymentListData = paymentData.payment_list || [];
 
         console.log(
-          `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`,
+          `🔄 Processing ${paymentListData.length} list(s) for Payment ID: ${paymentId}`
         );
 
         if (paymentListData.length > 0) {
@@ -766,7 +766,7 @@ class PreOrderService extends DualDatabaseService {
 
           console.log(
             `✅ Synced ${syncedLists.length} list(s) for Payment ID: ${paymentId} ` +
-              `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`,
+              `(${listsResult.summary.totalCreated} created, ${listsResult.summary.totalUpdated} updated)`
           );
 
           // Cleanup services milik list yang dihapus
@@ -794,7 +794,7 @@ class PreOrderService extends DualDatabaseService {
             }
 
             console.log(
-              `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`,
+              `   🗑️ Cleaned up services for ${deletedListIds.length} deleted list(s)`
             );
           }
 
@@ -824,7 +824,7 @@ class PreOrderService extends DualDatabaseService {
 
             if (!syncedList?.id) {
               console.warn(
-                `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`,
+                `⚠️ PaymentList at index ${j} in Payment ${paymentId} was not synced properly`
               );
               continue;
             }
@@ -858,7 +858,7 @@ class PreOrderService extends DualDatabaseService {
 
               console.log(
                 `✅ Synced ${syncedCount} service(s) for PaymentList ID: ${listId} ` +
-                  `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
+                  `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`
               );
             } else {
               // Tidak ada services → hapus semua yang ada
@@ -875,7 +875,7 @@ class PreOrderService extends DualDatabaseService {
               }
 
               console.log(
-                `🗑️ Cleared all services for PaymentList ID: ${listId}`,
+                `🗑️ Cleared all services for PaymentList ID: ${listId}`
               );
             }
           }
@@ -914,7 +914,7 @@ class PreOrderService extends DualDatabaseService {
             }
 
             console.log(
-              `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`,
+              `🗑️ Cleared all lists & services for Payment ID: ${paymentId}`
             );
           }
         }
@@ -944,7 +944,7 @@ class PreOrderService extends DualDatabaseService {
     categoriesData,
     transaction1,
     transaction2,
-    isDoubleDatabase,
+    isDoubleDatabase
   ) {
     // Prepare categories data
     const preparedCategories = categoriesData.map((cat) => {
@@ -974,7 +974,7 @@ class PreOrderService extends DualDatabaseService {
     ];
 
     console.log(
-      `📦 Synced ${syncedCategories.length} categories (${categoriesResult.summary.totalCreated} created, ${categoriesResult.summary.totalUpdated} updated)`,
+      `📦 Synced ${syncedCategories.length} categories (${categoriesResult.summary.totalCreated} created, ${categoriesResult.summary.totalUpdated} updated)`
     );
 
     // Get IDs of categories that will be kept
@@ -989,13 +989,13 @@ class PreOrderService extends DualDatabaseService {
 
     const existingCategoryIds = existingCategories.map((cat) => cat.id);
     const deletedCategoryIds = existingCategoryIds.filter(
-      (id) => !keepCategoryIds.includes(id),
+      (id) => !keepCategoryIds.includes(id)
     );
 
     // Delete child records for categories that will be deleted
     if (deletedCategoryIds.length > 0) {
       console.log(
-        `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`,
+        `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`
       );
 
       // Get services that belong to categories being deleted (products hang off services)
@@ -1029,7 +1029,7 @@ class PreOrderService extends DualDatabaseService {
             });
           }
           console.log(
-            `   ✓ Deleted fields for ${productIdsToDelete.length} products`,
+            `   ✓ Deleted fields for ${productIdsToDelete.length} products`
           );
         }
 
@@ -1046,7 +1046,7 @@ class PreOrderService extends DualDatabaseService {
           });
         }
         console.log(
-          `   ✓ Deleted products for ${serviceIdsToDelete.length} services`,
+          `   ✓ Deleted products for ${serviceIdsToDelete.length} services`
         );
       }
 
@@ -1064,7 +1064,7 @@ class PreOrderService extends DualDatabaseService {
       }
 
       console.log(
-        `   ✓ Cleaned up services and products for deleted categories`,
+        `   ✓ Cleaned up services and products for deleted categories`
       );
     }
 
@@ -1080,7 +1080,7 @@ class PreOrderService extends DualDatabaseService {
       if (categoryData.id) {
         // Find in synced categories by ID
         const syncedCategory = syncedCategories.find(
-          (sc) => sc.id === categoryData.id,
+          (sc) => sc.id === categoryData.id
         );
         if (syncedCategory) {
           categoryMapping.set(i, syncedCategory);
@@ -1123,7 +1123,7 @@ class PreOrderService extends DualDatabaseService {
         });
 
         console.log(
-          `📝 Syncing ${preparedServices.length} services for category ${categoryId}`,
+          `📝 Syncing ${preparedServices.length} services for category ${categoryId}`
         );
 
         const servicesResult = await syncChildRecords({
@@ -1144,7 +1144,7 @@ class PreOrderService extends DualDatabaseService {
 
         console.log(
           `✅ Synced ${syncedServices.length} services for category ${categoryId} ` +
-            `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
+            `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`
         );
 
         // Cleanup products+fields belonging to services that will be deleted
@@ -1193,7 +1193,7 @@ class PreOrderService extends DualDatabaseService {
           }
 
           console.log(
-            `   🗑️ Cleaned up products & fields for ${deletedServiceIds.length} deleted service(s)`,
+            `   🗑️ Cleaned up products & fields for ${deletedServiceIds.length} deleted service(s)`
           );
         }
 
@@ -1206,7 +1206,7 @@ class PreOrderService extends DualDatabaseService {
 
           if (serviceData.id) {
             const syncedService = syncedServices.find(
-              (ss) => ss.id === serviceData.id,
+              (ss) => ss.id === serviceData.id
             );
             if (syncedService) {
               serviceMapping.set(k, syncedService);
@@ -1227,7 +1227,7 @@ class PreOrderService extends DualDatabaseService {
 
           if (!syncedService || !syncedService.id) {
             console.warn(
-              `⚠️ Service at index ${k} in category ${categoryId} was not synced properly`,
+              `⚠️ Service at index ${k} in category ${categoryId} was not synced properly`
             );
             continue;
           }
@@ -1249,7 +1249,7 @@ class PreOrderService extends DualDatabaseService {
             });
 
             console.log(
-              `📦 Syncing ${productsData.length} products for service ${serviceId}`,
+              `📦 Syncing ${productsData.length} products for service ${serviceId}`
             );
 
             // Get existing products to identify which will be deleted
@@ -1264,13 +1264,13 @@ class PreOrderService extends DualDatabaseService {
               .map((p) => p.id);
             const existingProductIds = existingProducts.map((p) => p.id);
             const deletedProductIds = existingProductIds.filter(
-              (id) => !keepProductIds.includes(id),
+              (id) => !keepProductIds.includes(id)
             );
 
             // Delete fields for products that will be deleted
             if (deletedProductIds.length > 0) {
               console.log(
-                `🗑️ Deleting fields for ${deletedProductIds.length} products...`,
+                `🗑️ Deleting fields for ${deletedProductIds.length} products...`
               );
 
               await models.db1.PreOrderProductField.destroy({
@@ -1304,7 +1304,7 @@ class PreOrderService extends DualDatabaseService {
             ];
 
             console.log(
-              `✅ Synced ${syncedProducts.length} products for service ${serviceId}`,
+              `✅ Synced ${syncedProducts.length} products for service ${serviceId}`
             );
 
             const productMapping = new Map();
@@ -1315,7 +1315,7 @@ class PreOrderService extends DualDatabaseService {
 
               if (productData.id) {
                 const syncedProduct = syncedProducts.find(
-                  (sp) => sp.id === productData.id,
+                  (sp) => sp.id === productData.id
                 );
                 if (syncedProduct) {
                   productMapping.set(j, syncedProduct);
@@ -1336,7 +1336,7 @@ class PreOrderService extends DualDatabaseService {
 
               if (!syncedProduct || !syncedProduct.id) {
                 console.warn(
-                  `⚠️ Product at index ${j} in service ${serviceId} was not synced properly`,
+                  `⚠️ Product at index ${j} in service ${serviceId} was not synced properly`
                 );
                 continue;
               }
@@ -1354,7 +1354,7 @@ class PreOrderService extends DualDatabaseService {
                 }));
 
                 console.log(
-                  `🔧 Syncing ${fieldsData.length} fields for product ${productId}`,
+                  `🔧 Syncing ${fieldsData.length} fields for product ${productId}`
                 );
 
                 const fieldsResult = await syncChildRecords({
@@ -1374,7 +1374,7 @@ class PreOrderService extends DualDatabaseService {
                   (fieldsResult.created?.length || 0) +
                   (fieldsResult.updated?.length || 0);
                 console.log(
-                  `✅ Synced ${syncedFieldsCount} fields for product ${productId}`,
+                  `✅ Synced ${syncedFieldsCount} fields for product ${productId}`
                 );
               } else {
                 // If no fields provided, delete all existing fields
@@ -1506,7 +1506,7 @@ class PreOrderService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction1,
-          },
+          }
         );
 
         const [updatedRows2] = await this.Model2.update(
@@ -1514,7 +1514,7 @@ class PreOrderService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction2,
-          },
+          }
         );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
@@ -1532,7 +1532,7 @@ class PreOrderService extends DualDatabaseService {
 
         const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
-          { transaction: transaction1 },
+          { transaction: transaction1 }
         );
 
         const progressDataWithId = {
@@ -1543,11 +1543,11 @@ class PreOrderService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          },
+          }
         );
 
         console.log(
-          `✅ approved PreOrderVerificationProgress with status "approved"`,
+          `✅ approved PreOrderVerificationProgress with status "approved"`
         );
 
         // Commit both transactions
@@ -1567,7 +1567,7 @@ class PreOrderService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction1,
-          },
+          }
         );
 
         if (updatedRows === 0) {
@@ -1583,11 +1583,11 @@ class PreOrderService extends DualDatabaseService {
 
         const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
-          { transaction: transaction1 },
+          { transaction: transaction1 }
         );
 
         console.log(
-          `✅ Approved PreOrderVerificationProgress with status "approved"`,
+          `✅ Approved PreOrderVerificationProgress with status "approved"`
         );
 
         await transaction1.commit();
@@ -1599,7 +1599,7 @@ class PreOrderService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating PreOrder with nested relations:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
@@ -1626,7 +1626,7 @@ class PreOrderService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction1,
-          },
+          }
         );
 
         const [updatedRows2] = await this.Model2.update(
@@ -1634,7 +1634,7 @@ class PreOrderService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction2,
-          },
+          }
         );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
@@ -1652,7 +1652,7 @@ class PreOrderService extends DualDatabaseService {
 
         const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
-          { transaction: transaction1 },
+          { transaction: transaction1 }
         );
 
         const progressDataWithId = {
@@ -1663,11 +1663,11 @@ class PreOrderService extends DualDatabaseService {
           progressDataWithId,
           {
             transaction: transaction2,
-          },
+          }
         );
 
         console.log(
-          `✅ rejected PreOrderVerificationProgress with status "rejected"`,
+          `✅ rejected PreOrderVerificationProgress with status "rejected"`
         );
 
         // Commit both transactions
@@ -1687,7 +1687,7 @@ class PreOrderService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction1,
-          },
+          }
         );
 
         if (updatedRows === 0) {
@@ -1703,11 +1703,11 @@ class PreOrderService extends DualDatabaseService {
 
         const progress1 = await models.db1.PreOrderVerificationProgress.create(
           progressData,
-          { transaction: transaction1 },
+          { transaction: transaction1 }
         );
 
         console.log(
-          `✅ rejected PreOrderVerificationProgress with status "rejected"`,
+          `✅ rejected PreOrderVerificationProgress with status "rejected"`
         );
 
         await transaction1.commit();
@@ -1719,7 +1719,7 @@ class PreOrderService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error updating PreOrder with nested relations:`,
-        error.message,
+        error.message
       );
 
       if (transaction1) await transaction1.rollback();
