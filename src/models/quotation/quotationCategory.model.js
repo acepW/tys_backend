@@ -53,7 +53,7 @@ module.exports = (sequelize) => {
           fields: ["id_category"],
         },
       ],
-    },
+    }
   );
 
   // Define associations
@@ -78,6 +78,14 @@ module.exports = (sequelize) => {
     QuotationCategory.hasMany(models.QuotationService, {
       foreignKey: "id_quotation_category",
       as: "services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // QuotationCategory has many Quotation Service supporting
+    QuotationCategory.hasMany(models.QuotationServiceSupporting, {
+      foreignKey: "id_quotation_category",
+      as: "services_supporting",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

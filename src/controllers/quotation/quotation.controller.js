@@ -2,6 +2,84 @@ const quotationService = require("../../services/quotation/quotation.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
+/**
+ * Validate services_supporting array for a category (shared by create/update/revision)
+ * Standalone function (not a class method) so it doesn't depend on `this`,
+ * which is unbound when controller methods are passed as route handlers
+ * (e.g. router.post("/", quotationController.create)).
+ * Returns an error response object if invalid, or null if valid.
+ */
+function validateServicesSupporting(
+  res,
+  servicesSupporting,
+  categoryIndex,
+  requireFields
+) {
+  if (!Array.isArray(servicesSupporting)) {
+    return errorResponse(
+      res,
+      `services_supporting must be an array for category at index ${categoryIndex}`,
+      400
+    );
+  }
+
+  for (let j = 0; j < servicesSupporting.length; j++) {
+    const item = servicesSupporting[j];
+
+    if (requireFields) {
+      if (!item.id_service_pricing_supporting) {
+        return errorResponse(
+          res,
+          `id_service_pricing_supporting is required for services_supporting at index ${j} in category ${categoryIndex}`,
+          400
+        );
+      }
+
+      if (!item.product_name_indo) {
+        return errorResponse(
+          res,
+          `product_name_indo is required for services_supporting at index ${j} in category ${categoryIndex}`,
+          400
+        );
+      }
+
+      if (!item.product_name_mandarin) {
+        return errorResponse(
+          res,
+          `product_name_mandarin is required for services_supporting at index ${j} in category ${categoryIndex}`,
+          400
+        );
+      }
+
+      if (item.price_idr == null) {
+        return errorResponse(
+          res,
+          `price_idr is required for services_supporting at index ${j} in category ${categoryIndex}`,
+          400
+        );
+      }
+
+      if (item.price_rmb == null) {
+        return errorResponse(
+          res,
+          `price_rmb is required for services_supporting at index ${j} in category ${categoryIndex}`,
+          400
+        );
+      }
+
+      if (item.qty == null) {
+        return errorResponse(
+          res,
+          `qty is required for services_supporting at index ${j} in category ${categoryIndex}`,
+          400
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
 class QuotationController {
   /**
    * Get all quotations
@@ -56,13 +134,13 @@ class QuotationController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         quotations,
-        "Quotations retrieved successfully",
+        "Quotations retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -81,7 +159,7 @@ class QuotationController {
       const quotation = await quotationService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!quotation) {
@@ -91,7 +169,7 @@ class QuotationController {
       return successResponse(
         res,
         quotation,
-        "Quotation retrieved successfully",
+        "Quotation retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -115,7 +193,7 @@ class QuotationController {
       return successResponse(
         res,
         quotation,
-        "Quotation retrieved successfully",
+        "Quotation retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -123,7 +201,7 @@ class QuotationController {
   }
 
   /**
-   * Create quotation with nested categories, services, products, and fields
+   * Create quotation with nested categories, services, products, fields, and services_supporting
    */
   async create(req, res) {
     try {
@@ -170,7 +248,7 @@ class QuotationController {
             return errorResponse(
               res,
               `id_category is required for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -178,7 +256,7 @@ class QuotationController {
             return errorResponse(
               res,
               `foot_note is required for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -187,7 +265,7 @@ class QuotationController {
             return errorResponse(
               res,
               `services must be an array for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -200,7 +278,15 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `id_service_pricing is required for service at index ${j} in category ${i}`,
-                  400,
+                  400
+                );
+              }
+
+              if (!service.id_service_pricing_variant) {
+                return errorResponse(
+                  res,
+                  `id_service_pricing_variant is required for service at index ${j} in category ${i}`,
+                  400
                 );
               }
 
@@ -208,7 +294,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `product_name_indo is required for service at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -216,7 +302,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `product_name_mandarin is required for service at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -227,7 +313,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `price_idr is required for service at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -238,7 +324,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `price_rmb is required for service at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -246,7 +332,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `qty is required for service at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
             }
@@ -257,7 +343,7 @@ class QuotationController {
             return errorResponse(
               res,
               `products must be an array for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -270,7 +356,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `index is required for product at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -279,10 +365,21 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `fields must be an array for product at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
             }
+          }
+
+          // Validate services_supporting array (with required fields on create)
+          if (category.services_supporting !== undefined) {
+            const validationError = validateServicesSupporting(
+              res,
+              category.services_supporting,
+              i,
+              true
+            );
+            if (validationError) return validationError;
           }
         }
       }
@@ -302,14 +399,14 @@ class QuotationController {
         preparedQuotationData,
         quotation_category || [],
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Quotation created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -317,7 +414,7 @@ class QuotationController {
   }
 
   /**
-   * Update quotation with nested categories, services, products, and fields
+   * Update quotation with nested categories, services, products, fields, and services_supporting
    */
   async update(req, res) {
     try {
@@ -330,7 +427,7 @@ class QuotationController {
       const existing = await quotationService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Quotation not found", 404);
@@ -351,7 +448,7 @@ class QuotationController {
             return errorResponse(
               res,
               `services must be an array for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -360,7 +457,7 @@ class QuotationController {
             return errorResponse(
               res,
               `products must be an array for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -373,10 +470,21 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `fields must be an array for product at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
             }
+          }
+
+          // Validate services_supporting array if provided
+          if (category.services_supporting !== undefined) {
+            const validationError = validateServicesSupporting(
+              res,
+              category.services_supporting,
+              i,
+              false
+            );
+            if (validationError) return validationError;
           }
         }
       }
@@ -385,7 +493,7 @@ class QuotationController {
         id,
         quotationData,
         quotation_category || [],
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Quotation updated successfully");
@@ -408,7 +516,7 @@ class QuotationController {
       const quotation = await quotationService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!quotation) {
         return errorResponse(res, "Quotation not found", 404);
@@ -436,7 +544,7 @@ class QuotationController {
             return errorResponse(
               res,
               `${field} is required for payment at index ${i}`,
-              400,
+              400
             );
           }
         }
@@ -445,7 +553,7 @@ class QuotationController {
           return errorResponse(
             res,
             `currency_type must be 'idr' or 'rmb' for payment at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -456,7 +564,7 @@ class QuotationController {
           return errorResponse(
             res,
             `payment_list must be an array for payment at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -476,7 +584,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `${field} is required for payment_list at index ${j} in payment ${i}`,
-                  400,
+                  400
                 );
               }
             }
@@ -485,7 +593,7 @@ class QuotationController {
               return errorResponse(
                 res,
                 `services must be an array for payment_list at index ${j} in payment ${i}`,
-                400,
+                400
               );
             }
 
@@ -495,7 +603,7 @@ class QuotationController {
                   return errorResponse(
                     res,
                     `id_quotation_service is required for service at index ${k} in payment_list ${j} in payment ${i}`,
-                    400,
+                    400
                   );
                 }
               }
@@ -507,13 +615,13 @@ class QuotationController {
       const result = await quotationService.syncPayment(
         id,
         payments,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Quotation payments synced successfully",
+        "Quotation payments synced successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -522,7 +630,7 @@ class QuotationController {
 
   /**
    * revision quotation: simpan snapshot lama sebagai history, lalu update
-   * data aktif (quotation + category/service/product/field + payment)
+   * data aktif (quotation + category/service/product/field/services_supporting + payment)
    * Body: {
    *   is_double_database,
    *   quotation_category: [...],
@@ -545,7 +653,7 @@ class QuotationController {
       const existing = await quotationService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Quotation not found", 404);
@@ -564,7 +672,7 @@ class QuotationController {
             return errorResponse(
               res,
               `services must be an array for category at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -576,7 +684,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `products must be an array for service at index ${j} in category ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -588,12 +696,23 @@ class QuotationController {
                     return errorResponse(
                       res,
                       `fields must be an array for product at index ${k} in service ${j} in category ${i}`,
-                      400,
+                      400
                     );
                   }
                 }
               }
             }
+          }
+
+          // Validate services_supporting array if provided
+          if (category.services_supporting !== undefined) {
+            const validationError = validateServicesSupporting(
+              res,
+              category.services_supporting,
+              i,
+              false
+            );
+            if (validationError) return validationError;
           }
         }
       }
@@ -624,7 +743,7 @@ class QuotationController {
               return errorResponse(
                 res,
                 `${field} is required for payment at index ${i}`,
-                400,
+                400
               );
             }
           }
@@ -633,7 +752,7 @@ class QuotationController {
             return errorResponse(
               res,
               `currency_type must be 'idr' or 'rmb' for payment at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -644,7 +763,7 @@ class QuotationController {
             return errorResponse(
               res,
               `payment_list must be an array for payment at index ${i}`,
-              400,
+              400
             );
           }
 
@@ -664,7 +783,7 @@ class QuotationController {
                   return errorResponse(
                     res,
                     `${field} is required for payment_list at index ${j} in payment ${i}`,
-                    400,
+                    400
                   );
                 }
               }
@@ -676,7 +795,7 @@ class QuotationController {
                 return errorResponse(
                   res,
                   `services must be an array for payment_list at index ${j} in payment ${i}`,
-                  400,
+                  400
                 );
               }
 
@@ -686,7 +805,7 @@ class QuotationController {
                     return errorResponse(
                       res,
                       `id_quotation_service is required for service at index ${k} in payment_list ${j} in payment ${i}`,
-                      400,
+                      400
                     );
                   }
                 }
@@ -702,7 +821,7 @@ class QuotationController {
         quotation_category || [],
         quotation_payment || [],
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Quotation revised successfully");
@@ -724,7 +843,7 @@ class QuotationController {
       const existing = await quotationService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Quotation not found", 404);
@@ -733,7 +852,7 @@ class QuotationController {
       const result = await quotationService.approve(
         id,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Quotation approved successfully");
@@ -755,7 +874,7 @@ class QuotationController {
       const existing = await quotationService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Quotation not found", 404);
@@ -764,7 +883,7 @@ class QuotationController {
       const result = await quotationService.reject(
         id,
         req.user.id,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, result, "Quotation rejected successfully");
@@ -786,7 +905,7 @@ class QuotationController {
       const existing = await quotationService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Quotation not found", 404);

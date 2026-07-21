@@ -21,8 +21,8 @@ const startServer = async () => {
     //await syncDatabases();
 
     //sync database by table name
-    //await syncModel("ContractService");
-    console.log("");
+    //await syncModel("QuotationServiceSupporting");
+    //console.log("");
 
     // Start Express server
     const server = app.listen(PORT, "0.0.0.0", () => {

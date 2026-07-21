@@ -60,6 +60,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Main note",
       },
+      main_note_po: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        comment: "Main note for PO",
+      },
       document_watermark: {
         type: DataTypes.STRING(100),
         allowNull: true,

@@ -35,13 +35,13 @@ class ServicePricingController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         servicePricing,
-        "Service pricing retrieved successfully",
+        "Service pricing retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -60,7 +60,7 @@ class ServicePricingController {
       const servicePricing = await servicePricingService.getById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       if (!servicePricing) {
@@ -70,7 +70,7 @@ class ServicePricingController {
       return successResponse(
         res,
         servicePricing,
-        "Service pricing retrieved successfully",
+        "Service pricing retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -89,7 +89,7 @@ class ServicePricingController {
       const serialNumber = await servicePricingService.getSerialNumber(
         id_category,
         id_service_code,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       console.log(serialNumber);
@@ -101,7 +101,7 @@ class ServicePricingController {
       return successResponse(
         res,
         serialNumber,
-        "Serial number retrieved successfully",
+        "Serial number retrieved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -109,7 +109,7 @@ class ServicePricingController {
   }
 
   /**
-   * Create multiple service pricing with variants
+   * Create multiple service pricing with variants and supporting
    */
   async create(req, res) {
     try {
@@ -133,7 +133,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `product_name_indo is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -141,7 +141,7 @@ class ServicePricingController {
           return errorResponse(
             res,
             `product_name_mandarin is required for item at index ${i}`,
-            400,
+            400
           );
         }
 
@@ -150,8 +150,35 @@ class ServicePricingController {
           return errorResponse(
             res,
             `variants must be an array for item at index ${i}`,
-            400,
+            400
           );
+        }
+
+        // Ensure supporting is an array
+        if (item.supporting && !Array.isArray(item.supporting)) {
+          return errorResponse(
+            res,
+            `supporting must be an array for item at index ${i}`,
+            400
+          );
+        }
+
+        // Validate each supporting item's variants_supporting
+        if (item.supporting && Array.isArray(item.supporting)) {
+          for (let j = 0; j < item.supporting.length; j++) {
+            const supportingItem = item.supporting[j];
+
+            if (
+              supportingItem.variants_supporting &&
+              !Array.isArray(supportingItem.variants_supporting)
+            ) {
+              return errorResponse(
+                res,
+                `variants_supporting must be an array for supporting at index ${j} of item at index ${i}`,
+                400
+              );
+            }
+          }
         }
       }
 
@@ -164,14 +191,14 @@ class ServicePricingController {
 
       const result = await servicePricingService.createMultipleWithVariants(
         servicePricingDataList,
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
         "Service pricing created successfully",
-        201,
+        201
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -179,19 +206,24 @@ class ServicePricingController {
   }
 
   /**
-   * Update service pricing with variants
+   * Update service pricing with variants and supporting
    */
   async update(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database, variants, ...servicePricingData } = req.body;
+      const {
+        is_double_database,
+        variants,
+        supporting,
+        ...servicePricingData
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Check if service pricing exists
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -202,17 +234,41 @@ class ServicePricingController {
         return errorResponse(res, "variants must be an array", 400);
       }
 
+      // Validate supporting is an array if provided
+      if (supporting && !Array.isArray(supporting)) {
+        return errorResponse(res, "supporting must be an array", 400);
+      }
+
+      // Validate each supporting item's variants_supporting
+      if (supporting && Array.isArray(supporting)) {
+        for (let j = 0; j < supporting.length; j++) {
+          const supportingItem = supporting[j];
+
+          if (
+            supportingItem.variants_supporting &&
+            !Array.isArray(supportingItem.variants_supporting)
+          ) {
+            return errorResponse(
+              res,
+              `variants_supporting must be an array for supporting at index ${j}`,
+              400
+            );
+          }
+        }
+      }
+
       const result = await servicePricingService.updateWithVariants(
         id,
         servicePricingData,
         variants || [],
-        isDoubleDatabase,
+        supporting || [],
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing updated successfully",
+        "Service pricing updated successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -232,7 +288,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -240,13 +296,13 @@ class ServicePricingController {
       const result = await servicePricingService.update(
         id,
         { status: "approved", id_user_approve: req.user.id },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing approved successfully",
+        "Service pricing approved successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -266,7 +322,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -275,13 +331,13 @@ class ServicePricingController {
       const result = await servicePricingService.update(
         id,
         { status: "rejected", id_user_reject: req.user.id },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(
         res,
         result,
-        "Service pricing rejected successfully",
+        "Service pricing rejected successfully"
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -301,7 +357,7 @@ class ServicePricingController {
       const existing = await servicePricingService.findById(
         id,
         {},
-        isDoubleDatabase,
+        isDoubleDatabase
       );
       if (!existing) {
         return errorResponse(res, "Service pricing not found", 404);
@@ -310,7 +366,7 @@ class ServicePricingController {
       await servicePricingService.update(
         id,
         { is_active: false },
-        isDoubleDatabase,
+        isDoubleDatabase
       );
 
       return successResponse(res, null, "Service pricing deleted successfully");

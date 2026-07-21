@@ -151,7 +151,7 @@ module.exports = (sequelize) => {
           fields: ["id_division", "is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)
@@ -178,6 +178,14 @@ module.exports = (sequelize) => {
     ServicePricing.hasMany(models.ServicePricingVariant, {
       foreignKey: "id_service_pricing",
       as: "variants",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    //Service Pricing has many Service pricing supporting
+    ServicePricing.hasMany(models.ServicePricingSupporting, {
+      foreignKey: "id_service_pricing",
+      as: "supporting",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

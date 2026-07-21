@@ -1,8 +1,8 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const QuotationService = sequelize.define(
-    "QuotationService",
+  const QuotationServiceSupporting = sequelize.define(
+    "QuotationServiceSupporting",
     {
       id: {
         type: DataTypes.INTEGER,
@@ -19,23 +19,23 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to quotation category table",
       },
-      id_service_pricing: {
+      id_service_pricing_supporting: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "service_pricing",
+          model: "service_pricing_supporting",
           key: "id",
         },
-        comment: "Foreign key to service pricing table",
+        comment: "Foreign key to service pricing supporting table",
       },
-      id_service_pricing_variant: {
+      id_service_pricing_variant_supporting: {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {
-          model: "service_pricing_variant",
+          model: "service_pricing_variant_supporting",
           key: "id",
         },
-        comment: "Foreign key to service pricing variant table",
+        comment: "Foreign key to service pricing variant supporting table",
       },
       product_name_indo: {
         type: DataTypes.STRING(500),
@@ -77,12 +77,6 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         comment: "index of service",
       },
-      is_selected_contract: {
-        allowNull: false,
-        defaultValue: false,
-        type: DataTypes.BOOLEAN,
-        comment: "Status for knowing this service is created contract",
-      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -90,7 +84,7 @@ module.exports = (sequelize) => {
       },
     },
     {
-      tableName: "quotation_service",
+      tableName: "quotation_service_supporting",
       timestamps: true,
       underscored: true,
       indexes: [
@@ -99,71 +93,31 @@ module.exports = (sequelize) => {
           fields: ["id_quotation_category"],
         },
         {
-          name: "idx_id_service_pricing",
-          fields: ["id_service_pricing"],
+          name: "idx_id_service_pricing_supporting",
+          fields: ["id_service_pricing_supporting"],
         },
       ],
     }
   );
 
   // Define associations
-  QuotationService.associate = (models) => {
-    // QuotationService belongs to Quotation Category
-    QuotationService.belongsTo(models.QuotationCategory, {
+  QuotationServiceSupporting.associate = (models) => {
+    // QuotationServiceSupporting belongs to Quotation Category
+    QuotationServiceSupporting.belongsTo(models.QuotationCategory, {
       foreignKey: "id_quotation_category",
       as: "quotation_category",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // QuotationService belongs to Service Pricing
-    QuotationService.belongsTo(models.ServicePricing, {
-      foreignKey: "id_service_pricing",
-      as: "service_pricing",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has one Contract Service
-    QuotationService.hasOne(models.ServicePricing, {
-      foreignKey: "id_quotation_service",
-      as: "contract_service",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Quotation Payment Services
-    QuotationService.hasMany(models.QuotationPaymentService, {
-      foreignKey: "id_quotation_service",
-      as: "quotation_payment_services",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Contract Payment Services
-    QuotationService.hasMany(models.ContractPaymentService, {
-      foreignKey: "id_quotation_service",
-      as: "contract_payment_services",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Quotation Products
-    QuotationService.hasMany(models.QuotationProduct, {
-      foreignKey: "id_quotation_service",
-      as: "products",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    // QuotationService has many Invoice Services
-    QuotationService.hasMany(models.InvoiceService, {
-      foreignKey: "id_quotation_service",
-      as: "invoice_services",
+    // QuotationServiceSupporting belongs to Service Pricing supporting
+    QuotationServiceSupporting.belongsTo(models.ServicePricingSupporting, {
+      foreignKey: "id_service_pricing_supporting",
+      as: "service_pricing_supporting",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
   };
 
-  return QuotationService;
+  return QuotationServiceSupporting;
 };

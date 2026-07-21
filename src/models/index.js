@@ -25,11 +25,14 @@ const ServicePricingVariantModel = require("./servicePricing/servicePricingVaria
 const ProjectPlanModel = require("./servicePricing/projectPlan.model");
 const ProjectPlanPointModel = require("./servicePricing/projectPlanPoint.model");
 const ProjectPlanCostModel = require("./servicePricing/projectPlanCost.model");
+const ServicePricingSupportingModel = require("./servicePricing/servicePricingSupporting.model");
+const ServicePricingVariantSupportingModel = require("./servicePricing/servicePricingVarianSupporting.model");
 
 //quotations
 const QuotationModel = require("./quotation/quotation.model");
 const QuotationCategoryModel = require("./quotation/quotationCategory.model");
 const QuotationServiceModel = require("./quotation/quotationService.model");
+const QuotationServiceSportingModel = require("./quotation/quotationServiceSupporting.model");
 const QuotationProductModel = require("./quotation/quotationProduct.model");
 const QuotationProductFieldModel = require("./quotation/quotationProductField.model");
 const QuotationPaymentModel = require("./quotation/quotationPayment.model");
@@ -125,11 +128,15 @@ const initializeModels = (sequelize) => {
     ProjectPlan: ProjectPlanModel(sequelize),
     ProjectPlanPoint: ProjectPlanPointModel(sequelize),
     ProjectPlanCost: ProjectPlanCostModel(sequelize),
+    ServicePricingSupporting: ServicePricingSupportingModel(sequelize),
+    ServicePricingVariantSupporting:
+      ServicePricingVariantSupportingModel(sequelize),
 
     //quotation
     Quotation: QuotationModel(sequelize),
     QuotationCategory: QuotationCategoryModel(sequelize),
     QuotationService: QuotationServiceModel(sequelize),
+    QuotationServiceSupporting: QuotationServiceSportingModel(sequelize),
     QuotationProduct: QuotationProductModel(sequelize),
     QuotationProductField: QuotationProductFieldModel(sequelize),
     QuotationPayment: QuotationPaymentModel(sequelize),

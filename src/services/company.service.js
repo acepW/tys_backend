@@ -140,6 +140,7 @@ class CompanyService extends DualDatabaseService {
       "initial_company",
       "director_name",
       "main_note",
+      "main_note_po",
       "document_watermark",
       "logo_header",
       "company_name_header_quotation",
