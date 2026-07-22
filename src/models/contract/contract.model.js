@@ -48,6 +48,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "No of Contract",
       },
+      contract_adendum_no: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "No of Contract adendum",
+      },
       contract_title_indo: {
         type: DataTypes.STRING(100),
         allowNull: false,

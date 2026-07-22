@@ -725,6 +725,7 @@ class ContractService extends DualDatabaseService {
             id_previous_contract: oldContract1.id,
             id_root_contract: rootId,
             version: (oldContract1.version || 1) + 1,
+            contract_adendum_no: `ADD-${oldContract1.version - 1}`,
             is_adendum: true,
           };
 
@@ -1086,6 +1087,7 @@ class ContractService extends DualDatabaseService {
             id_previous_contract: oldContract.id,
             id_root_contract: rootId,
             version: (oldContract.version || 1) + 1,
+            contract_adendum_no: `ADD-${oldContract.version - 1}`,
             is_adendum: true,
           };
 
