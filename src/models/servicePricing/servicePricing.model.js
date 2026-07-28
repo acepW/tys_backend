@@ -64,6 +64,11 @@ module.exports = (sequelize) => {
         },
         comment: "Id user who reject the service pricing",
       },
+      service_type: {
+        type: DataTypes.ENUM("normal", "supporting"),
+        defaultValue: "normal",
+        comment: "service type",
+      },
       service_serial_number: {
         type: DataTypes.STRING(500),
         allowNull: false,
@@ -151,7 +156,7 @@ module.exports = (sequelize) => {
           fields: ["id_division", "is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
@@ -182,10 +187,10 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
-    //Service Pricing has many Service pricing supporting
-    ServicePricing.hasMany(models.ServicePricingSupporting, {
+    //Service Pricing has many Government cost
+    ServicePricing.hasMany(models.GovernmentCost, {
       foreignKey: "id_service_pricing",
-      as: "supporting",
+      as: "government_cost",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

@@ -23,7 +23,7 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "service_pricing_supporting",
+          model: "service_pricing",
           key: "id",
         },
         comment: "Foreign key to service pricing table",
@@ -92,7 +92,7 @@ module.exports = (sequelize) => {
           fields: ["id_service_pricing_supporting"],
         },
       ],
-    }
+    },
   );
 
   // Define associations
@@ -114,7 +114,7 @@ module.exports = (sequelize) => {
     });
 
     // PreOrderServiceSupporting belongs to Service Pricing
-    PreOrderServiceSupporting.belongsTo(models.ServicePricingSupporting, {
+    PreOrderServiceSupporting.belongsTo(models.ServicePricing, {
       foreignKey: "id_service_pricing_supporting",
       as: "service_pricing_supporting",
       onDelete: "RESTRICT",

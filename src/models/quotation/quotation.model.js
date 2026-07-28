@@ -78,6 +78,12 @@ module.exports = (sequelize) => {
         defaultValue: DataTypes.NOW,
         comment: "Date of quotation",
       },
+      quotation_type: {
+        type: DataTypes.ENUM("normal", ""),
+        allowNull: false,
+        defaultValue: "normal",
+        comment: "type of quotation",
+      },
       quotation_no: {
         type: DataTypes.STRING(100),
         allowNull: false,

@@ -25,8 +25,8 @@ const ServicePricingVariantModel = require("./servicePricing/servicePricingVaria
 const ProjectPlanModel = require("./servicePricing/projectPlan.model");
 const ProjectPlanPointModel = require("./servicePricing/projectPlanPoint.model");
 const ProjectPlanCostModel = require("./servicePricing/projectPlanCost.model");
-const ServicePricingSupportingModel = require("./servicePricing/servicePricingSupporting.model");
-const ServicePricingVariantSupportingModel = require("./servicePricing/servicePricingVarianSupporting.model");
+const GovernmentCostModel = require("./servicePricing/governmentCost.model");
+const GovernmentCostPointModel = require("./servicePricing/governmentCostPoint.model");
 
 //quotations
 const QuotationModel = require("./quotation/quotation.model");
@@ -129,9 +129,8 @@ const initializeModels = (sequelize) => {
     ProjectPlan: ProjectPlanModel(sequelize),
     ProjectPlanPoint: ProjectPlanPointModel(sequelize),
     ProjectPlanCost: ProjectPlanCostModel(sequelize),
-    ServicePricingSupporting: ServicePricingSupportingModel(sequelize),
-    ServicePricingVariantSupporting:
-      ServicePricingVariantSupportingModel(sequelize),
+    GovernmentCost: GovernmentCostModel(sequelize),
+    GovernmentCostPoint: GovernmentCostPointModel(sequelize),
 
     //quotation
     Quotation: QuotationModel(sequelize),
@@ -251,7 +250,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true }
+  options = { alter: true },
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

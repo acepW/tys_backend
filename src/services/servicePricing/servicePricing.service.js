@@ -11,7 +11,7 @@ class ServicePricingService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -32,13 +32,14 @@ class ServicePricingService extends DualDatabaseService {
           ],
         },
         {
-          model: dbModels.ServicePricingSupporting,
-          as: "supporting",
+          model: dbModels.GovernmentCost,
+          as: "government_cost",
           separate: true,
           include: [
             {
-              model: dbModels.ServicePricingVariantSupporting,
-              as: "variants_supporting",
+              model: dbModels.GovernmentCostPoint,
+              as: "government_cost_point",
+              order: [["index", "ASC"]],
             },
           ],
         },
@@ -91,6 +92,7 @@ class ServicePricingService extends DualDatabaseService {
           attributes: ["id", "name", "email"],
         },
       ],
+      order: [["createdAt", "DESC"]],
     };
 
     //if page and limit not set, use normal findAll
@@ -102,7 +104,7 @@ class ServicePricingService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     return {
@@ -142,13 +144,13 @@ class ServicePricingService extends DualDatabaseService {
           ],
         },
         {
-          model: dbModels.ServicePricingSupporting,
-          as: "supporting",
+          model: dbModels.GovernmentCost,
+          as: "government_cost",
           separate: true,
           include: [
             {
-              model: dbModels.ServicePricingVariantSupporting,
-              as: "variants_supporting",
+              model: dbModels.GovernmentCostPoint,
+              as: "government_cost_point",
             },
           ],
         },
@@ -229,70 +231,67 @@ class ServicePricingService extends DualDatabaseService {
   }
 
   /**
-   * Create supporting records with their variants for a given service pricing
+   * Create government cost records with their points for a given service pricing
    *
    * @param {Object} params
    * @param {Number} params.idServicePricing
-   * @param {Array} params.supportingList
+   * @param {Array} params.governmentCostList
    * @param {Object} params.transaction1
    * @param {Object} params.transaction2
    * @param {Boolean} params.isDoubleDatabase
-   * @returns {Array} Created supporting records with their variants
+   * @returns {Array} Created government cost records with their points
    */
-  async createSupportingWithVariants({
+  async createGovernmentCostWithPoints({
     idServicePricing,
-    supportingList = [],
+    governmentCostList = [],
     transaction1,
     transaction2,
     isDoubleDatabase,
   }) {
     const results = [];
 
-    for (const item of supportingList) {
-      const { variants_supporting = [], ...supportingData } = item;
+    for (const item of governmentCostList) {
+      const { government_cost_point = [], ...governmentCostData } = item;
 
-      // 1. Create Service Pricing Supporting in DB1
-      const supportingRecord1 =
-        await models.db1.ServicePricingSupporting.create(
-          { ...supportingData, id_service_pricing: idServicePricing },
-          { transaction: transaction1 }
-        );
+      // 1. Create Government Cost in DB1
+      const governmentCostRecord1 = await models.db1.GovernmentCost.create(
+        { ...governmentCostData, id_service_pricing: idServicePricing },
+        { transaction: transaction1 },
+      );
 
-      // 2. Create Service Pricing Supporting in DB2 with same ID
+      // 2. Create Government Cost in DB2 with same ID
       if (isDoubleDatabase) {
-        await models.db2.ServicePricingSupporting.create(
+        await models.db2.GovernmentCost.create(
           {
-            ...supportingData,
-            id: supportingRecord1.id,
+            ...governmentCostData,
+            id: governmentCostRecord1.id,
             id_service_pricing: idServicePricing,
           },
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
       }
 
-      // 3. Prepare variants_supporting data with foreign key
-      const variantsSupportingData = variants_supporting.map((variant) => ({
-        ...variant,
-        id_service_pricing_supporting: supportingRecord1.id,
+      // 3. Prepare government_cost_point data with foreign key
+      const governmentCostPointData = government_cost_point.map((point) => ({
+        ...point,
+        id_government_cost: governmentCostRecord1.id,
       }));
 
-      // 4. Sync Service Pricing Variant Supporting
-      const variantsResult = await syncChildRecords({
-        Model1: models.db1.ServicePricingVariantSupporting,
-        Model2: isDoubleDatabase
-          ? models.db2.ServicePricingVariantSupporting
-          : null,
-        foreignKey: "id_service_pricing_supporting",
-        parentId: supportingRecord1.id,
-        newData: variantsSupportingData,
+      // 4. Sync Government Cost Point
+      const pointsResult = await syncChildRecords({
+        Model1: models.db1.GovernmentCostPoint,
+        Model2: isDoubleDatabase ? models.db2.GovernmentCostPoint : null,
+        foreignKey: "id_government_cost",
+        parentId: governmentCostRecord1.id,
+        newData: governmentCostPointData,
         transaction1,
         transaction2,
         isDoubleDatabase,
       });
 
       results.push({
-        supporting: supportingRecord1.toJSON(),
-        variants_supporting: variantsResult,
+        government_cost: governmentCostRecord1.toJSON(),
+        government_cost_point: pointsResult,
       });
     }
 
@@ -300,120 +299,120 @@ class ServicePricingService extends DualDatabaseService {
   }
 
   /**
-   * Sync (create/update/delete) supporting records + their variants for a given service pricing
+   * Sync (create/update/delete) government cost records + their points for a given service pricing
    *
    * @param {Object} params
    * @param {Number} params.idServicePricing
-   * @param {Array} params.supportingList
+   * @param {Array} params.governmentCostList
    * @param {Object} params.transaction1
    * @param {Object} params.transaction2
    * @param {Boolean} params.isDoubleDatabase
-   * @returns {Array} Synced supporting records with their variants
+   * @returns {Array} Synced government cost records with their points
    */
-  async syncSupportingWithVariants({
+  async syncGovernmentCostWithPoints({
     idServicePricing,
-    supportingList = [],
+    governmentCostList = [],
     transaction1,
     transaction2,
     isDoubleDatabase,
   }) {
-    const ModelSupporting1 = models.db1.ServicePricingSupporting;
-    const ModelSupporting2 = models.db2.ServicePricingSupporting;
-    const ModelVariantSupporting1 = models.db1.ServicePricingVariantSupporting;
-    const ModelVariantSupporting2 = models.db2.ServicePricingVariantSupporting;
+    const ModelGovernmentCost1 = models.db1.GovernmentCost;
+    const ModelGovernmentCost2 = models.db2.GovernmentCost;
+    const ModelGovernmentCostPoint1 = models.db1.GovernmentCostPoint;
+    const ModelGovernmentCostPoint2 = models.db2.GovernmentCostPoint;
 
-    // 1. Get existing supporting records for this service pricing
-    const existingSupporting = await ModelSupporting1.findAll({
+    // 1. Get existing government cost records for this service pricing
+    const existingGovernmentCost = await ModelGovernmentCost1.findAll({
       where: { id_service_pricing: idServicePricing },
       transaction: transaction1,
     });
-    const existingIds = existingSupporting.map((s) => s.id);
-    const incomingIds = supportingList.filter((s) => s.id).map((s) => s.id);
+    const existingIds = existingGovernmentCost.map((s) => s.id);
+    const incomingIds = governmentCostList.filter((s) => s.id).map((s) => s.id);
     const idsToDelete = existingIds.filter((id) => !incomingIds.includes(id));
 
-    // 2. Delete removed supporting records
-    //    (delete variants_supporting first because of onDelete: RESTRICT)
+    // 2. Delete removed government cost records
+    //    (delete government_cost_point first because of onDelete: RESTRICT)
     if (idsToDelete.length > 0) {
-      await ModelVariantSupporting1.destroy({
-        where: { id_service_pricing_supporting: idsToDelete },
+      await ModelGovernmentCostPoint1.destroy({
+        where: { id_government_cost: idsToDelete },
         transaction: transaction1,
       });
-      await ModelSupporting1.destroy({
+      await ModelGovernmentCost1.destroy({
         where: { id: idsToDelete },
         transaction: transaction1,
       });
 
       if (isDoubleDatabase) {
-        await ModelVariantSupporting2.destroy({
-          where: { id_service_pricing_supporting: idsToDelete },
+        await ModelGovernmentCostPoint2.destroy({
+          where: { id_government_cost: idsToDelete },
           transaction: transaction2,
         });
-        await ModelSupporting2.destroy({
+        await ModelGovernmentCost2.destroy({
           where: { id: idsToDelete },
           transaction: transaction2,
         });
       }
     }
 
-    // 3. Create/update each supporting item, then sync its own variants_supporting
+    // 3. Create/update each government cost item, then sync its own government_cost_point
     const results = [];
-    for (const item of supportingList) {
-      const { id, variants_supporting = [], ...supportingData } = item;
-      let supportingRecord1;
+    for (const item of governmentCostList) {
+      const { id, government_cost_point = [], ...governmentCostData } = item;
+      let governmentCostRecord1;
 
       if (id) {
-        // Update existing supporting record
-        await ModelSupporting1.update(supportingData, {
+        // Update existing government cost record
+        await ModelGovernmentCost1.update(governmentCostData, {
           where: { id },
           transaction: transaction1,
         });
         if (isDoubleDatabase) {
-          await ModelSupporting2.update(supportingData, {
+          await ModelGovernmentCost2.update(governmentCostData, {
             where: { id },
             transaction: transaction2,
           });
         }
-        supportingRecord1 = await ModelSupporting1.findByPk(id, {
+        governmentCostRecord1 = await ModelGovernmentCost1.findByPk(id, {
           transaction: transaction1,
         });
       } else {
-        // Create new supporting record
-        supportingRecord1 = await ModelSupporting1.create(
-          { ...supportingData, id_service_pricing: idServicePricing },
-          { transaction: transaction1 }
+        // Create new government cost record
+        governmentCostRecord1 = await ModelGovernmentCost1.create(
+          { ...governmentCostData, id_service_pricing: idServicePricing },
+          { transaction: transaction1 },
         );
         if (isDoubleDatabase) {
-          await ModelSupporting2.create(
+          await ModelGovernmentCost2.create(
             {
-              ...supportingData,
-              id: supportingRecord1.id,
+              ...governmentCostData,
+              id: governmentCostRecord1.id,
               id_service_pricing: idServicePricing,
             },
-            { transaction: transaction2 }
+            { transaction: transaction2 },
           );
         }
       }
 
-      // Sync variants_supporting for this supporting record
-      const variantsSupportingData = variants_supporting.map((variant) => ({
-        ...variant,
-        id_service_pricing_supporting: supportingRecord1.id,
+      // Sync government_cost_point for this government cost record
+      const governmentCostPointData = government_cost_point.map((point) => ({
+        ...point,
+        id_government_cost: governmentCostRecord1.id,
       }));
 
-      const variantsResult = await syncChildRecords({
-        Model1: ModelVariantSupporting1,
-        Model2: isDoubleDatabase ? ModelVariantSupporting2 : null,
-        foreignKey: "id_service_pricing_supporting",
-        parentId: supportingRecord1.id,
-        newData: variantsSupportingData,
+      const pointsResult = await syncChildRecords({
+        Model1: ModelGovernmentCostPoint1,
+        Model2: isDoubleDatabase ? ModelGovernmentCostPoint2 : null,
+        foreignKey: "id_government_cost",
+        parentId: governmentCostRecord1.id,
+        newData: governmentCostPointData,
         transaction1,
         transaction2,
         isDoubleDatabase,
       });
 
       results.push({
-        supporting: supportingRecord1.toJSON(),
-        variants_supporting: variantsResult,
+        government_cost: governmentCostRecord1.toJSON(),
+        government_cost_point: pointsResult,
       });
     }
 
@@ -421,15 +420,15 @@ class ServicePricingService extends DualDatabaseService {
   }
 
   /**
-   * Create multiple service pricing with variants and supporting in a single transaction
+   * Create multiple service pricing with variants and government cost in a single transaction
    *
-   * @param {Array} servicePricingDataList - Array of service pricing data with variants and supporting
+   * @param {Array} servicePricingDataList - Array of service pricing data with variants and government cost
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
-   * @returns {Array} Created service pricing with variants and supporting
+   * @returns {Array} Created service pricing with variants and government cost
    */
   async createMultipleWithVariants(
     servicePricingDataList = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -440,7 +439,7 @@ class ServicePricingService extends DualDatabaseService {
         transaction2 = await db2.transaction();
 
         console.log(
-          `🔄 Creating ${servicePricingDataList.length} Service Pricing records with variants in both databases...`
+          `🔄 Creating ${servicePricingDataList.length} Service Pricing records with variants in both databases...`,
         );
 
         const results = [];
@@ -449,7 +448,7 @@ class ServicePricingService extends DualDatabaseService {
         for (const item of servicePricingDataList) {
           const {
             variants = [],
-            supporting = [],
+            government_cost = [],
             ...servicePricingData
           } = item;
 
@@ -458,7 +457,7 @@ class ServicePricingService extends DualDatabaseService {
             transaction: transaction1,
           });
           console.log(
-            `✅ Created Service Pricing in DB1 with ID: ${servicePricing1.id}`
+            `✅ Created Service Pricing in DB1 with ID: ${servicePricing1.id}`,
           );
 
           // 2. Create Service Pricing in DB2 with same ID
@@ -470,7 +469,7 @@ class ServicePricingService extends DualDatabaseService {
             transaction: transaction2,
           });
           console.log(
-            `✅ Created Service Pricing in DB2 with ID: ${servicePricing1.id}`
+            `✅ Created Service Pricing in DB2 with ID: ${servicePricing1.id}`,
           );
 
           // 3. Prepare variants data with foreign key
@@ -491,19 +490,20 @@ class ServicePricingService extends DualDatabaseService {
             isDoubleDatabase,
           });
 
-          // 5. Create Service Pricing Supporting + their variants
-          const supportingResult = await this.createSupportingWithVariants({
-            idServicePricing: servicePricing1.id,
-            supportingList: supporting,
-            transaction1,
-            transaction2,
-            isDoubleDatabase,
-          });
+          // 5. Create Government Cost + their points
+          const governmentCostResult =
+            await this.createGovernmentCostWithPoints({
+              idServicePricing: servicePricing1.id,
+              governmentCostList: government_cost,
+              transaction1,
+              transaction2,
+              isDoubleDatabase,
+            });
 
           results.push({
             service_pricing: servicePricing1.toJSON(),
             variants: variantsResult,
-            supporting: supportingResult,
+            government_cost: governmentCostResult,
           });
         }
 
@@ -511,7 +511,7 @@ class ServicePricingService extends DualDatabaseService {
         await transaction1.commit();
         await transaction2.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records with variants successfully created`
+          `✅ ${servicePricingDataList.length} Service Pricing records with variants successfully created`,
         );
 
         return results;
@@ -524,7 +524,7 @@ class ServicePricingService extends DualDatabaseService {
         for (const item of servicePricingDataList) {
           const {
             variants = [],
-            supporting = [],
+            government_cost = [],
             ...servicePricingData
           } = item;
 
@@ -548,24 +548,25 @@ class ServicePricingService extends DualDatabaseService {
             isDoubleDatabase: false,
           });
 
-          const supportingResult = await this.createSupportingWithVariants({
-            idServicePricing: servicePricing.id,
-            supportingList: supporting,
-            transaction1,
-            transaction2: null,
-            isDoubleDatabase: false,
-          });
+          const governmentCostResult =
+            await this.createGovernmentCostWithPoints({
+              idServicePricing: servicePricing.id,
+              governmentCostList: government_cost,
+              transaction1,
+              transaction2: null,
+              isDoubleDatabase: false,
+            });
 
           results.push({
             service_pricing: servicePricing.toJSON(),
             variants: variantsResult,
-            supporting: supportingResult,
+            government_cost: governmentCostResult,
           });
         }
 
         await transaction1.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`
+          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`,
         );
 
         return results;
@@ -573,34 +574,34 @@ class ServicePricingService extends DualDatabaseService {
     } catch (error) {
       console.error(
         `❌ Error creating Service Pricing with variants:`,
-        error.message
+        error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to create Service Pricing with variants: ${error.message}`
+        `Failed to create Service Pricing with variants: ${error.message}`,
       );
     }
   }
 
   /**
-   * Update service pricing with variants and supporting in a single transaction
+   * Update service pricing with variants and government cost in a single transaction
    *
    * @param {Number} id - Service Pricing ID
    * @param {Object} servicePricingData - Service pricing data to update
    * @param {Array} variantsData - Service pricing variants data
-   * @param {Array} supportingData - Service pricing supporting data (with nested variants_supporting)
+   * @param {Array} governmentCostData - Government cost data (with nested government_cost_point)
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
-   * @returns {Object} Updated service pricing with variants and supporting operation result
+   * @returns {Object} Updated service pricing with variants and government cost operation result
    */
   async updateWithVariants(
     id,
     servicePricingData,
     variantsData = [],
-    supportingData = [],
-    isDoubleDatabase = true
+    governmentCostData = [],
+    isDoubleDatabase = true,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -618,7 +619,7 @@ class ServicePricingService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction1,
-          }
+          },
         );
 
         const [updatedRows2] = await this.Model2.update(
@@ -626,7 +627,7 @@ class ServicePricingService extends DualDatabaseService {
           {
             where: { id },
             transaction: transaction2,
-          }
+          },
         );
 
         if (updatedRows1 === 0 && updatedRows2 === 0) {
@@ -647,10 +648,10 @@ class ServicePricingService extends DualDatabaseService {
           isDoubleDatabase,
         });
 
-        // 3. Sync Service Pricing Supporting + their variants (Create/Update/Delete)
-        const supportingResult = await this.syncSupportingWithVariants({
+        // 3. Sync Government Cost + their points (Create/Update/Delete)
+        const governmentCostResult = await this.syncGovernmentCostWithPoints({
           idServicePricing: id,
-          supportingList: supportingData,
+          governmentCostList: governmentCostData,
           transaction1,
           transaction2,
           isDoubleDatabase,
@@ -669,12 +670,12 @@ class ServicePricingService extends DualDatabaseService {
               as: "variants",
             },
             {
-              model: models.db1.ServicePricingSupporting,
-              as: "supporting",
+              model: models.db1.GovernmentCost,
+              as: "government_cost",
               include: [
                 {
-                  model: models.db1.ServicePricingVariantSupporting,
-                  as: "variants_supporting",
+                  model: models.db1.GovernmentCostPoint,
+                  as: "government_cost_point",
                 },
               ],
             },
@@ -684,7 +685,7 @@ class ServicePricingService extends DualDatabaseService {
         return {
           service_pricing: updated ? updated.toJSON() : null,
           variants: variantsResult,
-          supporting: supportingResult,
+          government_cost: governmentCostResult,
         };
       } else {
         // Single database (DB1 only)
@@ -710,9 +711,9 @@ class ServicePricingService extends DualDatabaseService {
           isDoubleDatabase: false,
         });
 
-        const supportingResult = await this.syncSupportingWithVariants({
+        const governmentCostResult = await this.syncGovernmentCostWithPoints({
           idServicePricing: id,
-          supportingList: supportingData,
+          governmentCostList: governmentCostData,
           transaction1,
           transaction2: null,
           isDoubleDatabase: false,
@@ -728,12 +729,12 @@ class ServicePricingService extends DualDatabaseService {
               as: "variants",
             },
             {
-              model: models.db2.ServicePricingSupporting,
-              as: "supporting",
+              model: models.db2.GovernmentCost,
+              as: "government_cost",
               include: [
                 {
-                  model: models.db2.ServicePricingVariantSupporting,
-                  as: "variants_supporting",
+                  model: models.db2.GovernmentCostPoint,
+                  as: "government_cost_point",
                 },
               ],
             },
@@ -743,20 +744,20 @@ class ServicePricingService extends DualDatabaseService {
         return {
           service_pricing: updated ? updated.toJSON() : null,
           variants: variantsResult,
-          supporting: supportingResult,
+          government_cost: governmentCostResult,
         };
       }
     } catch (error) {
       console.error(
         `❌ Error updating Service Pricing with variants:`,
-        error.message
+        error.message,
       );
 
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
 
       throw new Error(
-        `Failed to update Service Pricing with variants: ${error.message}`
+        `Failed to update Service Pricing with variants: ${error.message}`,
       );
     }
   }
