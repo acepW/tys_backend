@@ -86,6 +86,22 @@ class PreOrderService extends DualDatabaseService {
                 },
               ],
             },
+            {
+              model: dbModels.PreOrderServiceSupporting,
+              as: "services_supporting",
+              separate: true,
+              include: [
+                {
+                  model: dbModels.ServicePricingSupporting,
+                  as: "service_pricing_supporting",
+                  attributes: [
+                    "id",
+                    "product_name_indo",
+                    "product_name_mandarin",
+                  ],
+                },
+              ],
+            },
           ],
         },
         {
@@ -223,6 +239,17 @@ class PreOrderService extends DualDatabaseService {
                       as: "fields",
                     },
                   ],
+                },
+              ],
+            },
+
+            {
+              model: dbModels.PreOrderServiceSupporting,
+              as: "services_supporting",
+              include: [
+                {
+                  model: dbModels.ServicePricingSupporting,
+                  as: "service_pricing_supporting",
                 },
               ],
             },

@@ -53,7 +53,7 @@ module.exports = (sequelize) => {
           fields: ["id_category"],
         },
       ],
-    },
+    }
   );
 
   // Define associations
@@ -78,6 +78,14 @@ module.exports = (sequelize) => {
     PreOrderCategory.hasMany(models.PreOrderService, {
       foreignKey: "id_pre_order_category",
       as: "services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // PreOrderCategory has many PreOrder Service supporting
+    PreOrderCategory.hasMany(models.PreOrderServiceSupporting, {
+      foreignKey: "id_pre_order_category",
+      as: "services_supporting",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

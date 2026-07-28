@@ -80,6 +80,7 @@ const VendorVerificationProgressModel = require("./vendor/vendorVerificationProg
 const PreOrderModel = require("./preOrder/preOrder.model");
 const PreOrderCategoryModel = require("./preOrder/preOrderCategory.model");
 const PreOrderServiceModel = require("./preOrder/preOrderService.model");
+const PreOrderServiceSupportingModel = require("./preOrder/preOrderServiceSupporting.model");
 const PreOrderProductModel = require("./preOrder/preOrderProduct.model");
 const PreOrderProductFieldModel = require("./preOrder/preOrderProductField.model");
 const PreOrderPaymentModel = require("./preOrder/preOrderPayment.model");
@@ -186,6 +187,7 @@ const initializeModels = (sequelize) => {
     PreOrder: PreOrderModel(sequelize),
     PreOrderCategory: PreOrderCategoryModel(sequelize),
     PreOrderService: PreOrderServiceModel(sequelize),
+    PreOrderServiceSupporting: PreOrderServiceSupportingModel(sequelize),
     PreOrderProduct: PreOrderProductModel(sequelize),
     PreOrderProductField: PreOrderProductFieldModel(sequelize),
     PreOrderPayment: PreOrderPaymentModel(sequelize),
