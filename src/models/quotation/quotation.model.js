@@ -79,7 +79,7 @@ module.exports = (sequelize) => {
         comment: "Date of quotation",
       },
       quotation_type: {
-        type: DataTypes.ENUM("normal", ""),
+        type: DataTypes.ENUM("normal", "exim"),
         allowNull: false,
         defaultValue: "normal",
         comment: "type of quotation",
@@ -155,7 +155,7 @@ module.exports = (sequelize) => {
           fields: ["id_company", "is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations
