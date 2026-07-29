@@ -32,7 +32,7 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
         references: {
-          model: "service_pricing_variant_supporting",
+          model: "service_pricing_variant",
           key: "id",
         },
         comment: "Foreign key to service pricing variant supporting table",
