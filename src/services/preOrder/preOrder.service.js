@@ -384,7 +384,7 @@ class PreOrderService extends DualDatabaseService {
   /**
    * Create pre order with nested categories, services, products, and fields
    * @param {Object} preOrderData - PreOrder data
-   * @param {Array} categoriesData - Array of pre order categories with services (and each service's products/fields)
+   * @param {Array} categoriesData - Array of pre order categories with services (and each service's products/fields), plus services_supporting
    * @param {Number} id_user_create
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
    * @returns {Object} Created pre order with all nested relations
@@ -963,7 +963,8 @@ class PreOrderService extends DualDatabaseService {
   }
 
   /**
-   * Sync PreOrder Categories with nested services (and each service's nested products/fields)
+   * Sync PreOrder Categories with nested services (and each service's nested products/fields),
+   * plus flat services_supporting per category
    * @private
    */
   async _syncPreOrderCategories(
@@ -975,7 +976,7 @@ class PreOrderService extends DualDatabaseService {
   ) {
     // Prepare categories data
     const preparedCategories = categoriesData.map((cat) => {
-      const { services, ...categoryData } = cat;
+      const { services, services_supporting, ...categoryData } = cat;
       return {
         ...categoryData,
         id_pre_order: preOrderId,
@@ -1093,6 +1094,21 @@ class PreOrderService extends DualDatabaseService {
       console.log(
         `   ✓ Cleaned up services and products for deleted categories`
       );
+
+      // Delete services_supporting (flat child, tanpa nested children)
+      await models.db1.PreOrderServiceSupporting.destroy({
+        where: { id_pre_order_category: deletedCategoryIds },
+        transaction: transaction1,
+      });
+
+      if (isDoubleDatabase) {
+        await models.db2.PreOrderServiceSupporting.destroy({
+          where: { id_pre_order_category: deletedCategoryIds },
+          transaction: transaction2,
+        });
+      }
+
+      console.log(`   ✓ Cleaned up services_supporting for deleted categories`);
     }
 
     // Create a map to link categoriesData with syncedCategories by ID
@@ -1122,7 +1138,8 @@ class PreOrderService extends DualDatabaseService {
       }
     }
 
-    // Process each category's nested services (and each service's nested products/fields)
+    // Process each category's nested services (and each service's nested products/fields),
+    // plus its flat services_supporting
     for (let i = 0; i < categoriesData.length; i++) {
       const categoryData = categoriesData[i];
       const syncedCategory = categoryMapping.get(i);
@@ -1506,6 +1523,55 @@ class PreOrderService extends DualDatabaseService {
 
         if (isDoubleDatabase) {
           await models.db2.PreOrderService.destroy({
+            where: { id_pre_order_category: categoryId },
+            transaction: transaction2,
+          });
+        }
+      }
+
+      // Sync Services Supporting for this category (flat, tanpa nested children)
+      if (
+        categoryData.services_supporting &&
+        Array.isArray(categoryData.services_supporting) &&
+        categoryData.services_supporting.length > 0
+      ) {
+        const preparedServicesSupporting = categoryData.services_supporting.map(
+          (svc) => ({
+            ...svc,
+            id_pre_order_category: categoryId,
+          })
+        );
+
+        console.log(
+          `📝 Syncing ${preparedServicesSupporting.length} services_supporting for category ${categoryId}`
+        );
+
+        const servicesSupportingResult = await syncChildRecords({
+          Model1: models.db1.PreOrderServiceSupporting,
+          Model2: isDoubleDatabase
+            ? models.db2.PreOrderServiceSupporting
+            : null,
+          foreignKey: "id_pre_order_category",
+          parentId: categoryId,
+          newData: preparedServicesSupporting,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
+        console.log(
+          `✅ Synced services_supporting for category ${categoryId} ` +
+            `(${servicesSupportingResult.summary.totalCreated} created, ${servicesSupportingResult.summary.totalUpdated} updated)`
+        );
+      } else {
+        // Tidak ada services_supporting → hapus semua yang ada untuk kategori ini
+        await models.db1.PreOrderServiceSupporting.destroy({
+          where: { id_pre_order_category: categoryId },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.PreOrderServiceSupporting.destroy({
             where: { id_pre_order_category: categoryId },
             transaction: transaction2,
           });
