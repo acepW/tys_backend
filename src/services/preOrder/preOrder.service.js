@@ -92,7 +92,7 @@ class PreOrderService extends DualDatabaseService {
               separate: true,
               include: [
                 {
-                  model: dbModels.ServicePricingSupporting,
+                  model: dbModels.ServicePricing,
                   as: "service_pricing_supporting",
                   attributes: [
                     "id",
@@ -248,7 +248,7 @@ class PreOrderService extends DualDatabaseService {
               as: "services_supporting",
               include: [
                 {
-                  model: dbModels.ServicePricingSupporting,
+                  model: dbModels.ServicePricing,
                   as: "service_pricing_supporting",
                 },
               ],
