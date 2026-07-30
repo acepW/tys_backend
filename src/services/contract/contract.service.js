@@ -389,6 +389,11 @@ class ContractService extends DualDatabaseService {
                     },
                   ],
                 },
+                {
+                  model: dbModels.ServicePricing,
+                  as: "service_pricing",
+                  attributes: ["id", "processing_time"],
+                },
               ],
             },
             {
