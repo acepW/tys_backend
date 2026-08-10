@@ -53,6 +53,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    //ClauseTemplate has many Clause footer
+    ClauseTemplate.hasMany(models.ClauseFooter, {
+      foreignKey: "id_clause_template",
+      as: "clauses_footer",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return ClauseTemplate;

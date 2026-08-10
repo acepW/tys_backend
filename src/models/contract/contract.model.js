@@ -219,6 +219,14 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    // Contract has many Contract Clause footer
+    Contract.hasMany(models.ContractClauseFooter, {
+      foreignKey: "id_contract",
+      as: "clause_footer",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     // Contract has many Contract Verification Progress
     Contract.hasMany(models.ContractVerificationProgress, {
       foreignKey: "id_contract",

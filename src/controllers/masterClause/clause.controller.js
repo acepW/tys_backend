@@ -7,16 +7,6 @@ class ClauseController {
   // CLAUSE TEMPLATE ENDPOINTS (Top Hierarchy)
   // ============================================================
 
-  /**
-   * GET /clause-template
-   * Get all clause templates with nested clauses, clause points,
-   * clause point subs, and clause headers
-   *
-   * Query params:
-   *   is_double_database  boolean string (default: true)
-   *   search              string — searches template name fields
-   *   is_active           boolean string
-   */
   async getAllTemplates(req, res) {
     try {
       const {
@@ -34,7 +24,7 @@ class ClauseController {
           [Op.or]: [{ template_name: { [Op.like]: `%${search}%` } }],
         };
       }
-      where.is_active = true; // Default filter to only active templates
+      where.is_active = true;
 
       if (is_active !== undefined) {
         where.is_active = is_active === "true";
@@ -59,11 +49,6 @@ class ClauseController {
     }
   }
 
-  /**
-   * GET /clause-template/:id
-   * Get a single clause template with nested clauses, clause points,
-   * clause point subs, and clause headers
-   */
   async getTemplateById(req, res) {
     try {
       const { id } = req.params;
@@ -92,9 +77,6 @@ class ClauseController {
 
   /**
    * POST /clause-template
-   * Create a new ClauseTemplate with clauses, clause points,
-   * clause point subs, and clause headers
-   *
    * Body (create):
    * {
    *   "is_double_database": true,
@@ -115,7 +97,14 @@ class ClauseController {
    *             {
    *               "description_indo": "1.1.1 Sub poin contoh",
    *               "description_mandarin": "子条款示例",
-   *               "index": 1
+   *               "index": 1,
+   *               "clause_point_sub_child": [
+   *                 {
+   *                   "description_indo": "1.1.1.1 Sub-sub poin contoh",
+   *                   "description_mandarin": "子子条款示例",
+   *                   "index": 1
+   *                 }
+   *               ]
    *             }
    *           ]
    *         }
@@ -123,54 +112,16 @@ class ClauseController {
    *     }
    *   ],
    *   "clauses_header": [
-   *     {
-   *       "description_indo": "BAB I - Ketentuan Umum",
-   *       "description_mandarin": "第一章 - 总则",
-   *       "index": 1,
-   *       "iis_view_product": false
-   *     }
+   *     { "description_indo": "BAB I - Ketentuan Umum", "description_mandarin": "第一章 - 总则", "index": 1, "is_view_product": false }
+   *   ],
+   *   "clauses_footer": [
+   *     { "description_indo": "Ditandatangani oleh kedua belah pihak", "description_mandarin": "由双方签署", "index": 1 }
    *   ]
    * }
    *
-   * Body (update — include id_clause_template):
-   * {
-   *   "is_double_database": true,
-   *   "id_clause_template": 1,
-   *   "template_name": "Template Kontrak A (edit)",
-   *   "contract_type": "contract",
-   *   "is_active": true,
-   *   "clause_list": [
-   *     {
-   *       "id": 1,                           // existing clause → UPDATE
-   *       "description_indo": "1. Pembayaran edit",
-   *       ...
-   *       "clause_points": [
-   *         {
-   *           "id": 1,                       // existing point → UPDATE
-   *           ...
-   *           "clause_point_sub": [
-   *             { "id": 1, ... },             // existing sub → UPDATE
-   *             { "id": null, ... }           // no id → CREATE
-   *             // omitting an existing sub id → DELETE that sub
-   *           ]
-   *         },
-   *         { "id": null, ... }              // no id → CREATE
-   *         // omitting an existing point id → DELETE that point
-   *       ]
-   *     },
-   *     {
-   *       // no id → CREATE new clause
-   *       "description_indo": "3. Klausul Baru",
-   *       ...
-   *     }
-   *     // omitting an existing clause id → DELETE that clause
-   *   ],
-   *   "clauses_header": [
-   *     { "id": 1, ... },                    // existing header → UPDATE
-   *     { "id": null, ... }                  // no id → CREATE
-   *     // omitting an existing header id → DELETE that header
-   *   ]
-   * }
+   * Body (update — include id_clause_template, id_clause_point_sub_child dst
+   * mengikuti pola create/update/delete yang sama seperti level lain:
+   * ada id → UPDATE, tidak ada id → CREATE, id lama yang tidak dikirim → DELETE)
    */
   async createUpdateTemplate(req, res) {
     try {
@@ -178,6 +129,7 @@ class ClauseController {
         is_double_database = true,
         clause_list = [],
         clauses_header = [],
+        clauses_footer = [],
         ...templateFields
       } = req.body || {};
       const isDoubleDatabase = is_double_database !== false;
@@ -197,7 +149,6 @@ class ClauseController {
             400
           );
         }
-
         if (!item.description_mandarin) {
           return errorResponse(
             res,
@@ -205,7 +156,6 @@ class ClauseController {
             400
           );
         }
-
         if (item.clause_points && !Array.isArray(item.clause_points)) {
           return errorResponse(
             res,
@@ -225,7 +175,6 @@ class ClauseController {
                 400
               );
             }
-
             if (!point.description_mandarin) {
               return errorResponse(
                 res,
@@ -233,7 +182,6 @@ class ClauseController {
                 400
               );
             }
-
             if (
               point.clause_point_sub &&
               !Array.isArray(point.clause_point_sub)
@@ -256,13 +204,46 @@ class ClauseController {
                     400
                   );
                 }
-
                 if (!sub.description_mandarin) {
                   return errorResponse(
                     res,
                     `description_mandarin is required for clause_point_sub at clause index ${i}, point index ${j}, sub index ${k}`,
                     400
                   );
+                }
+                if (
+                  sub.clause_point_sub_child &&
+                  !Array.isArray(sub.clause_point_sub_child)
+                ) {
+                  return errorResponse(
+                    res,
+                    `clause_point_sub_child must be an array at clause index ${i}, point index ${j}, sub index ${k}`,
+                    400
+                  );
+                }
+
+                if (
+                  sub.clause_point_sub_child &&
+                  sub.clause_point_sub_child.length > 0
+                ) {
+                  for (let l = 0; l < sub.clause_point_sub_child.length; l++) {
+                    const child = sub.clause_point_sub_child[l];
+
+                    if (!child.description_indo) {
+                      return errorResponse(
+                        res,
+                        `description_indo is required for clause_point_sub_child at clause index ${i}, point index ${j}, sub index ${k}, child index ${l}`,
+                        400
+                      );
+                    }
+                    if (!child.description_mandarin) {
+                      return errorResponse(
+                        res,
+                        `description_mandarin is required for clause_point_sub_child at clause index ${i}, point index ${j}, sub index ${k}, child index ${l}`,
+                        400
+                      );
+                    }
+                  }
                 }
               }
             }
@@ -274,7 +255,6 @@ class ClauseController {
       if (!Array.isArray(clauses_header)) {
         return errorResponse(res, "clauses_header must be an array", 400);
       }
-
       for (let i = 0; i < clauses_header.length; i++) {
         const header = clauses_header[i];
 
@@ -285,11 +265,33 @@ class ClauseController {
             400
           );
         }
-
         if (!header.description_mandarin) {
           return errorResponse(
             res,
             `description_mandarin is required for clauses_header at index ${i}`,
+            400
+          );
+        }
+      }
+
+      // ── Validate clauses_footer ───────────────────────────────────────
+      if (!Array.isArray(clauses_footer)) {
+        return errorResponse(res, "clauses_footer must be an array", 400);
+      }
+      for (let i = 0; i < clauses_footer.length; i++) {
+        const footer = clauses_footer[i];
+
+        if (!footer.description_indo) {
+          return errorResponse(
+            res,
+            `description_indo is required for clauses_footer at index ${i}`,
+            400
+          );
+        }
+        if (!footer.description_mandarin) {
+          return errorResponse(
+            res,
+            `description_mandarin is required for clauses_footer at index ${i}`,
             400
           );
         }
@@ -305,6 +307,13 @@ class ClauseController {
           clause_point_sub: (point.clause_point_sub || []).map((sub) => ({
             ...sub,
             is_active: sub.is_active !== undefined ? sub.is_active : true,
+            clause_point_sub_child: (sub.clause_point_sub_child || []).map(
+              (child) => ({
+                ...child,
+                is_active:
+                  child.is_active !== undefined ? child.is_active : true,
+              })
+            ),
           })),
         })),
       }));
@@ -318,6 +327,11 @@ class ClauseController {
             : false,
       }));
 
+      const normalizedClauseFooterList = clauses_footer.map((footer) => ({
+        ...footer,
+        is_active: footer.is_active !== undefined ? footer.is_active : true,
+      }));
+
       const payload = {
         ...templateFields,
         is_active:
@@ -326,6 +340,7 @@ class ClauseController {
             : true,
         clause_list: normalizedClauseList,
         clauses_header: normalizedClauseHeaderList,
+        clauses_footer: normalizedClauseFooterList,
       };
 
       const result = await clauseTemplateService.upsertTemplateWithClauses(
@@ -354,18 +369,12 @@ class ClauseController {
     }
   }
 
-  /**
-   * DELETE /clause-template/:id
-   * Delete a ClauseTemplate (cascades to clauses, clause points,
-   * clause point subs and clause headers)
-   */
   async deleteTemplate(req, res) {
     try {
       const { id } = req.params;
       const { is_double_database = true } = req.query || {};
       const isDoubleDatabase = is_double_database !== "false";
 
-      // Check existence first
       const existing = await clauseTemplateService.getTemplateById(
         id,
         {},
@@ -391,10 +400,6 @@ class ClauseController {
     }
   }
 
-  /**
-   * PATCH /clause-template/:id/toggle-active
-   * Toggle is_active on a ClauseTemplate
-   */
   async toggleTemplateActive(req, res) {
     try {
       const { id } = req.params;

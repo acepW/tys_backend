@@ -1,8 +1,8 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const ClausePointSub = sequelize.define(
-    "ClausePointSub",
+  const ClausePointSubChild = sequelize.define(
+    "ClausePointSubChild",
     {
       id: {
         type: DataTypes.INTEGER,
@@ -10,11 +10,11 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Clause Point",
       },
-      id_clause_point: {
+      id_clause_point_sub: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "clause_point",
+          model: "clause_point_sub",
           key: "id",
         },
         comment: "Id clause from clause point",
@@ -37,37 +37,21 @@ module.exports = (sequelize) => {
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of ClausePointSub (active/inactive)",
+        comment: "Status of ClausePointSubChild (active/inactive)",
       },
     },
     {
-      tableName: "clause_point_sub",
+      tableName: "clause_point_sub_child",
       timestamps: true,
       underscored: true,
     }
   );
 
   // Define associations (untuk future development)
-  ClausePointSub.associate = (models) => {
-    // Contoh: ClausePointSub dapat memiliki relasi dengan Order, dll
-    // ClausePointSub.hasMany(models.Order, { ... });
-
-    //Clause Point belongs to Clause
-    ClausePointSub.belongsTo(models.ClausePoint, {
-      foreignKey: "id_clause_point",
-      as: "clause_point",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Clause Point has many Clause point sub
-    ClausePointSub.hasMany(models.ClausePointSubChild, {
-      foreignKey: "id_clause_point_sub",
-      as: "clause_point_sub_child",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
+  ClausePointSubChild.associate = (models) => {
+    // Contoh: ClausePointSubChild dapat memiliki relasi dengan Order, dll
+    // ClausePointSubChild.hasMany(models.Order, { ... });
   };
 
-  return ClausePointSub;
+  return ClausePointSubChild;
 };

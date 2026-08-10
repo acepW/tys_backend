@@ -208,16 +208,16 @@ class CompanyService extends DualDatabaseService {
       throw new Error("Company name is required");
     }
 
-    if (body.email) {
-      const emailExists = await this.checkEmailExists(
-        body.email,
-        null,
-        isDoubleDatabase
-      );
-      if (emailExists) {
-        throw new Error("Email already exists");
-      }
-    }
+    // if (body.email) {
+    //   const emailExists = await this.checkEmailExists(
+    //     body.email,
+    //     null,
+    //     isDoubleDatabase
+    //   );
+    //   if (emailExists) {
+    //     throw new Error("Email already exists");
+    //   }
+    // }
 
     const dataToCreate = this._buildCompanyData(body, false);
 

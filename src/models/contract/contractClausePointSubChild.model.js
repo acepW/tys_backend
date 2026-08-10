@@ -1,8 +1,8 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const ContractClausePointSub = sequelize.define(
-    "ContractClausePointSub",
+  const ContractClausePointSubChild = sequelize.define(
+    "ContractClausePointSubChild",
     {
       id: {
         type: DataTypes.INTEGER,
@@ -10,11 +10,11 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Contract Clause Point",
       },
-      id_contract_clause_point: {
+      id_contract_clause_point_sub: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "contract_clause_point",
+          model: "contract_clause_point_sub",
           key: "id",
         },
         comment: "Id clause from clause",
@@ -36,11 +36,11 @@ module.exports = (sequelize) => {
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of ContractClausePointSub (active/inactive)",
+        comment: "Status of ContractClausePointSubChild (active/inactive)",
       },
     },
     {
-      tableName: "contract_clause_point_sub",
+      tableName: "contract_clause_point_sub_child",
       timestamps: true,
       underscored: true,
       index: [
@@ -53,26 +53,10 @@ module.exports = (sequelize) => {
   );
 
   // Define associations (untuk future development)
-  ContractClausePointSub.associate = (models) => {
-    // Contoh: ContractClausePointSub dapat memiliki relasi dengan Order, dll
-    // ContractClausePointSub.hasMany(models.Order, { ... });
-
-    //Clause Point belongs to Clause
-    ContractClausePointSub.belongsTo(models.ContractClausePoint, {
-      foreignKey: "id_contract_clause_point",
-      as: "contract_clause_point",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
-
-    //Clause Point belongs to Clause point sub child
-    ContractClausePointSub.hasMany(models.ContractClausePointSubChild, {
-      foreignKey: "id_contract_clause_point_sub",
-      as: "clause_point_sub_child",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
+  ContractClausePointSubChild.associate = (models) => {
+    // Contoh: ContractClausePointSubChild dapat memiliki relasi dengan Order, dll
+    // ContractClausePointSubChild.hasMany(models.Order, { ... });
   };
 
-  return ContractClausePointSub;
+  return ContractClausePointSubChild;
 };

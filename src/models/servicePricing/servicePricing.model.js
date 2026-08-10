@@ -101,7 +101,7 @@ module.exports = (sequelize) => {
       },
       processing_time: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         comment: "Processing time",
       },
       status: {
@@ -156,7 +156,7 @@ module.exports = (sequelize) => {
           fields: ["id_division", "is_active"],
         },
       ],
-    },
+    }
   );
 
   // Define associations (untuk future development)

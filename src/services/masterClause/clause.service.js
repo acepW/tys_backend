@@ -6,23 +6,12 @@ const { where } = require("sequelize");
 class ClauseTemplateService extends DualDatabaseService {
   constructor() {
     super("ClauseTemplate");
-    // this.Model1 → models.db1.ClauseTemplate
-    // this.Model2 → models.db2.ClauseTemplate
-    // For Clause / ClauseHeader / ClausePoint / ClausePointSub operations
-    // use models.db1.<Model> / models.db2.<Model> explicitly
   }
 
   // ============================================================
   // CLAUSE TEMPLATE METHODS (Top Hierarchy)
   // ============================================================
 
-  /**
-   * Get all clause templates with their clauses (+ clause_points + clause_point_sub)
-   * and clause headers
-   * @param {Object} options - Query options
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Array} ClauseTemplates with full nested relations
-   */
   async getAllTemplatesWithRelations(options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -70,6 +59,22 @@ class ClauseTemplateService extends DualDatabaseService {
                     "index",
                     "is_active",
                   ],
+                  include: [
+                    {
+                      model: dbModels.ClausePointSubChild,
+                      as: "clause_point_sub_child",
+                      separate: true,
+                      where: { is_active: true },
+                      attributes: [
+                        "id",
+                        "id_clause_point_sub",
+                        "description_indo",
+                        "description_mandarin",
+                        "index",
+                        "is_active",
+                      ],
+                    },
+                  ],
                 },
               ],
             },
@@ -90,19 +95,26 @@ class ClauseTemplateService extends DualDatabaseService {
             "is_active",
           ],
         },
+        {
+          model: dbModels.ClauseFooter,
+          as: "clauses_footer",
+          separate: true,
+          where: { is_active: true },
+          attributes: [
+            "id",
+            "id_clause_template",
+            "description_indo",
+            "description_mandarin",
+            "index",
+            "is_active",
+          ],
+        },
       ],
     };
 
     return await this.findAll(queryOptions, isDoubleDatabase);
   }
 
-  /**
-   * Get clause template by ID with full nested relations
-   * @param {Number} id
-   * @param {Object} options - Query options
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} ClauseTemplate with full nested relations
-   */
   async getTemplateById(id, options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -144,6 +156,20 @@ class ClauseTemplateService extends DualDatabaseService {
                     "index",
                     "is_active",
                   ],
+                  include: [
+                    {
+                      model: dbModels.ClausePointSubChild,
+                      as: "clause_point_sub_child",
+                      attributes: [
+                        "id",
+                        "id_clause_point_sub",
+                        "description_indo",
+                        "description_mandarin",
+                        "index",
+                        "is_active",
+                      ],
+                    },
+                  ],
                 },
               ],
             },
@@ -162,6 +188,18 @@ class ClauseTemplateService extends DualDatabaseService {
             "is_active",
           ],
         },
+        {
+          model: dbModels.ClauseFooter,
+          as: "clauses_footer",
+          attributes: [
+            "id",
+            "id_clause_template",
+            "description_indo",
+            "description_mandarin",
+            "index",
+            "is_active",
+          ],
+        },
       ],
     };
 
@@ -170,29 +208,13 @@ class ClauseTemplateService extends DualDatabaseService {
 
   /**
    * Create or Update a ClauseTemplate along with its clauses, clause points,
-   * clause point subs, and clause headers in a single transaction.
+   * clause point subs, clause point sub children, clause headers, and
+   * clause footers in a single transaction.
    *
    * Hierarchy:
-   *   ClauseTemplate → Clause → ClausePoint → ClausePointSub
+   *   ClauseTemplate → Clause → ClausePoint → ClausePointSub → ClausePointSubChild
    *   ClauseTemplate → ClauseHeader (flat, no children)
-   *
-   * Logic:
-   * - If id_clause_template is null/undefined  => CREATE new ClauseTemplate
-   * - If id_clause_template exists             => UPDATE existing ClauseTemplate
-   * - For each clause in clause_list:
-   *     - If clause.id is null/undefined       => CREATE new Clause
-   *     - If clause.id exists                  => UPDATE existing Clause
-   *     - Clauses not in the list              => DELETE
-   *     - For each clause_point in clause_points:
-   *         - same create/update/delete logic
-   *         - For each clause_point_sub in clause_point_sub:
-   *             - same create/update/delete logic (via syncChildRecords)
-   * - For each clause_header in clauses_header:
-   *     - same create/update/delete logic (via syncChildRecords)
-   *
-   * @param {Object} templateData - { id_clause_template, clause_list, clauses_header, ...templateFields }
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Processed ClauseTemplate with nested result
+   *   ClauseTemplate → ClauseFooter (flat, no children)
    */
   async upsertTemplateWithClauses(templateData = {}, isDoubleDatabase = true) {
     let transaction1 = null;
@@ -203,6 +225,7 @@ class ClauseTemplateService extends DualDatabaseService {
         id_clause_template,
         clause_list = [],
         clauses_header = [],
+        clauses_footer = [],
         ...templateFields
       } = templateData;
 
@@ -213,9 +236,9 @@ class ClauseTemplateService extends DualDatabaseService {
         console.log(
           `🔄 Processing ClauseTemplate ${
             id_clause_template ? `ID ${id_clause_template}` : "(new)"
-          } with ${clause_list.length} clauses and ${
+          } with ${clause_list.length} clauses, ${
             clauses_header.length
-          } headers in both databases...`
+          } headers and ${clauses_footer.length} footers in both databases...`
         );
 
         // ── Step 1: Create or Update ClauseTemplate ──────────────────────────
@@ -266,17 +289,12 @@ class ClauseTemplateService extends DualDatabaseService {
         }
 
         // ── Step 2: Sync Clauses under this template ──────────────────────────
-        // We use a manual loop (not syncChildRecords) because each clause has
-        // nested clause_points, which themselves have nested clause_point_sub.
-
         const clauseResults = [];
 
-        // Collect IDs of clauses present in the incoming list (for delete detection)
         const incomingClauseIds = clause_list
           .filter((c) => c.id)
           .map((c) => c.id);
 
-        // Fetch existing clause IDs that belong to this template (DB1)
         const existingClauses = await models.db1.Clause.findAll({
           where: { id_clause_template: templateId },
           attributes: ["id"],
@@ -284,12 +302,10 @@ class ClauseTemplateService extends DualDatabaseService {
         });
         const existingClauseIds = existingClauses.map((c) => c.id);
 
-        // Determine clauses to delete (exist in DB but not in incoming list)
         const clauseIdsToDelete = existingClauseIds.filter(
           (existId) => !incomingClauseIds.includes(existId)
         );
 
-        // Delete removed clauses (cascade will handle clause_points/sub if FK set)
         if (clauseIdsToDelete.length > 0) {
           console.log(
             `🗑️ Deleting ${
@@ -307,11 +323,8 @@ class ClauseTemplateService extends DualDatabaseService {
           });
         }
 
-        // Process each clause (create / update)
         for (const item of clause_list) {
           const { id, clause_points = [], ...clauseData } = item;
-
-          // Strip non-column fields that may come from frontend (createdAt, updatedAt)
           const { createdAt, updatedAt, ...cleanClauseData } = clauseData;
 
           const clausePayload = {
@@ -324,7 +337,6 @@ class ClauseTemplateService extends DualDatabaseService {
           let isClauseUpdate = false;
 
           if (id) {
-            // UPDATE existing Clause
             isClauseUpdate = true;
             clauseId = id;
 
@@ -345,7 +357,6 @@ class ClauseTemplateService extends DualDatabaseService {
 
             console.log(`✅ Updated Clause ID: ${clauseId}`);
           } else {
-            // CREATE new Clause
             console.log(
               `🔄 Creating new Clause under Template ID ${templateId}...`
             );
@@ -364,9 +375,6 @@ class ClauseTemplateService extends DualDatabaseService {
           }
 
           // ── Step 3: Sync ClausePoints under this clause ───────────────────
-          // Manual loop again, since each clause_point can have nested
-          // clause_point_sub records.
-
           const clausePointResults = [];
 
           const incomingPointIds = clause_points
@@ -452,31 +460,124 @@ class ClauseTemplateService extends DualDatabaseService {
               );
             }
 
-            // ── Step 4: Sync ClausePointSub under this clause_point ───────────
-            const clausePointSubData = clause_point_sub.map((sub) => {
+            // ── Step 4: Sync ClausePointSub (+ nested ClausePointSubChild) ────
+            const incomingSubIds = clause_point_sub
+              .filter((s) => s.id)
+              .map((s) => s.id);
+
+            const existingSubs = await models.db1.ClausePointSub.findAll({
+              where: { id_clause_point: resolvedPointId },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+            const existingSubIds = existingSubs.map((s) => s.id);
+
+            const subIdsToDelete = existingSubIds.filter(
+              (existId) => !incomingSubIds.includes(existId)
+            );
+
+            if (subIdsToDelete.length > 0) {
+              console.log(
+                `🗑️ Deleting ${
+                  subIdsToDelete.length
+                } removed clause_point_sub(s): [${subIdsToDelete.join(", ")}]`
+              );
+
+              await models.db1.ClausePointSub.destroy({
+                where: { id: subIdsToDelete },
+                transaction: transaction1,
+              });
+              await models.db2.ClausePointSub.destroy({
+                where: { id: subIdsToDelete },
+                transaction: transaction2,
+              });
+            }
+
+            const clausePointSubResults = [];
+
+            for (const subItem of clause_point_sub) {
+              const {
+                id: subId,
+                clause_point_sub_child = [],
+                ...subData
+              } = subItem;
+
               const {
                 createdAt: _sca,
                 updatedAt: _sua,
                 id_clause_point: _sic,
-                ...cleanSub
-              } = sub;
-              return { ...cleanSub, id_clause_point: resolvedPointId };
-            });
+                ...cleanSubData
+              } = subData;
 
-            const clausePointSubResult = await syncChildRecords({
-              Model1: models.db1.ClausePointSub,
-              Model2: models.db2.ClausePointSub,
-              foreignKey: "id_clause_point",
-              parentId: resolvedPointId,
-              newData: clausePointSubData,
-              transaction1,
-              transaction2,
-              isDoubleDatabase,
-            });
+              const subPayload = {
+                ...cleanSubData,
+                id_clause_point: resolvedPointId,
+              };
+
+              let resolvedSubId;
+              let sub1;
+              let isSubUpdate = false;
+
+              if (subId) {
+                isSubUpdate = true;
+                resolvedSubId = subId;
+
+                await models.db1.ClausePointSub.update(subPayload, {
+                  where: { id: resolvedSubId },
+                  transaction: transaction1,
+                });
+                await models.db2.ClausePointSub.update(subPayload, {
+                  where: { id: resolvedSubId },
+                  transaction: transaction2,
+                });
+
+                sub1 = await models.db1.ClausePointSub.findByPk(resolvedSubId, {
+                  transaction: transaction1,
+                });
+              } else {
+                sub1 = await models.db1.ClausePointSub.create(subPayload, {
+                  transaction: transaction1,
+                });
+                resolvedSubId = sub1.id;
+
+                await models.db2.ClausePointSub.create(
+                  { ...subPayload, id: resolvedSubId },
+                  { transaction: transaction2 }
+                );
+              }
+
+              // ── Step 5: Sync ClausePointSubChild under this sub ───────────
+              const subChildData = clause_point_sub_child.map((child) => {
+                const {
+                  createdAt: _cca,
+                  updatedAt: _cua,
+                  id_clause_point_sub: _cic,
+                  ...cleanChild
+                } = child;
+                return { ...cleanChild, id_clause_point_sub: resolvedSubId };
+              });
+
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ClausePointSubChild,
+                Model2: models.db2.ClausePointSubChild,
+                foreignKey: "id_clause_point_sub",
+                parentId: resolvedSubId,
+                newData: subChildData,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+
+              clausePointSubResults.push({
+                clause_point_sub: sub1.toJSON(),
+                clause_point_sub_child: subChildResult,
+                operation: isSubUpdate ? "updated" : "created",
+              });
+            }
 
             clausePointResults.push({
               clause_point: point1.toJSON(),
-              clause_point_sub: clausePointSubResult,
+              clause_point_sub: clausePointSubResults,
               operation: isPointUpdate ? "updated" : "created",
             });
           }
@@ -488,8 +589,7 @@ class ClauseTemplateService extends DualDatabaseService {
           });
         }
 
-        // ── Step 5: Sync ClauseHeaders under this template ────────────────────
-        // Flat list, no children → syncChildRecords is sufficient.
+        // ── Step 6: Sync ClauseHeaders under this template ────────────────────
         const clauseHeaderData = clauses_header.map((header) => {
           const {
             createdAt: _hca,
@@ -511,18 +611,41 @@ class ClauseTemplateService extends DualDatabaseService {
           isDoubleDatabase,
         });
 
+        // ── Step 7: Sync ClauseFooters under this template ────────────────────
+        const clauseFooterData = clauses_footer.map((footer) => {
+          const {
+            createdAt: _fca,
+            updatedAt: _fua,
+            id_clause_template: _fit,
+            ...cleanFooter
+          } = footer;
+          return { ...cleanFooter, id_clause_template: templateId };
+        });
+
+        const clauseFooterResult = await syncChildRecords({
+          Model1: models.db1.ClauseFooter,
+          Model2: models.db2.ClauseFooter,
+          foreignKey: "id_clause_template",
+          parentId: templateId,
+          newData: clauseFooterData,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
         // Commit both transactions
         await transaction1.commit();
         await transaction2.commit();
 
         console.log(
-          `✅ ClauseTemplate ID ${templateId} with clauses and headers successfully processed`
+          `✅ ClauseTemplate ID ${templateId} with clauses, headers and footers successfully processed`
         );
 
         return {
           template: template1.toJSON(),
           clause_list: clauseResults,
           clauses_header: clauseHeaderResult,
+          clauses_footer: clauseFooterResult,
           operation: isTemplateUpdate ? "updated" : "created",
         };
       } else {
@@ -618,7 +741,7 @@ class ClauseTemplateService extends DualDatabaseService {
             clauseId = clause.id;
           }
 
-          // Sync ClausePoints (+ nested ClausePointSub) for this clause
+          // Sync ClausePoints for this clause
           const clausePointResults = [];
 
           const incomingPointIds = clause_points
@@ -685,30 +808,104 @@ class ClauseTemplateService extends DualDatabaseService {
               resolvedPointId = point.id;
             }
 
-            const clausePointSubData = clause_point_sub.map((sub) => {
+            // Sync ClausePointSub (+ nested ClausePointSubChild) — DB1 only
+            const incomingSubIds = clause_point_sub
+              .filter((s) => s.id)
+              .map((s) => s.id);
+
+            const existingSubs = await models.db1.ClausePointSub.findAll({
+              where: { id_clause_point: resolvedPointId },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+            const existingSubIds = existingSubs.map((s) => s.id);
+
+            const subIdsToDelete = existingSubIds.filter(
+              (existId) => !incomingSubIds.includes(existId)
+            );
+
+            if (subIdsToDelete.length > 0) {
+              await models.db1.ClausePointSub.destroy({
+                where: { id: subIdsToDelete },
+                transaction: transaction1,
+              });
+            }
+
+            const clausePointSubResults = [];
+
+            for (const subItem of clause_point_sub) {
+              const {
+                id: subId,
+                clause_point_sub_child = [],
+                ...subData
+              } = subItem;
+
               const {
                 createdAt: _sca,
                 updatedAt: _sua,
                 id_clause_point: _sic,
-                ...cleanSub
-              } = sub;
-              return { ...cleanSub, id_clause_point: resolvedPointId };
-            });
+                ...cleanSubData
+              } = subData;
 
-            const clausePointSubResult = await syncChildRecords({
-              Model1: models.db1.ClausePointSub,
-              Model2: null,
-              foreignKey: "id_clause_point",
-              parentId: resolvedPointId,
-              newData: clausePointSubData,
-              transaction1,
-              transaction2: null,
-              isDoubleDatabase: false,
-            });
+              const subPayload = {
+                ...cleanSubData,
+                id_clause_point: resolvedPointId,
+              };
+
+              let resolvedSubId;
+              let sub;
+              let isSubUpdate = false;
+
+              if (subId) {
+                isSubUpdate = true;
+                resolvedSubId = subId;
+
+                await models.db1.ClausePointSub.update(subPayload, {
+                  where: { id: resolvedSubId },
+                  transaction: transaction1,
+                });
+
+                sub = await models.db1.ClausePointSub.findByPk(resolvedSubId, {
+                  transaction: transaction1,
+                });
+              } else {
+                sub = await models.db1.ClausePointSub.create(subPayload, {
+                  transaction: transaction1,
+                });
+                resolvedSubId = sub.id;
+              }
+
+              const subChildData = clause_point_sub_child.map((child) => {
+                const {
+                  createdAt: _cca,
+                  updatedAt: _cua,
+                  id_clause_point_sub: _cic,
+                  ...cleanChild
+                } = child;
+                return { ...cleanChild, id_clause_point_sub: resolvedSubId };
+              });
+
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ClausePointSubChild,
+                Model2: null,
+                foreignKey: "id_clause_point_sub",
+                parentId: resolvedSubId,
+                newData: subChildData,
+                transaction1,
+                transaction2: null,
+                isDoubleDatabase: false,
+              });
+
+              clausePointSubResults.push({
+                clause_point_sub: sub.toJSON(),
+                clause_point_sub_child: subChildResult,
+                operation: isSubUpdate ? "updated" : "created",
+              });
+            }
 
             clausePointResults.push({
               clause_point: point.toJSON(),
-              clause_point_sub: clausePointSubResult,
+              clause_point_sub: clausePointSubResults,
               operation: isPointUpdate ? "updated" : "created",
             });
           }
@@ -720,7 +917,7 @@ class ClauseTemplateService extends DualDatabaseService {
           });
         }
 
-        // Sync ClauseHeaders for this template (DB1 only)
+        // Sync ClauseHeaders (DB1 only)
         const clauseHeaderData = clauses_header.map((header) => {
           const {
             createdAt: _hca,
@@ -742,6 +939,28 @@ class ClauseTemplateService extends DualDatabaseService {
           isDoubleDatabase: false,
         });
 
+        // Sync ClauseFooters (DB1 only)
+        const clauseFooterData = clauses_footer.map((footer) => {
+          const {
+            createdAt: _fca,
+            updatedAt: _fua,
+            id_clause_template: _fit,
+            ...cleanFooter
+          } = footer;
+          return { ...cleanFooter, id_clause_template: templateId };
+        });
+
+        const clauseFooterResult = await syncChildRecords({
+          Model1: models.db1.ClauseFooter,
+          Model2: null,
+          foreignKey: "id_clause_template",
+          parentId: templateId,
+          newData: clauseFooterData,
+          transaction1,
+          transaction2: null,
+          isDoubleDatabase: false,
+        });
+
         await transaction1.commit();
 
         console.log(`✅ ClauseTemplate ID ${templateId} processed in DB1 only`);
@@ -750,6 +969,7 @@ class ClauseTemplateService extends DualDatabaseService {
           template: template.toJSON(),
           clause_list: clauseResults,
           clauses_header: clauseHeaderResult,
+          clauses_footer: clauseFooterResult,
           operation: isTemplateUpdate ? "updated" : "created",
         };
       }
@@ -768,13 +988,6 @@ class ClauseTemplateService extends DualDatabaseService {
     }
   }
 
-  /**
-   * Delete a ClauseTemplate (cascades to clauses/points/subs and headers
-   * based on DB constraints)
-   * @param {Number} id - ClauseTemplate ID
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Delete result
-   */
   async deleteTemplate(id, isDoubleDatabase = true) {
     let transaction1 = null;
     let transaction2 = null;
@@ -790,17 +1003,11 @@ class ClauseTemplateService extends DualDatabaseService {
 
         const deleted1 = await this.Model1.update(
           { is_active: false },
-          {
-            where: { id },
-            transaction: transaction1,
-          }
+          { where: { id }, transaction: transaction1 }
         );
         const deleted2 = await this.Model2.update(
           { is_active: false },
-          {
-            where: { id },
-            transaction: transaction2,
-          }
+          { where: { id }, transaction: transaction2 }
         );
 
         if (deleted1 === 0 && deleted2 === 0) {
@@ -814,17 +1021,14 @@ class ClauseTemplateService extends DualDatabaseService {
 
         return {
           deleted: true,
-          message: `ClauseTemplate ID ${id} and all related clauses, clause points, clause point subs and clause headers deleted successfully`,
+          message: `ClauseTemplate ID ${id} and all related clauses, clause points, clause point subs, clause point sub children, clause headers and clause footers deleted successfully`,
         };
       } else {
         transaction1 = await db1.transaction();
 
         const deleted = await this.Model1.update(
           { is_active: false },
-          {
-            where: { id },
-            transaction: transaction1,
-          }
+          { where: { id }, transaction: transaction1 }
         );
 
         if (deleted === 0) {
@@ -837,7 +1041,7 @@ class ClauseTemplateService extends DualDatabaseService {
 
         return {
           deleted: true,
-          message: `ClauseTemplate ID ${id} and all related clauses, clause points, clause point subs and clause headers deleted successfully`,
+          message: `ClauseTemplate ID ${id} and all related clauses, clause points, clause point subs, clause point sub children, clause headers and clause footers deleted successfully`,
         };
       }
     } catch (error) {

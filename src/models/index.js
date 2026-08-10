@@ -13,7 +13,9 @@ const ClauseTemplateModel = require("./masterClause/clauseTemplate.model");
 const ClauseModel = require("./masterClause/clause.model");
 const ClausePointModel = require("./masterClause/clausePoint.model");
 const ClausePointSubModel = require("./masterClause/clausePointSub.model");
+const ClausePointSubChildModel = require("./masterClause/clausePointSubChild.model");
 const ClauseHeaderModel = require("./masterClause/clauseHeader.model");
+const ClauseFooterModel = require("./masterClause/clauseFooter.model");
 const UserModel = require("./user.model");
 const MenuModel = require("./menu.model");
 const PositionMenuModel = require("./position/positionMenu.model");
@@ -46,8 +48,10 @@ const ContractServiceModel = require("./contract/contractService.model");
 const ContractVerificationProgressModel = require("./contract/contactVerificationProgress.mode");
 const ContractClauseModel = require("./contract/contractClause.model");
 const ContractClauseHeaderModel = require("./contract/contractClauseHeader.model");
+const ContractClauseFooterModel = require("./contract/contractClauseFooter.model");
 const ContractClausePointModel = require("./contract/contractClausePoint.model");
 const ContractClausePointSubModel = require("./contract/contractClausePointSub.model");
+const ContractClausePointSubChildModel = require("./contract/contractClausePointSubChild.model");
 const ContractClauseLogModel = require("./contract/contractClauseLog.model");
 const ContractPaymentModel = require("./contract/contractPayment.model");
 const ContractPaymentListModel = require("./contract/contractPaymentList.model");
@@ -117,7 +121,9 @@ const initializeModels = (sequelize) => {
     Clause: ClauseModel(sequelize),
     ClausePoint: ClausePointModel(sequelize),
     ClausePointSub: ClausePointSubModel(sequelize),
+    ClausePointSubChild: ClausePointSubChildModel(sequelize),
     ClauseHeader: ClauseHeaderModel(sequelize),
+    ClauseFooter: ClauseFooterModel(sequelize),
     User: UserModel(sequelize),
     Menu: MenuModel(sequelize),
     PositionMenu: PositionMenuModel(sequelize),
@@ -151,8 +157,10 @@ const initializeModels = (sequelize) => {
     ContractVerificationProgress: ContractVerificationProgressModel(sequelize),
     ContractClause: ContractClauseModel(sequelize),
     ContractClauseHeader: ContractClauseHeaderModel(sequelize),
+    ContractClauseFooter: ContractClauseFooterModel(sequelize),
     ContractClausePoint: ContractClausePointModel(sequelize),
     ContractClausePointSub: ContractClausePointSubModel(sequelize),
+    ContractClausePointSubChild: ContractClausePointSubChildModel(sequelize),
     ContractClauseLog: ContractClauseLogModel(sequelize),
     ContractPayment: ContractPaymentModel(sequelize),
     ContractPaymentList: ContractPaymentListModel(sequelize),
@@ -250,7 +258,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true },
+  options = { alter: true }
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);

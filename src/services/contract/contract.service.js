@@ -158,6 +158,16 @@ class ContractService extends DualDatabaseService {
           ],
         },
         {
+          model: dbModels.ContractClauseHeader,
+          as: "clause_header",
+          separate: true,
+        },
+        {
+          model: dbModels.ContractClauseFooter,
+          as: "clause_footer",
+          separate: true,
+        },
+        {
           model: dbModels.ContractClause,
           as: "clauses",
           separate: true,
@@ -167,6 +177,16 @@ class ContractService extends DualDatabaseService {
               as: "clause_point",
               separate: true,
               include: [
+                {
+                  model: dbModels.ContractClausePointSub,
+                  as: "clause_point_sub",
+                  include: [
+                    {
+                      model: dbModels.ContractClausePointSubChild,
+                      as: "clause_point_sub_child",
+                    },
+                  ],
+                },
                 {
                   model: dbModels.ContractClauseLog,
                   as: "clause_logs",
@@ -447,6 +467,10 @@ class ContractService extends DualDatabaseService {
           as: "clause_header",
         },
         {
+          model: dbModels.ContractClauseFooter,
+          as: "clause_footer",
+        },
+        {
           model: dbModels.ContractClause,
           as: "clauses",
           include: [
@@ -471,6 +495,12 @@ class ContractService extends DualDatabaseService {
                 {
                   model: dbModels.ContractClausePointSub,
                   as: "clause_point_sub",
+                  include: [
+                    {
+                      model: dbModels.ContractClausePointSubChild,
+                      as: "clause_point_sub_child",
+                    },
+                  ],
                 },
               ],
             },
@@ -610,14 +640,17 @@ class ContractService extends DualDatabaseService {
     }
     const bulanRomawi = getRomanMonth(month);
 
-    // 🔥 1. Ambil SEMUA contract di tahun ini per company (tanpa filter is_active)
+    // 🔥 1. Ambil SEMUA contract di bulan ini per company (tanpa filter is_active)
     //    Urutkan terbaru dulu supaya gampang ambil contract_no terakhir
+
+    const startOfMonth = new Date(year, month - 1, 1);
+    const startOfNextMonth = new Date(year, month, 1);
     const allContracts = await dbModels.Contract.findAll({
       attributes: ["id", "id_company", "contract_no", "createdAt"],
       where: {
         createdAt: {
-          [Op.gte]: new Date(`${year}-01-01`),
-          [Op.lt]: new Date(`${year + 1}-01-01`),
+          [Op.gte]: startOfMonth,
+          [Op.lt]: startOfNextMonth,
         },
         is_active: true,
       },
@@ -680,11 +713,13 @@ class ContractService extends DualDatabaseService {
    *
    * @param {Object} contractData - Contract data
    * @param {Array} services - Contract services data
+   * @param {Array} clause_header - Contract clause header data
    * @param {Array} clauses - Contract clauses data
    * @param {Array} payment_request_contract
    * @param {Number} id_user_create
    * @param {Boolean} isDoubleDatabase
    * @param {Number|null} replaceContractId - ID of contract being replaced (optional)
+   * @param {Array} clause_footer - Contract clause footer data
    * @returns {Object} Created contract with all relations
    */
   async createWithRelations(
@@ -695,7 +730,8 @@ class ContractService extends DualDatabaseService {
     payment_request_contract = [],
     id_user_create,
     isDoubleDatabase = true,
-    replaceContractId = null
+    replaceContractId = null,
+    clause_footer = []
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -840,7 +876,7 @@ class ContractService extends DualDatabaseService {
             { transaction: transaction2 }
           );
           console.log(
-            `✅ Created Contract Clause with ID: ${clauseHeader1.id}`
+            `✅ Created Contract Clause Header with ID: ${clauseHeader1.id}`
           );
 
           clauseHeaderResult.push({
@@ -848,7 +884,35 @@ class ContractService extends DualDatabaseService {
           });
         }
 
-        // 5. Process Contract Clauses
+        // 5b. Process Contract Clause Footer
+        const clauseFooterResult = [];
+        for (const clauseFooterData of clause_footer) {
+          const { ...clauseFooter } = clauseFooterData;
+
+          const clauseFooterDataToCreate = {
+            ...clauseFooter,
+            id_contract: contract1.id,
+          };
+          const clauseFooter1 = await models.db1.ContractClauseFooter.create(
+            clauseFooterDataToCreate,
+            {
+              transaction: transaction1,
+            }
+          );
+          await models.db2.ContractClauseFooter.create(
+            { ...clauseFooterDataToCreate, id: clauseFooter1.id },
+            { transaction: transaction2 }
+          );
+          console.log(
+            `✅ Created Contract Clause Footer with ID: ${clauseFooter1.id}`
+          );
+
+          clauseFooterResult.push({
+            clause_footer: clauseFooter1.toJSON(),
+          });
+        }
+
+        // 6. Process Contract Clauses
         const clausesResult = [];
         for (const clauseData of clauses) {
           const { clause_point = [], clause_logs = [], ...clause } = clauseData;
@@ -910,29 +974,54 @@ class ContractService extends DualDatabaseService {
               } Clause Logs for Point ${point1.id}`
             );
 
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: point1.id,
-            }));
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: models.db2.ContractClausePointSub,
-              foreignKey: "id_contract_clause_point",
-              parentId: point1.id,
-              newData: pointSubData,
-              transaction1,
-              transaction2,
-              isDoubleDatabase,
-            });
-            console.log(
-              `✅ Synced ${
-                pointSubResult.created?.length || 0
-              } Clause Point Sub for Point ${point1.id}`
-            );
+            // 🔥 Process Clause Point Sub + nested Clause Point Sub Child
+            const clausePointSubResult = [];
+            for (const subData of pointSub) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
+
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: point1.id,
+              };
+              const sub1 = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+              await models.db2.ContractClausePointSub.create(
+                { ...subDataToCreate, id: sub1.id },
+                { transaction: transaction2 }
+              );
+              console.log(`✅ Created Clause Point Sub with ID: ${sub1.id}`);
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: sub1.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: models.db2.ContractClausePointSubChild,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: sub1.id,
+                newData: subChildData,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+              console.log(
+                `✅ Synced ${
+                  subChildResult.created?.length || 0
+                } Clause Point Sub Child for Sub ${sub1.id}`
+              );
+
+              clausePointSubResult.push({
+                clause_point_sub: sub1.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               clause_point: point1.toJSON(),
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -964,7 +1053,7 @@ class ContractService extends DualDatabaseService {
           });
         }
 
-        // 6. Process Contract Payments
+        // 7. Process Contract Payments
         const paymentsResult = [];
         for (const paymentData of payment_request_contract) {
           const { contract_payment_list = [], ...payment } = paymentData;
@@ -1033,7 +1122,7 @@ class ContractService extends DualDatabaseService {
           });
         }
 
-        // 7. Create initial ContractVerificationProgress
+        // 8. Create initial ContractVerificationProgress
         const progressData = {
           id_contract: contract1.id,
           id_user: id_user_create,
@@ -1064,6 +1153,7 @@ class ContractService extends DualDatabaseService {
           contract: contract1.toJSON(),
           services: servicesResult,
           clause_header: clauseHeaderResult,
+          clause_footer: clauseFooterResult,
           clauses: clausesResult,
           payments: paymentsResult,
           verification_progress: progress1.toJSON(),
@@ -1160,11 +1250,35 @@ class ContractService extends DualDatabaseService {
             }
           );
           console.log(
-            `✅ Created Contract Clause with ID: ${clauseHeader1.id}`
+            `✅ Created Contract Clause Header with ID: ${clauseHeader1.id}`
           );
 
           clauseHeaderResult.push({
             clause_header: clauseHeader1.toJSON(),
+          });
+        }
+
+        // 5b. Process Contract Clause Footer
+        const clauseFooterResult = [];
+        for (const clauseFooterData of clause_footer) {
+          const { ...clauseFooter } = clauseFooterData;
+
+          const clauseFooterDataToCreate = {
+            ...clauseFooter,
+            id_contract: contract.id,
+          };
+          const clauseFooter1 = await models.db1.ContractClauseFooter.create(
+            clauseFooterDataToCreate,
+            {
+              transaction: transaction1,
+            }
+          );
+          console.log(
+            `✅ Created Contract Clause Footer with ID: ${clauseFooter1.id}`
+          );
+
+          clauseFooterResult.push({
+            clause_footer: clauseFooter1.toJSON(),
           });
         }
 
@@ -1215,28 +1329,52 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase: false,
             });
 
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: point.id,
-            }));
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: null,
-              foreignKey: "id_contract_clause_point",
-              parentId: createdPoint.id,
-              newData: pointSubData,
-              transaction1,
-              transaction2: null,
-              isDoubleDatabase,
-            });
-            console.log(
-              `✅ Synced ${
-                pointSubResult.created?.length || 0
-              } Clause Point Sub for Point ${point1.id}`
-            );
+            // 🔥 Process Clause Point Sub + nested Clause Point Sub Child
+            const clausePointSubResult = [];
+            for (const subData of pointSub) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
+
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: createdPoint.id,
+              };
+              const createdSub = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+              console.log(
+                `✅ Created Clause Point Sub with ID: ${createdSub.id}`
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: createdSub.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: null,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: createdSub.id,
+                newData: subChildData,
+                transaction1,
+                transaction2: null,
+                isDoubleDatabase: false,
+              });
+              console.log(
+                `✅ Synced ${
+                  subChildResult.created?.length || 0
+                } Clause Point Sub Child for Sub ${createdSub.id}`
+              );
+
+              clausePointSubResult.push({
+                clause_point_sub: createdSub.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               clause_point: createdPoint.toJSON(),
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -1347,6 +1485,7 @@ class ContractService extends DualDatabaseService {
           contract: contract.toJSON(),
           services: servicesResult,
           clause_header: clauseHeaderResult,
+          clause_footer: clauseFooterResult,
           clauses: clausesResult,
           payments: paymentsResult,
           verification_progress: progress.toJSON(),
@@ -1362,14 +1501,15 @@ class ContractService extends DualDatabaseService {
   }
 
   /**
-   * Update contract with services, clause headers, clauses, clause points,
-   * clause point subs, and clause logs
+   * Update contract with services, clause headers, clause footers, clauses, clause points,
+   * clause point subs, clause point sub children, and clause logs
    * @param {Number} id - Contract ID
    * @param {Object} contractData - Contract data to update
    * @param {Array} services - Contract services data
    * @param {Array} clause_header - Contract clause headers data
    * @param {Array} clauses - Contract clauses data
    * @param {Boolean} isDoubleDatabase
+   * @param {Array} clause_footer - Contract clause footers data
    * @returns {Object} Updated contract with all relations
    */
   async updateWithRelations(
@@ -1378,7 +1518,8 @@ class ContractService extends DualDatabaseService {
     services = [],
     clause_header = [],
     clauses = [],
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
+    clause_footer = []
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -1466,6 +1607,25 @@ class ContractService extends DualDatabaseService {
 
         console.log(`✅ Synced Contract Clause Headers`);
 
+        // 3b. Sync Contract Clause Footers (flat, no children)
+        const clauseFooterData = clause_footer.map((footer) => {
+          const { id: _fid, ...cleanFooter } = footer;
+          return { ...footer, id_contract: id };
+        });
+
+        const clauseFooterResult = await syncChildRecords({
+          Model1: models.db1.ContractClauseFooter,
+          Model2: models.db2.ContractClauseFooter,
+          foreignKey: "id_contract",
+          parentId: id,
+          newData: clauseFooterData,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
+        console.log(`✅ Synced Contract Clause Footers`);
+
         // 4. Process Contract Clauses (Create/Update/Delete)
         const clausesResult = [];
 
@@ -1488,7 +1648,7 @@ class ContractService extends DualDatabaseService {
         );
 
         for (const clauseId of clauseIdsToDelete) {
-          // Delete clause point subs first
+          // Delete clause point subs first (and their children)
           const pointsToDelete = await models.db1.ContractClausePoint.findAll({
             where: { id_contract_clause: clauseId },
             attributes: ["id"],
@@ -1497,6 +1657,25 @@ class ContractService extends DualDatabaseService {
           const pointIdsForClause = pointsToDelete.map((p) => p.id);
 
           if (pointIdsForClause.length > 0) {
+            const subsToDelete =
+              await models.db1.ContractClausePointSub.findAll({
+                where: { id_contract_clause_point: pointIdsForClause },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const subIdsForClause = subsToDelete.map((s) => s.id);
+
+            if (subIdsForClause.length > 0) {
+              await models.db1.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subIdsForClause },
+                transaction: transaction1,
+              });
+              await models.db2.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subIdsForClause },
+                transaction: transaction2,
+              });
+            }
+
             await models.db1.ContractClausePointSub.destroy({
               where: { id_contract_clause_point: pointIdsForClause },
               transaction: transaction1,
@@ -1609,26 +1788,48 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase,
             });
 
-            // Sync Clause Point Sub for this Clause Point
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: point1.id,
-            }));
+            // 🔥 Process Clause Point Sub (all new) + nested Clause Point Sub Child
+            const clausePointSubResult = [];
+            for (const subData of pointSub) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
 
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: models.db2.ContractClausePointSub,
-              foreignKey: "id_contract_clause_point",
-              parentId: point1.id,
-              newData: pointSubData,
-              transaction1,
-              transaction2,
-              isDoubleDatabase,
-            });
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: point1.id,
+              };
+              const sub1 = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+              await models.db2.ContractClausePointSub.create(
+                { ...subDataToCreate, id: sub1.id },
+                { transaction: transaction2 }
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: sub1.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: models.db2.ContractClausePointSubChild,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: sub1.id,
+                newData: subChildData,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+
+              clausePointSubResult.push({
+                clause_point_sub: sub1.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               clause_point: point1.toJSON(),
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -1698,7 +1899,26 @@ class ContractService extends DualDatabaseService {
           );
 
           for (const pointId of pointIdsToDelete) {
-            // Delete clause point subs for this point first
+            // Delete clause point subs (and their children) for this point first
+            const subsToDelete =
+              await models.db1.ContractClausePointSub.findAll({
+                where: { id_contract_clause_point: pointId },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const subIdsForPoint = subsToDelete.map((s) => s.id);
+
+            if (subIdsForPoint.length > 0) {
+              await models.db1.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subIdsForPoint },
+                transaction: transaction1,
+              });
+              await models.db2.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subIdsForPoint },
+                transaction: transaction2,
+              });
+            }
+
             await models.db1.ContractClausePointSub.destroy({
               where: { id_contract_clause_point: pointId },
               transaction: transaction1,
@@ -1777,26 +1997,48 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase,
             });
 
-            // Sync Clause Point Sub for this new Clause Point
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: point1.id,
-            }));
+            // 🔥 Process Clause Point Sub (all new) + nested Clause Point Sub Child
+            const clausePointSubResult = [];
+            for (const subData of pointSub) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
 
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: models.db2.ContractClausePointSub,
-              foreignKey: "id_contract_clause_point",
-              parentId: point1.id,
-              newData: pointSubData,
-              transaction1,
-              transaction2,
-              isDoubleDatabase,
-            });
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: point1.id,
+              };
+              const sub1 = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+              await models.db2.ContractClausePointSub.create(
+                { ...subDataToCreate, id: sub1.id },
+                { transaction: transaction2 }
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: sub1.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: models.db2.ContractClausePointSubChild,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: sub1.id,
+                newData: subChildData,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+
+              clausePointSubResult.push({
+                clause_point_sub: sub1.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               clause_point: point1.toJSON(),
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -1838,26 +2080,121 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase,
             });
 
-            // Sync Clause Point Sub for this Clause Point
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: pointId,
-            }));
+            // 🔥 Process Clause Point Sub CRUD (create/update/delete) + nested Child
+            const existingSubs =
+              await models.db1.ContractClausePointSub.findAll({
+                where: { id_contract_clause_point: pointId },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const existingSubIds = existingSubs.map((s) => s.id);
 
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: models.db2.ContractClausePointSub,
-              foreignKey: "id_contract_clause_point",
-              parentId: pointId,
-              newData: pointSubData,
-              transaction1,
-              transaction2,
-              isDoubleDatabase,
-            });
+            const subsToCreate = pointSub.filter((s) => !s.id);
+            const subsToUpdate = pointSub.filter((s) => s.id);
+            const subIdsToKeep = subsToUpdate.map((s) => s.id);
+            const subIdsToDelete = existingSubIds.filter(
+              (sid) => !subIdsToKeep.includes(sid)
+            );
+
+            for (const subId of subIdsToDelete) {
+              await models.db1.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subId },
+                transaction: transaction1,
+              });
+              await models.db2.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subId },
+                transaction: transaction2,
+              });
+              await models.db1.ContractClausePointSub.destroy({
+                where: { id: subId },
+                transaction: transaction1,
+              });
+              await models.db2.ContractClausePointSub.destroy({
+                where: { id: subId },
+                transaction: transaction2,
+              });
+              console.log(`🗑️ Deleted Clause Point Sub ID: ${subId}`);
+            }
+
+            const clausePointSubResult = [];
+
+            for (const subData of subsToCreate) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
+
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: pointId,
+              };
+              const sub1 = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+              await models.db2.ContractClausePointSub.create(
+                { ...subDataToCreate, id: sub1.id },
+                { transaction: transaction2 }
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: sub1.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: models.db2.ContractClausePointSubChild,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: sub1.id,
+                newData: subChildData,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+
+              clausePointSubResult.push({
+                clause_point_sub: sub1.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
+
+            for (const subData of subsToUpdate) {
+              const {
+                id: subId,
+                clause_point_sub_child: subChild = [],
+                ...sub
+              } = subData;
+
+              await models.db1.ContractClausePointSub.update(sub, {
+                where: { id: subId },
+                transaction: transaction1,
+              });
+              await models.db2.ContractClausePointSub.update(sub, {
+                where: { id: subId },
+                transaction: transaction2,
+              });
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: subId,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: models.db2.ContractClausePointSubChild,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: subId,
+                newData: subChildData,
+                transaction1,
+                transaction2,
+                isDoubleDatabase,
+              });
+
+              clausePointSubResult.push({
+                id: subId,
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               id: pointId,
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -1958,6 +2295,23 @@ class ContractService extends DualDatabaseService {
           isDoubleDatabase: false,
         });
 
+        // Sync Contract Clause Footers (flat, no children)
+        const clauseFooterData = clause_footer.map((footer) => ({
+          ...footer,
+          id_contract: id,
+        }));
+
+        const clauseFooterResult = await syncChildRecords({
+          Model1: models.db1.ContractClauseFooter,
+          Model2: null,
+          foreignKey: "id_contract",
+          parentId: id,
+          newData: clauseFooterData,
+          transaction1,
+          transaction2: null,
+          isDoubleDatabase: false,
+        });
+
         // Process Contract Clauses
         const clausesResult = [];
 
@@ -1985,6 +2339,21 @@ class ContractService extends DualDatabaseService {
           const pointIdsForClause = pointsToDelete.map((p) => p.id);
 
           if (pointIdsForClause.length > 0) {
+            const subsToDelete =
+              await models.db1.ContractClausePointSub.findAll({
+                where: { id_contract_clause_point: pointIdsForClause },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const subIdsForClause = subsToDelete.map((s) => s.id);
+
+            if (subIdsForClause.length > 0) {
+              await models.db1.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subIdsForClause },
+                transaction: transaction1,
+              });
+            }
+
             await models.db1.ContractClausePointSub.destroy({
               where: { id_contract_clause_point: pointIdsForClause },
               transaction: transaction1,
@@ -2058,26 +2427,44 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase: false,
             });
 
-            // Sync Clause Point Sub for this Clause Point
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: createdPoint.id,
-            }));
+            // 🔥 Process Clause Point Sub (all new) + nested Clause Point Sub Child
+            const clausePointSubResult = [];
+            for (const subData of pointSub) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
 
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: null,
-              foreignKey: "id_contract_clause_point",
-              parentId: createdPoint.id,
-              newData: pointSubData,
-              transaction1,
-              transaction2: null,
-              isDoubleDatabase: false,
-            });
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: createdPoint.id,
+              };
+              const createdSub = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: createdSub.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: null,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: createdSub.id,
+                newData: subChildData,
+                transaction1,
+                transaction2: null,
+                isDoubleDatabase: false,
+              });
+
+              clausePointSubResult.push({
+                clause_point_sub: createdSub.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               clause_point: createdPoint.toJSON(),
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -2140,6 +2527,21 @@ class ContractService extends DualDatabaseService {
           );
 
           for (const pointId of pointIdsToDelete) {
+            const subsToDelete =
+              await models.db1.ContractClausePointSub.findAll({
+                where: { id_contract_clause_point: pointId },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const subIdsForPoint = subsToDelete.map((s) => s.id);
+
+            if (subIdsForPoint.length > 0) {
+              await models.db1.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subIdsForPoint },
+                transaction: transaction1,
+              });
+            }
+
             await models.db1.ContractClausePointSub.destroy({
               where: { id_contract_clause_point: pointId },
               transaction: transaction1,
@@ -2194,26 +2596,44 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase: false,
             });
 
-            // Sync Clause Point Sub for this new Clause Point
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: createdPoint.id,
-            }));
+            // 🔥 Process Clause Point Sub (all new) + nested Clause Point Sub Child
+            const clausePointSubResult = [];
+            for (const subData of pointSub) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
 
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: null,
-              foreignKey: "id_contract_clause_point",
-              parentId: createdPoint.id,
-              newData: pointSubData,
-              transaction1,
-              transaction2: null,
-              isDoubleDatabase: false,
-            });
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: createdPoint.id,
+              };
+              const createdSub = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: createdSub.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: null,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: createdSub.id,
+                newData: subChildData,
+                transaction1,
+                transaction2: null,
+                isDoubleDatabase: false,
+              });
+
+              clausePointSubResult.push({
+                clause_point_sub: createdSub.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               clause_point: createdPoint.toJSON(),
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
@@ -2250,26 +2670,104 @@ class ContractService extends DualDatabaseService {
               isDoubleDatabase: false,
             });
 
-            // Sync Clause Point Sub for this Clause Point
-            const pointSubData = pointSub.map((sub) => ({
-              ...sub,
-              id_contract_clause_point: pointId,
-            }));
+            // 🔥 Process Clause Point Sub CRUD (create/update/delete) + nested Child
+            const existingSubs =
+              await models.db1.ContractClausePointSub.findAll({
+                where: { id_contract_clause_point: pointId },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const existingSubIds = existingSubs.map((s) => s.id);
 
-            const pointSubResult = await syncChildRecords({
-              Model1: models.db1.ContractClausePointSub,
-              Model2: null,
-              foreignKey: "id_contract_clause_point",
-              parentId: pointId,
-              newData: pointSubData,
-              transaction1,
-              transaction2: null,
-              isDoubleDatabase: false,
-            });
+            const subsToCreate = pointSub.filter((s) => !s.id);
+            const subsToUpdate = pointSub.filter((s) => s.id);
+            const subIdsToKeep = subsToUpdate.map((s) => s.id);
+            const subIdsToDelete = existingSubIds.filter(
+              (sid) => !subIdsToKeep.includes(sid)
+            );
+
+            for (const subId of subIdsToDelete) {
+              await models.db1.ContractClausePointSubChild.destroy({
+                where: { id_contract_clause_point_sub: subId },
+                transaction: transaction1,
+              });
+              await models.db1.ContractClausePointSub.destroy({
+                where: { id: subId },
+                transaction: transaction1,
+              });
+            }
+
+            const clausePointSubResult = [];
+
+            for (const subData of subsToCreate) {
+              const { clause_point_sub_child: subChild = [], ...sub } = subData;
+
+              const subDataToCreate = {
+                ...sub,
+                id_contract_clause_point: pointId,
+              };
+              const createdSub = await models.db1.ContractClausePointSub.create(
+                subDataToCreate,
+                { transaction: transaction1 }
+              );
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: createdSub.id,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: null,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: createdSub.id,
+                newData: subChildData,
+                transaction1,
+                transaction2: null,
+                isDoubleDatabase: false,
+              });
+
+              clausePointSubResult.push({
+                clause_point_sub: createdSub.toJSON(),
+                clause_point_sub_child: subChildResult,
+              });
+            }
+
+            for (const subData of subsToUpdate) {
+              const {
+                id: subId,
+                clause_point_sub_child: subChild = [],
+                ...sub
+              } = subData;
+
+              await models.db1.ContractClausePointSub.update(sub, {
+                where: { id: subId },
+                transaction: transaction1,
+              });
+
+              const subChildData = subChild.map((child) => ({
+                ...child,
+                id_contract_clause_point_sub: subId,
+              }));
+              const subChildResult = await syncChildRecords({
+                Model1: models.db1.ContractClausePointSubChild,
+                Model2: null,
+                foreignKey: "id_contract_clause_point_sub",
+                parentId: subId,
+                newData: subChildData,
+                transaction1,
+                transaction2: null,
+                isDoubleDatabase: false,
+              });
+
+              clausePointSubResult.push({
+                id: subId,
+                clause_point_sub_child: subChildResult,
+              });
+            }
 
             clausePointsResult.push({
               id: pointId,
-              clause_point_sub: pointSubResult,
+              clause_point_sub: clausePointSubResult,
               clause_logs: pointLogsResult,
             });
           }
