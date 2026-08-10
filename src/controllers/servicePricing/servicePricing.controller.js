@@ -165,18 +165,18 @@ class ServicePricingController {
           );
         }
 
-        // Validate each government cost item's government_cost_point
+        // Validate each government cost item's government_cost_fields
         if (item.government_cost && Array.isArray(item.government_cost)) {
           for (let j = 0; j < item.government_cost.length; j++) {
             const governmentCostItem = item.government_cost[j];
 
             if (
-              governmentCostItem.government_cost_point &&
-              !Array.isArray(governmentCostItem.government_cost_point)
+              governmentCostItem.government_cost_fields &&
+              !Array.isArray(governmentCostItem.government_cost_fields)
             ) {
               return errorResponse(
                 res,
-                `government_cost_point must be an array for government_cost at index ${j} of item at index ${i}`,
+                `government_cost_fields must be an array for government_cost at index ${j} of item at index ${i}`,
                 400,
               );
             }
@@ -241,18 +241,18 @@ class ServicePricingController {
         return errorResponse(res, "government_cost must be an array", 400);
       }
 
-      // Validate each government cost item's government_cost_point
+      // Validate each government cost item's government_cost_fields
       if (government_cost && Array.isArray(government_cost)) {
         for (let j = 0; j < government_cost.length; j++) {
           const governmentCostItem = government_cost[j];
 
           if (
-            governmentCostItem.government_cost_point &&
-            !Array.isArray(governmentCostItem.government_cost_point)
+            governmentCostItem.government_cost_fields &&
+            !Array.isArray(governmentCostItem.government_cost_fields)
           ) {
             return errorResponse(
               res,
-              `government_cost_point must be an array for government_cost at index ${j}`,
+              `government_cost_fields must be an array for government_cost at index ${j}`,
               400,
             );
           }

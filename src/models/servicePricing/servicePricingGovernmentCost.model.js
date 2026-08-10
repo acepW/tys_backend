@@ -1,14 +1,14 @@
 const { DataTypes } = require("sequelize");
 
 module.exports = (sequelize) => {
-  const GovernmentCost = sequelize.define(
-    "GovernmentCost",
+  const ServicePricingGovernmentCost = sequelize.define(
+    "ServicePricingGovernmentCost",
     {
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
-        comment: "Primary key for Project Plan",
+        comment: "Primary key for ServicePricingGovernmentCost",
       },
       id_service_pricing: {
         type: DataTypes.INTEGER,
@@ -19,16 +19,10 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key for Service Pricing",
       },
-
-      title_indo: {
-        type: DataTypes.STRING(500),
+      index: {
         allowNull: false,
-        comment: "Title in Indonesian",
-      },
-      title_mandarin: {
-        type: DataTypes.STRING(500),
-        allowNull: false,
-        comment: "Title in Mandarin",
+        type: DataTypes.FLOAT,
+        comment: "index for ordering the products in the quotation category",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -56,26 +50,29 @@ module.exports = (sequelize) => {
   );
 
   // Define associations (untuk future development)
-  GovernmentCost.associate = (models) => {
-    // Contoh: GovernmentCost dapat memiliki relasi dengan Order, dll
-    // GovernmentCost.hasMany(models.Order, { ... });
+  ServicePricingGovernmentCost.associate = (models) => {
+    // Contoh: ServicePricingGovernmentCost dapat memiliki relasi dengan Order, dll
+    // ServicePricingGovernmentCost.hasMany(models.Order, { ... });
 
-    // GovernmentCost belongs to Service Pricing
-    GovernmentCost.belongsTo(models.ServicePricing, {
+    // ServicePricingGovernmentCost belongs to Service Pricing
+    ServicePricingGovernmentCost.belongsTo(models.ServicePricing, {
       foreignKey: "id_service_pricing",
       as: "service_pricing",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
 
-    // GovernmentCost has many GovernmentCostPoints
-    GovernmentCost.hasMany(models.GovernmentCostPoint, {
-      foreignKey: "id_government_cost",
-      as: "government_cost_point",
-      onDelete: "RESTRICT",
-      onUpdate: "CASCADE",
-    });
+    // ServicePricingGovernmentCost has many ServicePricingGovernmentCostFields
+    ServicePricingGovernmentCost.hasMany(
+      models.ServicePricingGovernmentCostField,
+      {
+        foreignKey: "id_service_pricing_government_cost",
+        as: "fields",
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
+      },
+    );
   };
 
-  return GovernmentCost;
+  return ServicePricingGovernmentCost;
 };

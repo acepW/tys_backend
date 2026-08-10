@@ -156,7 +156,7 @@ module.exports = (sequelize) => {
           fields: ["id_division", "is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
@@ -188,7 +188,7 @@ module.exports = (sequelize) => {
     });
 
     //Service Pricing has many Government cost
-    ServicePricing.hasMany(models.GovernmentCost, {
+    ServicePricing.hasMany(models.ServicePricingGovernmentCost, {
       foreignKey: "id_service_pricing",
       as: "government_cost",
       onDelete: "RESTRICT",

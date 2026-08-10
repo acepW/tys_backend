@@ -19,6 +19,7 @@ const userRoute = require("./user.route");
 const menuRoute = require("./menu.route");
 const positionMenuRoute = require("./positionMenu.route");
 const serviceCodeRoute = require("./serviceCode.route");
+const governmentCostRoutes = require("./governmentCost.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
@@ -75,6 +76,7 @@ router.use("/users", userRoute);
 router.use("/menus", menuRoute);
 router.use("/position-menus", positionMenuRoute);
 router.use("/service-codes", serviceCodeRoute);
+router.use("/government-costs", governmentCostRoutes);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);

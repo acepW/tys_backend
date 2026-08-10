@@ -2,6 +2,23 @@ const contractService = require("../../services/contract/contract.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
 class ContractController {
+  constructor() {
+    // bind semua public method yang dipakai sebagai route handler
+    this.getAll = this.getAll.bind(this);
+    this.getById = this.getById.bind(this);
+    this.getHistory = this.getHistory.bind(this);
+    this.getNoContract = this.getNoContract.bind(this);
+    this.create = this.create.bind(this);
+    this.update = this.update.bind(this);
+    this.submit = this.submit.bind(this);
+    this.approve = this.approve.bind(this);
+    this.reject = this.reject.bind(this);
+    this.sendToCustomer = this.sendToCustomer.bind(this);
+    this.approveByCustomer = this.approveByCustomer.bind(this);
+    this.rejectByCustomer = this.rejectByCustomer.bind(this);
+    this.openPayment = this.openPayment.bind(this);
+    this.delete = this.delete.bind(this);
+  }
   // ============================================================
   // Helper: validate clauses[] payload (clause -> clause_point ->
   // clause_point_sub -> clause_point_sub_child)
@@ -118,7 +135,7 @@ class ContractController {
             (child) => ({
               ...child,
               is_active: child.is_active !== undefined ? child.is_active : true,
-            })
+            }),
           ),
         })),
       })),
@@ -163,7 +180,7 @@ class ContractController {
         page ? parseInt(page, 10) : null,
         limit ? parseInt(limit, 10) : null,
         isDoubleDatabase,
-        includeHistory
+        includeHistory,
       );
 
       return successResponse(res, result, "Contracts retrieved successfully");
@@ -207,7 +224,7 @@ class ContractController {
       return successResponse(
         res,
         history,
-        "Contract history retrieved successfully"
+        "Contract history retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -227,7 +244,7 @@ class ContractController {
       return successResponse(
         res,
         result,
-        "Next contract number retrieved successfully"
+        "Next contract number retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -308,14 +325,14 @@ class ContractController {
       // ── Validate clause_header ────────────────────────────────────────
       const headerError = this._validateFlatClauseList(
         clause_header,
-        "clause_header"
+        "clause_header",
       );
       if (headerError) return errorResponse(res, headerError, 400);
 
       // ── Validate clause_footer ───────────────────────────────────────
       const footerError = this._validateFlatClauseList(
         clause_footer,
-        "clause_footer"
+        "clause_footer",
       );
       if (footerError) return errorResponse(res, footerError, 400);
 
@@ -328,7 +345,7 @@ class ContractController {
         return errorResponse(
           res,
           "payment_request_contract must be an array",
-          400
+          400,
         );
       }
 
@@ -354,7 +371,7 @@ class ContractController {
         id_user_create,
         isDoubleDatabase,
         replace_contract_id,
-        normalizedClauseFooter
+        normalizedClauseFooter,
       );
 
       return successResponse(res, result, "Contract created successfully", 201);
@@ -396,14 +413,14 @@ class ContractController {
       // ── Validate clause_header ────────────────────────────────────────
       const headerError = this._validateFlatClauseList(
         clause_header,
-        "clause_header"
+        "clause_header",
       );
       if (headerError) return errorResponse(res, headerError, 400);
 
       // ── Validate clause_footer ───────────────────────────────────────
       const footerError = this._validateFlatClauseList(
         clause_footer,
-        "clause_footer"
+        "clause_footer",
       );
       if (footerError) return errorResponse(res, footerError, 400);
 
@@ -423,7 +440,7 @@ class ContractController {
         normalizedClauseHeader,
         normalizedClauses,
         isDoubleDatabase,
-        normalizedClauseFooter
+        normalizedClauseFooter,
       );
 
       return successResponse(res, result, "Contract updated successfully");
@@ -446,7 +463,7 @@ class ContractController {
         id,
         note,
         id_user,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract submitted successfully");
@@ -469,7 +486,7 @@ class ContractController {
         id,
         note,
         id_user,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract approved successfully");
@@ -492,7 +509,7 @@ class ContractController {
         id,
         note,
         id_user,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Contract rejected successfully");
@@ -515,13 +532,13 @@ class ContractController {
         id,
         note,
         id_user,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Contract sent to customer successfully"
+        "Contract sent to customer successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -542,13 +559,13 @@ class ContractController {
         id,
         note,
         id_user,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Contract approved by customer successfully"
+        "Contract approved by customer successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -569,13 +586,13 @@ class ContractController {
         id,
         note,
         id_user,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "Contract rejected by customer successfully"
+        "Contract rejected by customer successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -594,7 +611,7 @@ class ContractController {
       const existing = await paymentService.findById(
         id_payment,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!existing) {
         return errorResponse(res, "Payment not found", 404);
@@ -603,7 +620,7 @@ class ContractController {
       const result = await paymentService.update(
         id_payment,
         { is_open: true },
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "Payment opened successfully");

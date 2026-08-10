@@ -32,14 +32,24 @@ class ServicePricingService extends DualDatabaseService {
           ],
         },
         {
-          model: dbModels.GovernmentCost,
+          model: dbModels.ServicePricingGovernmentCost,
           as: "government_cost",
           separate: true,
+          order: [["index", "ASC"]],
           include: [
             {
-              model: dbModels.GovernmentCostPoint,
-              as: "government_cost_point",
-              order: [["index", "ASC"]],
+              model: dbModels.ServicePricingGovernmentCostField,
+              as: "fields",
+              attributes: [
+                "id",
+                "field_name_indo",
+                "field_name_mandarin",
+                "field_type",
+                "field_value",
+                "value_indo",
+                "value_mandarin",
+                "is_active",
+              ],
             },
           ],
         },
@@ -144,13 +154,24 @@ class ServicePricingService extends DualDatabaseService {
           ],
         },
         {
-          model: dbModels.GovernmentCost,
+          model: dbModels.ServicePricingGovernmentCost,
           as: "government_cost",
           separate: true,
+          order: [["index", "ASC"]],
           include: [
             {
-              model: dbModels.GovernmentCostPoint,
-              as: "government_cost_point",
+              model: dbModels.ServicePricingGovernmentCostField,
+              as: "fields",
+              attributes: [
+                "id",
+                "field_name_indo",
+                "field_name_mandarin",
+                "field_type",
+                "field_value",
+                "value_indo",
+                "value_mandarin",
+                "is_active",
+              ],
             },
           ],
         },
@@ -231,7 +252,7 @@ class ServicePricingService extends DualDatabaseService {
   }
 
   /**
-   * Create government cost records with their points for a given service pricing
+   * Create government cost records with their fields for a given service pricing
    *
    * @param {Object} params
    * @param {Number} params.idServicePricing
@@ -239,9 +260,9 @@ class ServicePricingService extends DualDatabaseService {
    * @param {Object} params.transaction1
    * @param {Object} params.transaction2
    * @param {Boolean} params.isDoubleDatabase
-   * @returns {Array} Created government cost records with their points
+   * @returns {Array} Created government cost records with their fields
    */
-  async createGovernmentCostWithPoints({
+  async createGovernmentCostWithFields({
     idServicePricing,
     governmentCostList = [],
     transaction1,
@@ -251,17 +272,18 @@ class ServicePricingService extends DualDatabaseService {
     const results = [];
 
     for (const item of governmentCostList) {
-      const { government_cost_point = [], ...governmentCostData } = item;
+      const { fields = [], ...governmentCostData } = item;
 
       // 1. Create Government Cost in DB1
-      const governmentCostRecord1 = await models.db1.GovernmentCost.create(
-        { ...governmentCostData, id_service_pricing: idServicePricing },
-        { transaction: transaction1 },
-      );
+      const governmentCostRecord1 =
+        await models.db1.ServicePricingGovernmentCost.create(
+          { ...governmentCostData, id_service_pricing: idServicePricing },
+          { transaction: transaction1 },
+        );
 
       // 2. Create Government Cost in DB2 with same ID
       if (isDoubleDatabase) {
-        await models.db2.GovernmentCost.create(
+        await models.db2.ServicePricingGovernmentCost.create(
           {
             ...governmentCostData,
             id: governmentCostRecord1.id,
@@ -271,19 +293,21 @@ class ServicePricingService extends DualDatabaseService {
         );
       }
 
-      // 3. Prepare government_cost_point data with foreign key
-      const governmentCostPointData = government_cost_point.map((point) => ({
-        ...point,
-        id_government_cost: governmentCostRecord1.id,
+      // 3. Prepare fields data with foreign key
+      const governmentCostFieldsData = fields.map((field) => ({
+        ...field,
+        id_service_pricing_government_cost: governmentCostRecord1.id,
       }));
 
-      // 4. Sync Government Cost Point
-      const pointsResult = await syncChildRecords({
-        Model1: models.db1.GovernmentCostPoint,
-        Model2: isDoubleDatabase ? models.db2.GovernmentCostPoint : null,
-        foreignKey: "id_government_cost",
+      // 4. Sync Government Cost Fields
+      const fieldsResult = await syncChildRecords({
+        Model1: models.db1.ServicePricingGovernmentCostField,
+        Model2: isDoubleDatabase
+          ? models.db2.ServicePricingGovernmentCostField
+          : null,
+        foreignKey: "id_service_pricing_government_cost",
         parentId: governmentCostRecord1.id,
-        newData: governmentCostPointData,
+        newData: governmentCostFieldsData,
         transaction1,
         transaction2,
         isDoubleDatabase,
@@ -291,7 +315,7 @@ class ServicePricingService extends DualDatabaseService {
 
       results.push({
         government_cost: governmentCostRecord1.toJSON(),
-        government_cost_point: pointsResult,
+        fields: fieldsResult,
       });
     }
 
@@ -299,7 +323,7 @@ class ServicePricingService extends DualDatabaseService {
   }
 
   /**
-   * Sync (create/update/delete) government cost records + their points for a given service pricing
+   * Sync (create/update/delete) government cost records + their fields for a given service pricing
    *
    * @param {Object} params
    * @param {Number} params.idServicePricing
@@ -307,19 +331,21 @@ class ServicePricingService extends DualDatabaseService {
    * @param {Object} params.transaction1
    * @param {Object} params.transaction2
    * @param {Boolean} params.isDoubleDatabase
-   * @returns {Array} Synced government cost records with their points
+   * @returns {Array} Synced government cost records with their fields
    */
-  async syncGovernmentCostWithPoints({
+  async syncGovernmentCostWithFields({
     idServicePricing,
     governmentCostList = [],
     transaction1,
     transaction2,
     isDoubleDatabase,
   }) {
-    const ModelGovernmentCost1 = models.db1.GovernmentCost;
-    const ModelGovernmentCost2 = models.db2.GovernmentCost;
-    const ModelGovernmentCostPoint1 = models.db1.GovernmentCostPoint;
-    const ModelGovernmentCostPoint2 = models.db2.GovernmentCostPoint;
+    const ModelGovernmentCost1 = models.db1.ServicePricingGovernmentCost;
+    const ModelGovernmentCost2 = models.db2.ServicePricingGovernmentCost;
+    const ModelGovernmentCostField1 =
+      models.db1.ServicePricingGovernmentCostField;
+    const ModelGovernmentCostField2 =
+      models.db2.ServicePricingGovernmentCostField;
 
     // 1. Get existing government cost records for this service pricing
     const existingGovernmentCost = await ModelGovernmentCost1.findAll({
@@ -331,10 +357,10 @@ class ServicePricingService extends DualDatabaseService {
     const idsToDelete = existingIds.filter((id) => !incomingIds.includes(id));
 
     // 2. Delete removed government cost records
-    //    (delete government_cost_point first because of onDelete: RESTRICT)
+    //    (delete fields first because of onDelete: RESTRICT)
     if (idsToDelete.length > 0) {
-      await ModelGovernmentCostPoint1.destroy({
-        where: { id_government_cost: idsToDelete },
+      await ModelGovernmentCostField1.destroy({
+        where: { id_service_pricing_government_cost: idsToDelete },
         transaction: transaction1,
       });
       await ModelGovernmentCost1.destroy({
@@ -343,8 +369,8 @@ class ServicePricingService extends DualDatabaseService {
       });
 
       if (isDoubleDatabase) {
-        await ModelGovernmentCostPoint2.destroy({
-          where: { id_government_cost: idsToDelete },
+        await ModelGovernmentCostField2.destroy({
+          where: { id_service_pricing_government_cost: idsToDelete },
           transaction: transaction2,
         });
         await ModelGovernmentCost2.destroy({
@@ -354,10 +380,10 @@ class ServicePricingService extends DualDatabaseService {
       }
     }
 
-    // 3. Create/update each government cost item, then sync its own government_cost_point
+    // 3. Create/update each government cost item, then sync its own fields
     const results = [];
     for (const item of governmentCostList) {
-      const { id, government_cost_point = [], ...governmentCostData } = item;
+      const { id, fields = [], ...governmentCostData } = item;
       let governmentCostRecord1;
 
       if (id) {
@@ -393,18 +419,18 @@ class ServicePricingService extends DualDatabaseService {
         }
       }
 
-      // Sync government_cost_point for this government cost record
-      const governmentCostPointData = government_cost_point.map((point) => ({
-        ...point,
-        id_government_cost: governmentCostRecord1.id,
+      // Sync fields for this government cost record
+      const governmentCostFieldsData = fields.map((field) => ({
+        ...field,
+        id_service_pricing_government_cost: governmentCostRecord1.id,
       }));
 
-      const pointsResult = await syncChildRecords({
-        Model1: ModelGovernmentCostPoint1,
-        Model2: isDoubleDatabase ? ModelGovernmentCostPoint2 : null,
-        foreignKey: "id_government_cost",
+      const fieldsResult = await syncChildRecords({
+        Model1: ModelGovernmentCostField1,
+        Model2: isDoubleDatabase ? ModelGovernmentCostField2 : null,
+        foreignKey: "id_service_pricing_government_cost",
         parentId: governmentCostRecord1.id,
-        newData: governmentCostPointData,
+        newData: governmentCostFieldsData,
         transaction1,
         transaction2,
         isDoubleDatabase,
@@ -412,7 +438,7 @@ class ServicePricingService extends DualDatabaseService {
 
       results.push({
         government_cost: governmentCostRecord1.toJSON(),
-        government_cost_point: pointsResult,
+        fields: fieldsResult,
       });
     }
 
@@ -490,9 +516,9 @@ class ServicePricingService extends DualDatabaseService {
             isDoubleDatabase,
           });
 
-          // 5. Create Government Cost + their points
+          // 5. Create Government Cost + their fields
           const governmentCostResult =
-            await this.createGovernmentCostWithPoints({
+            await this.createGovernmentCostWithFields({
               idServicePricing: servicePricing1.id,
               governmentCostList: government_cost,
               transaction1,
@@ -549,7 +575,7 @@ class ServicePricingService extends DualDatabaseService {
           });
 
           const governmentCostResult =
-            await this.createGovernmentCostWithPoints({
+            await this.createGovernmentCostWithFields({
               idServicePricing: servicePricing.id,
               governmentCostList: government_cost,
               transaction1,
@@ -566,7 +592,7 @@ class ServicePricingService extends DualDatabaseService {
 
         await transaction1.commit();
         console.log(
-          `✅ ${servicePricingDataList.length} Service Pricing records created in DB2 only`,
+          `✅ ${servicePricingDataList.length} Service Pricing records created in DB1 only`,
         );
 
         return results;
@@ -592,7 +618,7 @@ class ServicePricingService extends DualDatabaseService {
    * @param {Number} id - Service Pricing ID
    * @param {Object} servicePricingData - Service pricing data to update
    * @param {Array} variantsData - Service pricing variants data
-   * @param {Array} governmentCostData - Government cost data (with nested government_cost_point)
+   * @param {Array} governmentCostData - Government cost data (with nested fields)
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
    * @returns {Object} Updated service pricing with variants and government cost operation result
    */
@@ -648,8 +674,8 @@ class ServicePricingService extends DualDatabaseService {
           isDoubleDatabase,
         });
 
-        // 3. Sync Government Cost + their points (Create/Update/Delete)
-        const governmentCostResult = await this.syncGovernmentCostWithPoints({
+        // 3. Sync Government Cost + their fields (Create/Update/Delete)
+        const governmentCostResult = await this.syncGovernmentCostWithFields({
           idServicePricing: id,
           governmentCostList: governmentCostData,
           transaction1,
@@ -670,12 +696,14 @@ class ServicePricingService extends DualDatabaseService {
               as: "variants",
             },
             {
-              model: models.db1.GovernmentCost,
+              model: models.db1.ServicePricingGovernmentCost,
               as: "government_cost",
+              separate: true,
+              order: [["index", "ASC"]],
               include: [
                 {
-                  model: models.db1.GovernmentCostPoint,
-                  as: "government_cost_point",
+                  model: models.db1.ServicePricingGovernmentCostField,
+                  as: "fields",
                 },
               ],
             },
@@ -701,7 +729,7 @@ class ServicePricingService extends DualDatabaseService {
         }
 
         const variantsResult = await syncChildRecords({
-          Model1: models.db2.ServicePricingVariant,
+          Model1: models.db1.ServicePricingVariant,
           Model2: null,
           foreignKey: "id_service_pricing",
           parentId: id,
@@ -711,7 +739,7 @@ class ServicePricingService extends DualDatabaseService {
           isDoubleDatabase: false,
         });
 
-        const governmentCostResult = await this.syncGovernmentCostWithPoints({
+        const governmentCostResult = await this.syncGovernmentCostWithFields({
           idServicePricing: id,
           governmentCostList: governmentCostData,
           transaction1,
@@ -720,21 +748,23 @@ class ServicePricingService extends DualDatabaseService {
         });
 
         await transaction1.commit();
-        console.log(`✅ Service Pricing with variants updated in DB2 only`);
+        console.log(`✅ Service Pricing with variants updated in DB1 only`);
 
-        const updated = await this.Model2.findByPk(id, {
+        const updated = await this.Model1.findByPk(id, {
           include: [
             {
-              model: models.db2.ServicePricingVariant,
+              model: models.db1.ServicePricingVariant,
               as: "variants",
             },
             {
-              model: models.db2.GovernmentCost,
+              model: models.db1.ServicePricingGovernmentCost,
               as: "government_cost",
+              separate: true,
+              order: [["index", "ASC"]],
               include: [
                 {
-                  model: models.db2.GovernmentCostPoint,
-                  as: "government_cost_point",
+                  model: models.db1.ServicePricingGovernmentCostField,
+                  as: "fields",
                 },
               ],
             },

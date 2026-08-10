@@ -20,6 +20,8 @@ const UserModel = require("./user.model");
 const MenuModel = require("./menu.model");
 const PositionMenuModel = require("./position/positionMenu.model");
 const ServiceCodeModel = require("./serviceCode.model");
+const GovernmentCostModel = require("./masterGovernmentCost/governmentCost.model");
+const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
 //service pricing
 const ServicePricingModel = require("./servicePricing/servicePricing.model");
@@ -27,8 +29,8 @@ const ServicePricingVariantModel = require("./servicePricing/servicePricingVaria
 const ProjectPlanModel = require("./servicePricing/projectPlan.model");
 const ProjectPlanPointModel = require("./servicePricing/projectPlanPoint.model");
 const ProjectPlanCostModel = require("./servicePricing/projectPlanCost.model");
-const GovernmentCostModel = require("./servicePricing/governmentCost.model");
-const GovernmentCostPointModel = require("./servicePricing/governmentCostPoint.model");
+const ServicePricingGovernmentCostModel = require("./servicePricing/servicePricingGovernmentCost.model");
+const ServicePricingGovernmentCostFieldModel = require("./servicePricing/servicePricingGovernmentCostField.model");
 
 //quotations
 const QuotationModel = require("./quotation/quotation.model");
@@ -128,6 +130,8 @@ const initializeModels = (sequelize) => {
     Menu: MenuModel(sequelize),
     PositionMenu: PositionMenuModel(sequelize),
     ServiceCode: ServiceCodeModel(sequelize),
+    GovernmentCost: GovernmentCostModel(sequelize),
+    GovernmentCostFields: GovernmentCostFieldsModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
@@ -135,8 +139,9 @@ const initializeModels = (sequelize) => {
     ProjectPlan: ProjectPlanModel(sequelize),
     ProjectPlanPoint: ProjectPlanPointModel(sequelize),
     ProjectPlanCost: ProjectPlanCostModel(sequelize),
-    GovernmentCost: GovernmentCostModel(sequelize),
-    GovernmentCostPoint: GovernmentCostPointModel(sequelize),
+    ServicePricingGovernmentCost: ServicePricingGovernmentCostModel(sequelize),
+    ServicePricingGovernmentCostField:
+      ServicePricingGovernmentCostFieldModel(sequelize),
 
     //quotation
     Quotation: QuotationModel(sequelize),
@@ -258,7 +263,7 @@ const syncDatabases = async (options = { alter: true }) => {
 const syncModel = async (
   modelName,
   dbTarget = "both",
-  options = { alter: true }
+  options = { alter: true },
 ) => {
   try {
     console.log(`🔄 Syncing model: ${modelName}...`);
