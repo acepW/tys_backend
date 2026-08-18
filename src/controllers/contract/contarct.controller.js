@@ -163,6 +163,7 @@ class ContractController {
         id_company,
         id_customer,
         status,
+        contract_category,
       } = req.query || {};
       const isDoubleDatabase = is_double_database !== "false";
       const includeHistory = include_history === "true";
@@ -174,6 +175,7 @@ class ContractController {
       if (id_company) where.id_company = id_company;
       if (id_customer) where.id_customer = id_customer;
       if (status) where.status = status;
+      if (contract_category) where.contract_category = contract_category;
 
       const result = await contractService.getAllWithRelations(
         { where },

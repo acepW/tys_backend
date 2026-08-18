@@ -75,6 +75,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Logo header",
       },
+      company_type: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Type of company",
+      },
       company_name_header_quotation: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -225,7 +230,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)

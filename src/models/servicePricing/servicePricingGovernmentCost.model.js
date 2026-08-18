@@ -19,6 +19,16 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key for Service Pricing",
       },
+      title_indo: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
+        comment: "Title in Indonesian",
+      },
+      title_mandarin: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
+        comment: "Title in Mandarin",
+      },
       index: {
         allowNull: false,
         type: DataTypes.FLOAT,
@@ -62,12 +72,12 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
-    // ServicePricingGovernmentCost has many ServicePricingGovernmentCostFields
+    // ServicePricingGovernmentCost has many ServicePricingGovernmentCostTables
     ServicePricingGovernmentCost.hasMany(
-      models.ServicePricingGovernmentCostField,
+      models.ServicePricingGovernmentCostTable,
       {
         foreignKey: "id_service_pricing_government_cost",
-        as: "fields",
+        as: "tables",
         onDelete: "RESTRICT",
         onUpdate: "CASCADE",
       },

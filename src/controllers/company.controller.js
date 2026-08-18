@@ -13,13 +13,13 @@ class CompanyController {
         { where: { is_active: true } },
         null,
         null,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         companies,
-        "Companies retrieved successfully"
+        "Companies retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -32,14 +32,13 @@ class CompanyController {
   async getActive(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const companies = await companyService.getActiveCompanies(
-        isDoubleDatabase
-      );
+      const companies =
+        await companyService.getActiveCompanies(isDoubleDatabase);
 
       return successResponse(
         res,
         companies,
-        "Active companies retrieved successfully"
+        "Active companies retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -80,7 +79,7 @@ class CompanyController {
 
       const companies = await companyService.searchByName(
         query,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, companies, "Companies found successfully");
@@ -98,7 +97,7 @@ class CompanyController {
       const company = await companyService.createWithRelations(
         req.body,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, company, "Company created successfully", 201);
@@ -120,11 +119,13 @@ class CompanyController {
       const { id } = req.params;
       const isDoubleDatabase = true;
 
+      console.log("req.body", req.body);
+
       const company = await companyService.updateWithRelations(
         id,
         req.body,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, company, "Company updated successfully");
@@ -132,8 +133,8 @@ class CompanyController {
       const statusCode = error.message.includes("not found")
         ? 404
         : error.message === "Email already exists"
-        ? 400
-        : 500;
+          ? 400
+          : 500;
       return errorResponse(res, error.message, statusCode);
     }
   }

@@ -29,7 +29,7 @@ class CompanyService extends DualDatabaseService {
     options = {},
     page = null,
     limit = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
@@ -53,7 +53,7 @@ class CompanyService extends DualDatabaseService {
     const offset = (page - 1) * limit;
     const { count, rows } = await this.findAndCountAll(
       { ...queryOptions, limit, offset },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
 
     return {
@@ -143,6 +143,7 @@ class CompanyService extends DualDatabaseService {
       "main_note_po",
       "document_watermark",
       "logo_header",
+      "company_type",
       "company_name_header_quotation",
       "address_header_quotation",
       "wechat_header_quotation",
@@ -240,7 +241,7 @@ class CompanyService extends DualDatabaseService {
         // 2. Create Company in DB2 with same ID
         await this.Model2.create(
           { ...dataToCreate, id: company1.id },
-          { transaction: transaction2 }
+          { transaction: transaction2 },
         );
         console.log(`✅ Created Company in DB2 with ID: ${company1.id}`);
 
@@ -251,7 +252,7 @@ class CompanyService extends DualDatabaseService {
           body.files,
           { uploadedBy: id_create, hardDelete: false },
           transaction1,
-          transaction2
+          transaction2,
         );
 
         await transaction1.commit();
@@ -274,7 +275,7 @@ class CompanyService extends DualDatabaseService {
           body.files,
           { uploadedBy: id_create, hardDelete: false },
           transaction1,
-          null
+          null,
         );
 
         await transaction1.commit();
@@ -349,7 +350,7 @@ class CompanyService extends DualDatabaseService {
           body.files,
           { uploadedBy: id_update, hardDelete: false },
           transaction1,
-          transaction2
+          transaction2,
         );
 
         await transaction1.commit();
@@ -376,7 +377,7 @@ class CompanyService extends DualDatabaseService {
           body.files,
           { uploadedBy: id_update, hardDelete: false },
           transaction1,
-          null
+          null,
         );
 
         await transaction1.commit();

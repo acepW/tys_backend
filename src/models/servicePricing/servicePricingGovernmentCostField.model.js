@@ -10,11 +10,11 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Project Plan",
       },
-      id_service_pricing_government_cost: {
+      id_service_pricing_government_cost_table: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "service_pricing_government_cost",
+          model: "service_pricing_government_cost_table",
           key: "id",
         },
         comment: "Foreign key for Service Pricing",

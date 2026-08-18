@@ -21,6 +21,7 @@ const MenuModel = require("./menu.model");
 const PositionMenuModel = require("./position/positionMenu.model");
 const ServiceCodeModel = require("./serviceCode.model");
 const GovernmentCostModel = require("./masterGovernmentCost/governmentCost.model");
+
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
 //service pricing
@@ -30,6 +31,7 @@ const ProjectPlanModel = require("./servicePricing/projectPlan.model");
 const ProjectPlanPointModel = require("./servicePricing/projectPlanPoint.model");
 const ProjectPlanCostModel = require("./servicePricing/projectPlanCost.model");
 const ServicePricingGovernmentCostModel = require("./servicePricing/servicePricingGovernmentCost.model");
+const ServicePricingGovernmentCostTableModel = require("./servicePricing/servicePricingGovernmentCostTable.model");
 const ServicePricingGovernmentCostFieldModel = require("./servicePricing/servicePricingGovernmentCostField.model");
 
 //quotations
@@ -140,6 +142,8 @@ const initializeModels = (sequelize) => {
     ProjectPlanPoint: ProjectPlanPointModel(sequelize),
     ProjectPlanCost: ProjectPlanCostModel(sequelize),
     ServicePricingGovernmentCost: ServicePricingGovernmentCostModel(sequelize),
+    ServicePricingGovernmentCostTable:
+      ServicePricingGovernmentCostTableModel(sequelize),
     ServicePricingGovernmentCostField:
       ServicePricingGovernmentCostFieldModel(sequelize),
 

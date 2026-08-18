@@ -2,6 +2,45 @@ const servicePricingService = require("../../services/servicePricing/servicePric
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
+/**
+ * Validate government_cost payload structure (3-level: government_cost -> tables -> fields)
+ * Returns an error message string if invalid, or null if valid.
+ */
+function validateGovernmentCost(governmentCostList, itemIndexLabel = "") {
+  if (!Array.isArray(governmentCostList)) {
+    return `government_cost must be an array${itemIndexLabel}`;
+  }
+
+  for (let j = 0; j < governmentCostList.length; j++) {
+    const gc = governmentCostList[j];
+
+    if (!gc.id) {
+      if (!gc.title_indo) {
+        return `title_indo is required for government_cost at index ${j}${itemIndexLabel}`;
+      }
+      if (!gc.title_mandarin) {
+        return `title_mandarin is required for government_cost at index ${j}${itemIndexLabel}`;
+      }
+    }
+
+    if (gc.tables !== undefined && !Array.isArray(gc.tables)) {
+      return `tables must be an array for government_cost at index ${j}${itemIndexLabel}`;
+    }
+
+    if (Array.isArray(gc.tables)) {
+      for (let k = 0; k < gc.tables.length; k++) {
+        const table = gc.tables[k];
+
+        if (table.fields !== undefined && !Array.isArray(table.fields)) {
+          return `fields must be an array for table at index ${k} of government_cost at index ${j}${itemIndexLabel}`;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 class ServicePricingController {
   /**
    * Get all service pricing
@@ -156,30 +195,14 @@ class ServicePricingController {
           );
         }
 
-        // Ensure government_cost is an array
-        if (item.government_cost && !Array.isArray(item.government_cost)) {
-          return errorResponse(
-            res,
-            `government_cost must be an array for item at index ${i}`,
-            400,
+        // Validate government_cost (3-level structure)
+        if (item.government_cost) {
+          const gcError = validateGovernmentCost(
+            item.government_cost,
+            ` of item at index ${i}`,
           );
-        }
-
-        // Validate each government cost item's government_cost_fields
-        if (item.government_cost && Array.isArray(item.government_cost)) {
-          for (let j = 0; j < item.government_cost.length; j++) {
-            const governmentCostItem = item.government_cost[j];
-
-            if (
-              governmentCostItem.government_cost_fields &&
-              !Array.isArray(governmentCostItem.government_cost_fields)
-            ) {
-              return errorResponse(
-                res,
-                `government_cost_fields must be an array for government_cost at index ${j} of item at index ${i}`,
-                400,
-              );
-            }
+          if (gcError) {
+            return errorResponse(res, gcError, 400);
           }
         }
       }
@@ -236,26 +259,11 @@ class ServicePricingController {
         return errorResponse(res, "variants must be an array", 400);
       }
 
-      // Validate government_cost is an array if provided
-      if (government_cost && !Array.isArray(government_cost)) {
-        return errorResponse(res, "government_cost must be an array", 400);
-      }
-
-      // Validate each government cost item's government_cost_fields
-      if (government_cost && Array.isArray(government_cost)) {
-        for (let j = 0; j < government_cost.length; j++) {
-          const governmentCostItem = government_cost[j];
-
-          if (
-            governmentCostItem.government_cost_fields &&
-            !Array.isArray(governmentCostItem.government_cost_fields)
-          ) {
-            return errorResponse(
-              res,
-              `government_cost_fields must be an array for government_cost at index ${j}`,
-              400,
-            );
-          }
+      // Validate government_cost (3-level structure)
+      if (government_cost) {
+        const gcError = validateGovernmentCost(government_cost);
+        if (gcError) {
+          return errorResponse(res, gcError, 400);
         }
       }
 

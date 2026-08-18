@@ -68,6 +68,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Contract type",
       },
+      contract_category: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        comment: "Contract category",
+      },
       note: {
         type: DataTypes.STRING(500),
         allowNull: false,
@@ -81,7 +86,7 @@ module.exports = (sequelize) => {
           "approved",
           "sending to customer",
           "approve by customer",
-          "reject by customer"
+          "reject by customer",
         ),
         allowNull: false,
         defaultValue: "pending",
@@ -166,7 +171,7 @@ module.exports = (sequelize) => {
         { name: "idx_company_active", fields: ["id_company", "is_active"] },
         { name: "idx_status_active", fields: ["status", "is_active"] },
       ],
-    }
+    },
   );
 
   // Define associations
