@@ -68,6 +68,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "PreOrder title for Mandarin",
       },
+      po_category: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        comment: "po category",
+      },
       status: {
         type: DataTypes.ENUM("pending", "approved", "rejected"),
         allowNull: false,
