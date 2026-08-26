@@ -10,11 +10,11 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for product",
       },
-      id_quotation_product: {
+      id_quotation_product_table: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "quotation_product",
+          model: "quotation_product_table",
           key: "id",
         },
         comment: "Product id from quotation_products table",
@@ -64,8 +64,8 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
-          name: "idx_id_quotation_product",
-          fields: ["id_quotation_product"],
+          name: "idx_id_quotation_product_table",
+          fields: ["id_quotation_product_table"],
         },
       ],
     },
@@ -74,9 +74,9 @@ module.exports = (sequelize) => {
   // Define associations
   ProductFields.associate = (models) => {
     // Product Fields belongs to Product
-    ProductFields.belongsTo(models.QuotationProduct, {
-      foreignKey: "id_quotation_product",
-      as: "quotation_product",
+    ProductFields.belongsTo(models.QuotationProductTable, {
+      foreignKey: "id_quotation_product_table",
+      as: "quotation_product_table",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

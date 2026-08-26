@@ -242,7 +242,7 @@ module.exports = (sequelize) => {
     Company.hasMany(models.File, {
       foreignKey: "fileable_id",
       constraints: false, // wajib: karena fileable_id bukan FK asli ke satu tabel
-      scope: { fileable_type: "companies" }, // otomatis filter WHERE fileable_type='Company'
+      scope: { fileable_type: "companies", category: "files" }, // otomatis filter WHERE fileable_type='Company'
       as: "files",
     });
 

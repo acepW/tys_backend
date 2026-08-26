@@ -80,6 +80,61 @@ function validateServicesSupporting(
   return null;
 }
 
+/**
+ * Validate a `products` array (product.tables[].fields[]) — shared shape used
+ * wherever quotation_category / service products are validated.
+ * `pathLabel` is used to build readable error messages, e.g.
+ * "product at index 0 in category 0" or "product at index 0 in service 0 in category 0".
+ * Returns an error response object if invalid, or null if valid.
+ */
+function validateProducts(res, products, pathLabel) {
+  if (!Array.isArray(products)) {
+    return errorResponse(
+      res,
+      `products must be an array for ${pathLabel}`,
+      400,
+    );
+  }
+
+  for (let j = 0; j < products.length; j++) {
+    const product = products[j];
+
+    if (product.index == null || product.index === undefined) {
+      return errorResponse(
+        res,
+        `index is required for product at index ${j} in ${pathLabel}`,
+        400,
+      );
+    }
+
+    // Validate tables array
+    if (product.tables !== undefined && !Array.isArray(product.tables)) {
+      return errorResponse(
+        res,
+        `tables must be an array for product at index ${j} in ${pathLabel}`,
+        400,
+      );
+    }
+
+    // Validate fields inside each table
+    if (product.tables) {
+      for (let k = 0; k < product.tables.length; k++) {
+        const table = product.tables[k];
+
+        if (table.fields !== undefined && !Array.isArray(table.fields)) {
+          return errorResponse(
+            res,
+            `fields must be an array for table at index ${k} in product ${j} in ${pathLabel}`,
+            400,
+          );
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 class QuotationController {
   /**
    * Get all quotations
@@ -204,7 +259,8 @@ class QuotationController {
   }
 
   /**
-   * Create quotation with nested categories, services, products, fields, and services_supporting
+   * Create quotation with nested categories, services, products, tables, fields,
+   * and services_supporting
    */
   async create(req, res) {
     try {
@@ -338,41 +394,24 @@ class QuotationController {
                   400,
                 );
               }
-            }
-          }
 
-          // Validate products array
-          if (category.products && !Array.isArray(category.products)) {
-            return errorResponse(
-              res,
-              `products must be an array for category at index ${i}`,
-              400,
-            );
-          }
-
-          // Validate each product
-          if (category.products) {
-            for (let j = 0; j < category.products.length; j++) {
-              const product = category.products[j];
-
-              if (product.index == null || product.index === undefined) {
-                return errorResponse(
+              // Validate products (-> tables -> fields) nested under this service
+              if (service.products !== undefined) {
+                const validationError = validateProducts(
                   res,
-                  `index is required for product at index ${j} in category ${i}`,
-                  400,
+                  service.products,
+                  `service at index ${j} in category ${i}`,
                 );
-              }
-
-              // Validate fields array
-              if (product.fields && !Array.isArray(product.fields)) {
-                return errorResponse(
-                  res,
-                  `fields must be an array for product at index ${j} in category ${i}`,
-                  400,
-                );
+                if (validationError) return validationError;
               }
             }
           }
+
+          // NOTE: `products` also used to be (incorrectly) validated directly
+          // on `category` here, even though products actually live under
+          // `category.services[].products` in the payload. That dead
+          // validation block has been removed; products are now validated
+          // above, nested under each service.
 
           // Validate services_supporting array (with required fields on create)
           if (category.services_supporting !== undefined) {
@@ -417,7 +456,8 @@ class QuotationController {
   }
 
   /**
-   * Update quotation with nested categories, services, products, fields, and services_supporting
+   * Update quotation with nested categories, services, products, tables, fields,
+   * and services_supporting
    */
   async update(req, res) {
     try {
@@ -455,26 +495,18 @@ class QuotationController {
             );
           }
 
-          // Validate products array
-          if (category.products && !Array.isArray(category.products)) {
-            return errorResponse(
-              res,
-              `products must be an array for category at index ${i}`,
-              400,
-            );
-          }
+          // Validate products (-> tables -> fields) nested under each service
+          if (category.services) {
+            for (let j = 0; j < category.services.length; j++) {
+              const service = category.services[j];
 
-          // Validate fields in products
-          if (category.products) {
-            for (let j = 0; j < category.products.length; j++) {
-              const product = category.products[j];
-
-              if (product.fields && !Array.isArray(product.fields)) {
-                return errorResponse(
+              if (service.products !== undefined) {
+                const validationError = validateProducts(
                   res,
-                  `fields must be an array for product at index ${j} in category ${i}`,
-                  400,
+                  service.products,
+                  `service at index ${j} in category ${i}`,
                 );
+                if (validationError) return validationError;
               }
             }
           }
@@ -633,7 +665,8 @@ class QuotationController {
 
   /**
    * revision quotation: simpan snapshot lama sebagai history, lalu update
-   * data aktif (quotation + category/service/product/field/services_supporting + payment)
+   * data aktif (quotation + category/service/product/table/field/services_supporting
+   * + payment)
    * Body: {
    *   is_double_database,
    *   quotation_category: [...],
@@ -683,26 +716,14 @@ class QuotationController {
             for (let j = 0; j < category.services.length; j++) {
               const service = category.services[j];
 
-              if (service.products && !Array.isArray(service.products)) {
-                return errorResponse(
+              // Validate products (-> tables -> fields) nested under this service
+              if (service.products !== undefined) {
+                const validationError = validateProducts(
                   res,
-                  `products must be an array for service at index ${j} in category ${i}`,
-                  400,
+                  service.products,
+                  `service at index ${j} in category ${i}`,
                 );
-              }
-
-              if (service.products) {
-                for (let k = 0; k < service.products.length; k++) {
-                  const product = service.products[k];
-
-                  if (product.fields && !Array.isArray(product.fields)) {
-                    return errorResponse(
-                      res,
-                      `fields must be an array for product at index ${k} in service ${j} in category ${i}`,
-                      400,
-                    );
-                  }
-                }
+                if (validationError) return validationError;
               }
             }
           }

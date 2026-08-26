@@ -171,13 +171,21 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)
   Customer.associate = (models) => {
     // Contoh: Customer dapat memiliki relasi dengan Order, dll
     // Customer.hasMany(models.Order, { ... });
+
+    // Customer has many File
+    Customer.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false, // wajib: karena fileable_id bukan FK asli ke satu tabel
+      scope: { fileable_type: "customers", category: "customer_documents" }, // otomatis filter WHERE fileable_type='Company'
+      as: "customer_documents",
+    });
 
     // Customer has many quotations
     Customer.hasMany(models.Quotation, {

@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const ServicePriceController = require("../controllers/servicePricing/servicePricing.controller");
+const ServicePriceGovernmentCostController = require("../controllers/servicePricing/servicePricingGovernmentCost.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
@@ -10,6 +11,13 @@ router.get(
   "/serial-number/:id_category/:id_service_code",
   authenticate,
   ServicePriceController.getSerialNumber,
+);
+
+//get government cost
+router.get(
+  "/government-cost/get-all",
+  authenticate,
+  ServicePriceGovernmentCostController.getAll,
 );
 
 // POST routes

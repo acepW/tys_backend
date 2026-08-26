@@ -71,9 +71,16 @@ class QuotationService extends DualDatabaseService {
                   separate: true,
                   include: [
                     {
-                      model: dbModels.QuotationProductField,
-                      as: "fields",
+                      model: dbModels.QuotationProductTable,
+                      as: "tables",
                       separate: true,
+                      include: [
+                        {
+                          model: dbModels.QuotationProductField,
+                          as: "fields",
+                          separate: true,
+                        },
+                      ],
                     },
                   ],
                 },
@@ -234,8 +241,14 @@ class QuotationService extends DualDatabaseService {
                   as: "products",
                   include: [
                     {
-                      model: dbModels.QuotationProductField,
-                      as: "fields",
+                      model: dbModels.QuotationProductTable,
+                      as: "tables",
+                      include: [
+                        {
+                          model: dbModels.QuotationProductField,
+                          as: "fields",
+                        },
+                      ],
                     },
                   ],
                 },
@@ -771,7 +784,7 @@ class QuotationService extends DualDatabaseService {
         });
       }
 
-      // Sync ulang category/service/product/field + services_supporting
+      // Sync ulang category/service/product/table/field + services_supporting
       await this._syncQuotationCategories(
         id,
         categoriesData,
@@ -1373,8 +1386,9 @@ class QuotationService extends DualDatabaseService {
   }
 
   /**
-   * Sync Quotation Categories with nested services (and each service's nested products/fields),
-   * plus flat services_supporting (QuotationServiceSupporting) per category.
+   * Sync Quotation Categories with nested services (and each service's nested
+   * products → tables → fields), plus flat services_supporting
+   * (QuotationServiceSupporting) per category.
    * @private
    */
   async _syncQuotationCategories(
@@ -1453,21 +1467,47 @@ class QuotationService extends DualDatabaseService {
         });
         const productIdsToDelete = productsToDelete.map((p) => p.id);
 
-        // Delete fields first (deepest child)
+        // Delete tables + fields first (deepest children), then products
         if (productIdsToDelete.length > 0) {
-          await models.db1.QuotationProductField.destroy({
+          const tablesToDelete = await models.db1.QuotationProductTable.findAll(
+            {
+              where: { id_quotation_product: productIdsToDelete },
+              attributes: ["id"],
+              transaction: transaction1,
+            },
+          );
+          const tableIdsToDelete = tablesToDelete.map((t) => t.id);
+
+          if (tableIdsToDelete.length > 0) {
+            await models.db1.QuotationProductField.destroy({
+              where: { id_quotation_product_table: tableIdsToDelete },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationProductField.destroy({
+                where: { id_quotation_product_table: tableIdsToDelete },
+                transaction: transaction2,
+              });
+            }
+            console.log(
+              `   ✓ Deleted fields for ${tableIdsToDelete.length} tables`,
+            );
+          }
+
+          await models.db1.QuotationProductTable.destroy({
             where: { id_quotation_product: productIdsToDelete },
             transaction: transaction1,
           });
 
           if (isDoubleDatabase) {
-            await models.db2.QuotationProductField.destroy({
+            await models.db2.QuotationProductTable.destroy({
               where: { id_quotation_product: productIdsToDelete },
               transaction: transaction2,
             });
           }
           console.log(
-            `   ✓ Deleted fields for ${productIdsToDelete.length} products`,
+            `   ✓ Deleted tables for ${productIdsToDelete.length} products`,
           );
         }
 
@@ -1548,8 +1588,8 @@ class QuotationService extends DualDatabaseService {
       }
     }
 
-    // Process each category's nested services (and each service's nested products/fields)
-    // plus its flat services_supporting
+    // Process each category's nested services (and each service's nested
+    // products → tables → fields) plus its flat services_supporting
     for (let i = 0; i < categoriesData.length; i++) {
       const categoryData = categoriesData[i];
       const syncedCategory = categoryMapping.get(i);
@@ -1601,7 +1641,7 @@ class QuotationService extends DualDatabaseService {
             `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
         );
 
-        // Cleanup products+fields belonging to services that will be deleted
+        // Cleanup products (+ tables/fields) belonging to services that will be deleted
         const keepServiceIds = syncedServices.map((s) => s.id);
         const existingServices = await models.db1.QuotationService.findAll({
           where: { id_quotation_category: categoryId },
@@ -1621,13 +1661,35 @@ class QuotationService extends DualDatabaseService {
           const productIdsToDelete = productsToDelete.map((p) => p.id);
 
           if (productIdsToDelete.length > 0) {
-            await models.db1.QuotationProductField.destroy({
+            const tablesToDelete =
+              await models.db1.QuotationProductTable.findAll({
+                where: { id_quotation_product: productIdsToDelete },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const tableIdsToDelete = tablesToDelete.map((t) => t.id);
+
+            if (tableIdsToDelete.length > 0) {
+              await models.db1.QuotationProductField.destroy({
+                where: { id_quotation_product_table: tableIdsToDelete },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationProductField.destroy({
+                  where: { id_quotation_product_table: tableIdsToDelete },
+                  transaction: transaction2,
+                });
+              }
+            }
+
+            await models.db1.QuotationProductTable.destroy({
               where: { id_quotation_product: productIdsToDelete },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationProductField.destroy({
+              await models.db2.QuotationProductTable.destroy({
                 where: { id_quotation_product: productIdsToDelete },
                 transaction: transaction2,
               });
@@ -1647,7 +1709,7 @@ class QuotationService extends DualDatabaseService {
           }
 
           console.log(
-            `   🗑️ Cleaned up products & fields for ${deletedServiceIds.length} deleted service(s)`,
+            `   🗑️ Cleaned up products, tables & fields for ${deletedServiceIds.length} deleted service(s)`,
           );
         }
 
@@ -1674,7 +1736,7 @@ class QuotationService extends DualDatabaseService {
           }
         }
 
-        // Sync Products (+ fields) for each service
+        // Sync Products (+ tables + fields) for each service
         for (let k = 0; k < categoryData.services.length; k++) {
           const serviceData = categoryData.services[k];
           const syncedService = serviceMapping.get(k);
@@ -1694,7 +1756,7 @@ class QuotationService extends DualDatabaseService {
             serviceData.products.length > 0
           ) {
             const productsData = serviceData.products.map((product) => {
-              const { fields, ...productData } = product;
+              const { tables, ...productData } = product;
               return {
                 ...productData,
                 id_quotation_category: categoryId,
@@ -1721,19 +1783,41 @@ class QuotationService extends DualDatabaseService {
               (id) => !keepProductIds.includes(id),
             );
 
-            // Delete fields for products that will be deleted
+            // Delete tables + fields for products that will be deleted
             if (deletedProductIds.length > 0) {
               console.log(
-                `🗑️ Deleting fields for ${deletedProductIds.length} products...`,
+                `🗑️ Deleting tables & fields for ${deletedProductIds.length} products...`,
               );
 
-              await models.db1.QuotationProductField.destroy({
+              const tablesToDelete =
+                await models.db1.QuotationProductTable.findAll({
+                  where: { id_quotation_product: deletedProductIds },
+                  attributes: ["id"],
+                  transaction: transaction1,
+                });
+              const tableIdsToDelete = tablesToDelete.map((t) => t.id);
+
+              if (tableIdsToDelete.length > 0) {
+                await models.db1.QuotationProductField.destroy({
+                  where: { id_quotation_product_table: tableIdsToDelete },
+                  transaction: transaction1,
+                });
+
+                if (isDoubleDatabase) {
+                  await models.db2.QuotationProductField.destroy({
+                    where: { id_quotation_product_table: tableIdsToDelete },
+                    transaction: transaction2,
+                  });
+                }
+              }
+
+              await models.db1.QuotationProductTable.destroy({
                 where: { id_quotation_product: deletedProductIds },
                 transaction: transaction1,
               });
 
               if (isDoubleDatabase) {
-                await models.db2.QuotationProductField.destroy({
+                await models.db2.QuotationProductTable.destroy({
                   where: { id_quotation_product: deletedProductIds },
                   transaction: transaction2,
                 });
@@ -1783,7 +1867,7 @@ class QuotationService extends DualDatabaseService {
               }
             }
 
-            // Sync Fields for each product
+            // Sync Tables (+ fields) for each product
             for (let j = 0; j < serviceData.products.length; j++) {
               const productData = serviceData.products[j];
               const syncedProduct = productMapping.get(j);
@@ -1798,47 +1882,196 @@ class QuotationService extends DualDatabaseService {
               const productId = syncedProduct.id;
 
               if (
-                productData.fields &&
-                Array.isArray(productData.fields) &&
-                productData.fields.length > 0
+                productData.tables &&
+                Array.isArray(productData.tables) &&
+                productData.tables.length > 0
               ) {
-                const fieldsData = productData.fields.map((field) => ({
-                  ...field,
-                  id_quotation_product: productId,
-                }));
+                const tablesData = productData.tables.map((table) => {
+                  const { fields, ...tableData } = table;
+                  return {
+                    ...tableData,
+                    id_quotation_product: productId,
+                  };
+                });
 
                 console.log(
-                  `🔧 Syncing ${fieldsData.length} fields for product ${productId}`,
+                  `🔧 Syncing ${tablesData.length} tables for product ${productId}`,
                 );
 
-                const fieldsResult = await syncChildRecords({
-                  Model1: models.db1.QuotationProductField,
+                // Get existing tables to identify which will be deleted
+                const existingTables =
+                  await models.db1.QuotationProductTable.findAll({
+                    where: { id_quotation_product: productId },
+                    attributes: ["id"],
+                    transaction: transaction1,
+                  });
+
+                const keepTableIds = tablesData
+                  .filter((t) => t.id)
+                  .map((t) => t.id);
+                const existingTableIds = existingTables.map((t) => t.id);
+                const deletedTableIds = existingTableIds.filter(
+                  (id) => !keepTableIds.includes(id),
+                );
+
+                // Delete fields for tables that will be deleted
+                if (deletedTableIds.length > 0) {
+                  await models.db1.QuotationProductField.destroy({
+                    where: { id_quotation_product_table: deletedTableIds },
+                    transaction: transaction1,
+                  });
+
+                  if (isDoubleDatabase) {
+                    await models.db2.QuotationProductField.destroy({
+                      where: { id_quotation_product_table: deletedTableIds },
+                      transaction: transaction2,
+                    });
+                  }
+
+                  console.log(
+                    `   🗑️ Cleaned up fields for ${deletedTableIds.length} deleted table(s)`,
+                  );
+                }
+
+                const tablesResult = await syncChildRecords({
+                  Model1: models.db1.QuotationProductTable,
                   Model2: isDoubleDatabase
-                    ? models.db2.QuotationProductField
+                    ? models.db2.QuotationProductTable
                     : null,
                   foreignKey: "id_quotation_product",
                   parentId: productId,
-                  newData: fieldsData,
+                  newData: tablesData,
                   transaction1,
                   transaction2,
                   isDoubleDatabase,
                 });
 
-                const syncedFieldsCount =
-                  (fieldsResult.created?.length || 0) +
-                  (fieldsResult.updated?.length || 0);
+                const syncedTables = [
+                  ...(tablesResult.created || []),
+                  ...(tablesResult.updated || []),
+                ];
+
                 console.log(
-                  `✅ Synced ${syncedFieldsCount} fields for product ${productId}`,
+                  `✅ Synced ${syncedTables.length} tables for product ${productId}`,
                 );
+
+                const tableMapping = new Map();
+                let tableCreatedIndex = 0;
+
+                for (let k = 0; k < productData.tables.length; k++) {
+                  const tableData = productData.tables[k];
+
+                  if (tableData.id) {
+                    const syncedTable = syncedTables.find(
+                      (st) => st.id === tableData.id,
+                    );
+                    if (syncedTable) {
+                      tableMapping.set(k, syncedTable);
+                    }
+                  } else {
+                    const createdTables = tablesResult.created || [];
+                    if (tableCreatedIndex < createdTables.length) {
+                      tableMapping.set(k, createdTables[tableCreatedIndex]);
+                      tableCreatedIndex++;
+                    }
+                  }
+                }
+
+                // Sync Fields for each table
+                for (let k = 0; k < productData.tables.length; k++) {
+                  const tableData = productData.tables[k];
+                  const syncedTable = tableMapping.get(k);
+
+                  if (!syncedTable || !syncedTable.id) {
+                    console.warn(
+                      `⚠️ Table at index ${k} in product ${productId} was not synced properly`,
+                    );
+                    continue;
+                  }
+
+                  const tableId = syncedTable.id;
+
+                  if (
+                    tableData.fields &&
+                    Array.isArray(tableData.fields) &&
+                    tableData.fields.length > 0
+                  ) {
+                    const fieldsData = tableData.fields.map((field) => ({
+                      ...field,
+                      id_quotation_product_table: tableId,
+                    }));
+
+                    console.log(
+                      `🔧 Syncing ${fieldsData.length} fields for table ${tableId}`,
+                    );
+
+                    const fieldsResult = await syncChildRecords({
+                      Model1: models.db1.QuotationProductField,
+                      Model2: isDoubleDatabase
+                        ? models.db2.QuotationProductField
+                        : null,
+                      foreignKey: "id_quotation_product_table",
+                      parentId: tableId,
+                      newData: fieldsData,
+                      transaction1,
+                      transaction2,
+                      isDoubleDatabase,
+                    });
+
+                    const syncedFieldsCount =
+                      (fieldsResult.created?.length || 0) +
+                      (fieldsResult.updated?.length || 0);
+                    console.log(
+                      `✅ Synced ${syncedFieldsCount} fields for table ${tableId}`,
+                    );
+                  } else {
+                    // If no fields provided, delete all existing fields
+                    await models.db1.QuotationProductField.destroy({
+                      where: { id_quotation_product_table: tableId },
+                      transaction: transaction1,
+                    });
+
+                    if (isDoubleDatabase) {
+                      await models.db2.QuotationProductField.destroy({
+                        where: { id_quotation_product_table: tableId },
+                        transaction: transaction2,
+                      });
+                    }
+                  }
+                }
               } else {
-                // If no fields provided, delete all existing fields
-                await models.db1.QuotationProductField.destroy({
+                // If no tables provided for this product, delete all existing
+                // tables and their fields
+                const existingTables =
+                  await models.db1.QuotationProductTable.findAll({
+                    where: { id_quotation_product: productId },
+                    attributes: ["id"],
+                    transaction: transaction1,
+                  });
+
+                const tableIds = existingTables.map((t) => t.id);
+
+                if (tableIds.length > 0) {
+                  await models.db1.QuotationProductField.destroy({
+                    where: { id_quotation_product_table: tableIds },
+                    transaction: transaction1,
+                  });
+
+                  if (isDoubleDatabase) {
+                    await models.db2.QuotationProductField.destroy({
+                      where: { id_quotation_product_table: tableIds },
+                      transaction: transaction2,
+                    });
+                  }
+                }
+
+                await models.db1.QuotationProductTable.destroy({
                   where: { id_quotation_product: productId },
                   transaction: transaction1,
                 });
 
                 if (isDoubleDatabase) {
-                  await models.db2.QuotationProductField.destroy({
+                  await models.db2.QuotationProductTable.destroy({
                     where: { id_quotation_product: productId },
                     transaction: transaction2,
                   });
@@ -1846,24 +2079,46 @@ class QuotationService extends DualDatabaseService {
               }
             }
           } else {
-            // If no products provided for this service, delete all existing products and their fields
+            // If no products provided for this service, delete all existing
+            // products, their tables, and their fields
             const existingProducts = await models.db1.QuotationProduct.findAll({
               where: { id_quotation_service: serviceId },
               attributes: ["id"],
               transaction: transaction1,
             });
+            const existingProductIds = existingProducts.map((p) => p.id);
 
-            const productIds = existingProducts.map((p) => p.id);
+            if (existingProductIds.length > 0) {
+              const tablesToDelete =
+                await models.db1.QuotationProductTable.findAll({
+                  where: { id_quotation_product: existingProductIds },
+                  attributes: ["id"],
+                  transaction: transaction1,
+                });
+              const tableIdsToDelete = tablesToDelete.map((t) => t.id);
 
-            if (productIds.length > 0) {
-              await models.db1.QuotationProductField.destroy({
-                where: { id_quotation_product: productIds },
+              if (tableIdsToDelete.length > 0) {
+                await models.db1.QuotationProductField.destroy({
+                  where: { id_quotation_product_table: tableIdsToDelete },
+                  transaction: transaction1,
+                });
+
+                if (isDoubleDatabase) {
+                  await models.db2.QuotationProductField.destroy({
+                    where: { id_quotation_product_table: tableIdsToDelete },
+                    transaction: transaction2,
+                  });
+                }
+              }
+
+              await models.db1.QuotationProductTable.destroy({
+                where: { id_quotation_product: existingProductIds },
                 transaction: transaction1,
               });
 
               if (isDoubleDatabase) {
-                await models.db2.QuotationProductField.destroy({
-                  where: { id_quotation_product: productIds },
+                await models.db2.QuotationProductTable.destroy({
+                  where: { id_quotation_product: existingProductIds },
                   transaction: transaction2,
                 });
               }
@@ -1883,7 +2138,8 @@ class QuotationService extends DualDatabaseService {
           }
         }
       } else {
-        // If no services provided, delete all existing services (and their products/fields)
+        // If no services provided, delete all existing services (and their
+        // products/tables/fields)
         const existingServices = await models.db1.QuotationService.findAll({
           where: { id_quotation_category: categoryId },
           attributes: ["id"],
@@ -1900,13 +2156,35 @@ class QuotationService extends DualDatabaseService {
           const productIdsToDelete = productsToDelete.map((p) => p.id);
 
           if (productIdsToDelete.length > 0) {
-            await models.db1.QuotationProductField.destroy({
+            const tablesToDelete =
+              await models.db1.QuotationProductTable.findAll({
+                where: { id_quotation_product: productIdsToDelete },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const tableIdsToDelete = tablesToDelete.map((t) => t.id);
+
+            if (tableIdsToDelete.length > 0) {
+              await models.db1.QuotationProductField.destroy({
+                where: { id_quotation_product_table: tableIdsToDelete },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationProductField.destroy({
+                  where: { id_quotation_product_table: tableIdsToDelete },
+                  transaction: transaction2,
+                });
+              }
+            }
+
+            await models.db1.QuotationProductTable.destroy({
               where: { id_quotation_product: productIdsToDelete },
               transaction: transaction1,
             });
 
             if (isDoubleDatabase) {
-              await models.db2.QuotationProductField.destroy({
+              await models.db2.QuotationProductTable.destroy({
                 where: { id_quotation_product: productIdsToDelete },
                 transaction: transaction2,
               });
@@ -2044,7 +2322,7 @@ class QuotationService extends DualDatabaseService {
       );
     }
 
-    // 2. Clone category -> service -> product -> field, plus services_supporting
+    // 2. Clone category -> service -> product -> table -> field, plus services_supporting
     for (const cat of quotation_category || []) {
       const {
         id: catId,
@@ -2080,7 +2358,7 @@ class QuotationService extends DualDatabaseService {
         }
 
         for (const prod of products || []) {
-          const { id: prodId, fields, ...prodFields } = prod;
+          const { id: prodId, tables, ...prodFields } = prod;
 
           const newProd1 = await models.db1.QuotationProduct.create(
             {
@@ -2102,22 +2380,41 @@ class QuotationService extends DualDatabaseService {
             );
           }
 
-          for (const field of fields || []) {
-            const { id: fieldId, ...fieldFields } = field;
+          for (const table of tables || []) {
+            const { id: tableId, fields, ...tableFields } = table;
 
-            const newField1 = await models.db1.QuotationProductField.create(
-              { ...fieldFields, id_quotation_product: newProd1.id },
+            const newTable1 = await models.db1.QuotationProductTable.create(
+              { ...tableFields, id_quotation_product: newProd1.id },
               { transaction: transaction1 },
             );
             if (isDoubleDatabase) {
-              await models.db2.QuotationProductField.create(
+              await models.db2.QuotationProductTable.create(
                 {
-                  ...fieldFields,
+                  ...tableFields,
                   id_quotation_product: newProd1.id,
-                  id: newField1.id,
+                  id: newTable1.id,
                 },
                 { transaction: transaction2 },
               );
+            }
+
+            for (const field of fields || []) {
+              const { id: fieldId, ...fieldFields } = field;
+
+              const newField1 = await models.db1.QuotationProductField.create(
+                { ...fieldFields, id_quotation_product_table: newTable1.id },
+                { transaction: transaction1 },
+              );
+              if (isDoubleDatabase) {
+                await models.db2.QuotationProductField.create(
+                  {
+                    ...fieldFields,
+                    id_quotation_product_table: newTable1.id,
+                    id: newField1.id,
+                  },
+                  { transaction: transaction2 },
+                );
+              }
             }
           }
         }

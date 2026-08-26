@@ -28,6 +28,16 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to quotation service table",
       },
+      title_indo: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "title for Indonesian",
+      },
+      title_mandarin: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "title for mandarin",
+      },
       index: {
         allowNull: false,
         type: DataTypes.FLOAT,
@@ -71,9 +81,9 @@ module.exports = (sequelize) => {
     });
 
     // QuotationProduct has many Quotation Product field
-    QuotationProduct.hasMany(models.QuotationProductField, {
+    QuotationProduct.hasMany(models.QuotationProductTable, {
       foreignKey: "id_quotation_product",
-      as: "fields",
+      as: "tables",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

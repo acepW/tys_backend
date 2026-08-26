@@ -8,15 +8,20 @@ class FileService extends DualDatabaseService {
   }
 
   /**
-   * Sinkronisasi file untuk satu entity (fileable_type + fileable_id).
+   * Sinkronisasi file untuk satu entity (fileable_type + fileable_id + category).
+   * PENTING: sync ini di-scope PER CATEGORY. Artinya kalau kamu panggil
+   * syncFiles(..., { category: "logo" }), hanya file kategori "logo" yang
+   * akan dibandingkan/dihapus. File kategori lain (mis. "legal_document")
+   * milik entity yang sama TIDAK akan tersentuh.
+   *
    * - item tanpa `id`               -> create baru
    * - item dengan `id` (masih ada)  -> update
-   * - id lama yg TIDAK ada di incomingFiles -> dihapus (soft delete default)
+   * - id lama (dalam category yang sama) yg TIDAK ada di incomingFiles -> dihapus
    *
    * @param {string} fileableType
    * @param {number} fileableId
    * @param {Array} incomingFiles
-   * @param {object} opts - { category, uploadedBy, isDoubleDatabase, hardDelete }
+   * @param {object} opts - { category (wajib), uploadedBy, isDoubleDatabase, hardDelete }
    * @param {Object|null} externalTransaction1
    * @param {Object|null} externalTransaction2
    * @returns {object} { created: [], updated: [], deletedIds: [] }
@@ -27,8 +32,15 @@ class FileService extends DualDatabaseService {
     incomingFiles = [],
     opts = {},
     externalTransaction1 = null,
-    externalTransaction2 = null
+    externalTransaction2 = null,
   ) {
+    const category = opts.category;
+    if (!category) {
+      throw new Error(
+        "syncFiles: opts.category wajib diisi (mis. 'logo', 'legal_document') agar sync tidak menyentuh kategori file lain",
+      );
+    }
+
     const isDoubleDatabase = opts.isDoubleDatabase !== false;
     const hardDelete = !!opts.hardDelete;
     const isExternalTransaction = !!externalTransaction1;
@@ -44,12 +56,16 @@ class FileService extends DualDatabaseService {
         }
 
         console.log(
-          `🔄 Syncing files for ${fileableType}=${fileableId} in both databases...`
+          `🔄 Syncing [${category}] files for ${fileableType}=${fileableId} in both databases...`,
         );
 
-        // 1. Ambil existing file dari DB1
+        // 1. Ambil existing file dari DB1 — SCOPED by category juga
         const existing = await this.Model1.findAll({
-          where: { fileable_type: fileableType, fileable_id: fileableId },
+          where: {
+            fileable_type: fileableType,
+            fileable_id: fileableId,
+            category, // <-- fix: jangan sampai category lain ikut kehapus
+          },
           transaction: transaction1,
         });
 
@@ -63,6 +79,7 @@ class FileService extends DualDatabaseService {
           const payload = {
             fileable_type: fileableType,
             fileable_id: fileableId,
+            category, // <-- fix: wajib disimpan, allowNull:false di model
             original_name: file.original_name,
             indonesian_name: file.indonesian_name ?? file.original_name,
             mandarin_name: file.mandarin_name ?? file.original_name,
@@ -91,19 +108,19 @@ class FileService extends DualDatabaseService {
             });
             await this.Model2.create(
               { ...payload, id: created1.id },
-              { transaction: transaction2 }
+              { transaction: transaction2 },
             );
             result.created.push(created1.toJSON());
           }
         }
 
         console.log(
-          `✅ Created ${result.created.length}, updated ${result.updated.length} files`
+          `✅ Created ${result.created.length}, updated ${result.updated.length} files`,
         );
 
-        // 3. Hapus id lama yang tidak ada lagi di incoming
+        // 3. Hapus id lama (dalam category ini) yang tidak ada lagi di incoming
         const idsToDelete = existingIds.filter(
-          (id) => !incomingIds.includes(id)
+          (id) => !incomingIds.includes(id),
         );
 
         if (idsToDelete.length > 0) {
@@ -122,20 +139,20 @@ class FileService extends DualDatabaseService {
               {
                 where: { id: { [Op.in]: idsToDelete } },
                 transaction: transaction1,
-              }
+              },
             );
             await this.Model2.update(
               { is_active: false },
               {
                 where: { id: { [Op.in]: idsToDelete } },
                 transaction: transaction2,
-              }
+              },
             );
           }
           console.log(
             `✅ ${hardDelete ? "Deleted" : "Deactivated"} ${
               idsToDelete.length
-            } files`
+            } files in category [${category}]`,
           );
           result.deletedIds = idsToDelete;
         }
@@ -148,13 +165,17 @@ class FileService extends DualDatabaseService {
 
         return result;
       } else {
-        // Single database (DB2 only, mengikuti pola isDoubleDatabase=false di service lain)
+        // Single database (DB2 only)
         if (!isExternalTransaction) {
           transaction1 = await db1.transaction();
         }
 
         const existing = await this.Model2.findAll({
-          where: { fileable_type: fileableType, fileable_id: fileableId },
+          where: {
+            fileable_type: fileableType,
+            fileable_id: fileableId,
+            category, // <-- fix
+          },
           transaction: transaction1,
         });
 
@@ -167,6 +188,7 @@ class FileService extends DualDatabaseService {
           const payload = {
             fileable_type: fileableType,
             fileable_id: fileableId,
+            category, // <-- fix
             original_name: file.original_name,
             indonesian_name: file.indonesian_name ?? file.original_name,
             mandarin_name: file.mandarin_name ?? file.original_name,
@@ -194,7 +216,7 @@ class FileService extends DualDatabaseService {
         }
 
         const idsToDelete = existingIds.filter(
-          (id) => !incomingIds.includes(id)
+          (id) => !incomingIds.includes(id),
         );
 
         if (idsToDelete.length > 0) {
@@ -209,7 +231,7 @@ class FileService extends DualDatabaseService {
               {
                 where: { id: { [Op.in]: idsToDelete } },
                 transaction: transaction1,
-              }
+              },
             );
           }
           result.deletedIds = idsToDelete;
@@ -233,13 +255,13 @@ class FileService extends DualDatabaseService {
   }
 
   /**
-   * List file aktif milik satu entity (read-only, pakai base class)
+   * List file aktif milik satu entity (read-only)
    */
   async listFiles(
     fileableType,
     fileableId,
     category = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const where = {
       fileable_type: fileableType,
@@ -250,7 +272,7 @@ class FileService extends DualDatabaseService {
 
     return this.findAll(
       { where, order: [["created_at", "DESC"]] },
-      isDoubleDatabase
+      isDoubleDatabase,
     );
   }
 
@@ -258,7 +280,7 @@ class FileService extends DualDatabaseService {
     fileableType,
     fileableIds,
     category = null,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
   ) {
     const where = {
       fileable_type: fileableType,
@@ -277,17 +299,21 @@ class FileService extends DualDatabaseService {
     }, {});
   }
 
-  async belongsTo(fileId, fileableType, fileableId, isDoubleDatabase = true) {
-    const file = await this.findOne(
-      {
-        where: {
-          id: fileId,
-          fileable_type: fileableType,
-          fileable_id: fileableId,
-        },
-      },
-      isDoubleDatabase
-    );
+  async belongsTo(
+    fileId,
+    fileableType,
+    fileableId,
+    category = null,
+    isDoubleDatabase = true,
+  ) {
+    const where = {
+      id: fileId,
+      fileable_type: fileableType,
+      fileable_id: fileableId,
+    };
+    if (category) where.category = category;
+
+    const file = await this.findOne({ where }, isDoubleDatabase);
     return file !== null;
   }
 }

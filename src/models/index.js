@@ -40,6 +40,7 @@ const QuotationCategoryModel = require("./quotation/quotationCategory.model");
 const QuotationServiceModel = require("./quotation/quotationService.model");
 const QuotationServiceSportingModel = require("./quotation/quotationServiceSupporting.model");
 const QuotationProductModel = require("./quotation/quotationProduct.model");
+const QuotationProductTableModel = require("./quotation/quotationProductTable.model");
 const QuotationProductFieldModel = require("./quotation/quotationProductField.model");
 const QuotationPaymentModel = require("./quotation/quotationPayment.model");
 const QuotationPaymentListModel = require("./quotation/quotationPaymentList.model");
@@ -153,6 +154,7 @@ const initializeModels = (sequelize) => {
     QuotationService: QuotationServiceModel(sequelize),
     QuotationServiceSupporting: QuotationServiceSportingModel(sequelize),
     QuotationProduct: QuotationProductModel(sequelize),
+    QuotationProductTable: QuotationProductTableModel(sequelize),
     QuotationProductField: QuotationProductFieldModel(sequelize),
     QuotationPayment: QuotationPaymentModel(sequelize),
     QuotationPaymentList: QuotationPaymentListModel(sequelize),

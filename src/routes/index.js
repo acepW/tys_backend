@@ -24,6 +24,7 @@ const governmentCostRoutes = require("./governmentCost.route");
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
 const projectPlanRoutes = require("./projectPlan.route");
+const servicePricingGovernmentCostRoutes = require("./servicePricingGovernmentCost.route");
 
 //Quotation
 const quotationRoutes = require("./quotation.route");
@@ -81,6 +82,10 @@ router.use("/government-costs", governmentCostRoutes);
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
 router.use("/project-plans", projectPlanRoutes);
+router.use(
+  "/service-pricing-government-cost",
+  servicePricingGovernmentCostRoutes,
+);
 
 //quotation
 router.use("/quotations", quotationRoutes);

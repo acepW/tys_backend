@@ -16,6 +16,12 @@ module.exports = (sequelize) => {
         comment:
           "Nama model pemilik file, misal 'Company', 'Contract', 'Vendor'",
       },
+      category: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        comment:
+          "Kategori/jenis file dalam konteks fileable_type-nya, misal 'logo', 'legal_document', 'ktp', 'npwp'",
+      },
       fileable_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -77,11 +83,15 @@ module.exports = (sequelize) => {
           fields: ["fileable_type", "fileable_id"],
         },
         {
+          name: "idx_fileable_category",
+          fields: ["fileable_type", "fileable_id", "category"],
+        },
+        {
           name: "idx_is_active",
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations (untuk future development)

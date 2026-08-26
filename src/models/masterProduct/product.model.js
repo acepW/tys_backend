@@ -28,6 +28,16 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to service_pricing table",
       },
+      title_indo: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "title for Indonesian",
+      },
+      title_mandarin: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "title for mandarin",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -48,7 +58,7 @@ module.exports = (sequelize) => {
           fields: ["is_active"],
         },
       ],
-    }
+    },
   );
 
   // Define associations

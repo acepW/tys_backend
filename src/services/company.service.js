@@ -250,7 +250,7 @@ class CompanyService extends DualDatabaseService {
           "companies",
           company1.id,
           body.files,
-          { uploadedBy: id_create, hardDelete: false },
+          { category: "files", uploadedBy: id_create, hardDelete: false },
           transaction1,
           transaction2,
         );
@@ -273,7 +273,7 @@ class CompanyService extends DualDatabaseService {
           "companies",
           company.id,
           body.files,
-          { uploadedBy: id_create, hardDelete: false },
+          { category: "files", uploadedBy: id_create, hardDelete: false },
           transaction1,
           null,
         );
@@ -348,7 +348,7 @@ class CompanyService extends DualDatabaseService {
           "companies",
           id,
           body.files,
-          { uploadedBy: id_update, hardDelete: false },
+          { category: "files", uploadedBy: id_update, hardDelete: false },
           transaction1,
           transaction2,
         );
@@ -375,7 +375,7 @@ class CompanyService extends DualDatabaseService {
           "companies",
           id,
           body.files,
-          { uploadedBy: id_update, hardDelete: false },
+          { category: "files", uploadedBy: id_update, hardDelete: false },
           transaction1,
           null,
         );

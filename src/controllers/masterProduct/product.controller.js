@@ -15,7 +15,7 @@ class ProductController {
       const isDoubleDatabase = is_double_database !== "false";
       const products = await productService.getAllWithRelations(
         { where: { is_active: true } },
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, products, "Products retrieved successfully");
@@ -50,6 +50,8 @@ class ProductController {
         is_double_database,
         id_category,
         id_service_pricing,
+        title_indo,
+        title_mandarin,
         product_fields,
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
@@ -66,7 +68,7 @@ class ProductController {
       const checkDataCategory = await categoryService.findById(
         id_category,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!checkDataCategory) {
         return errorResponse(res, "Category not found", 400);
@@ -76,7 +78,7 @@ class ProductController {
       const checkDataServicePricing = await servicePricingService.findById(
         id_service_pricing,
         {},
-        isDoubleDatabase
+        isDoubleDatabase,
       );
       if (!checkDataServicePricing) {
         return errorResponse(res, "Service Pricing not found", 400);
@@ -85,13 +87,15 @@ class ProductController {
       const data = {
         id_category: id_category,
         id_service_pricing: id_service_pricing,
+        title_indo: title_indo,
+        title_mandarin: title_mandarin,
         is_active: true,
       };
 
       const product = await productService.createWithFields(
         data,
         product_fields,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, product, "Product created successfully", 201);
@@ -111,6 +115,8 @@ class ProductController {
         id_category,
         id_sub_category,
         id_service_pricing,
+        title_indo,
+        title_mandarin,
         product_fields,
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
@@ -124,6 +130,8 @@ class ProductController {
       const data = {
         id_category: id_category,
         id_service_pricing: id_service_pricing,
+        title_indo: title_indo,
+        title_mandarin: title_mandarin,
         id_sub_category: id_sub_category,
       };
 
@@ -131,7 +139,7 @@ class ProductController {
         id,
         data,
         product_fields,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, product, "Product updated successfully");
