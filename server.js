@@ -21,7 +21,7 @@ const startServer = async () => {
     //await syncDatabases();
 
     //sync database by table name
-    //await syncModel("QuotationProductField");
+    //await syncModel("PreOrderProductField");
     //console.log("");
 
     // Start Express server

@@ -56,13 +56,13 @@ class PreOrderController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         preOrders,
-        "PreOrders retrieved successfully"
+        "PreOrders retrieved successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -111,7 +111,7 @@ class PreOrderController {
   }
 
   /**
-   * Create pre order with nested categories, services, products, fields, and services_supporting
+   * Create pre order with nested categories, services, products, tables, fields, and services_supporting
    */
   async create(req, res) {
     try {
@@ -162,7 +162,7 @@ class PreOrderController {
             return errorResponse(
               res,
               `id_category is required for category at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -170,7 +170,7 @@ class PreOrderController {
             return errorResponse(
               res,
               `foot_note is required for category at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -179,11 +179,11 @@ class PreOrderController {
             return errorResponse(
               res,
               `services must be an array for category at index ${i}`,
-              400
+              400,
             );
           }
 
-          // Validate each service (and its nested products)
+          // Validate each service (and its nested products -> tables)
           if (category.services) {
             for (let j = 0; j < category.services.length; j++) {
               const service = category.services[j];
@@ -192,7 +192,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `id_service_pricing is required for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -200,7 +200,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `product_name_indo is required for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -208,7 +208,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `product_name_mandarin is required for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -219,7 +219,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `price_idr is required for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -230,7 +230,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `price_rmb is required for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -238,7 +238,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `qty is required for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -247,7 +247,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `products must be an array for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -260,17 +260,41 @@ class PreOrderController {
                     return errorResponse(
                       res,
                       `index is required for product at index ${k} in service ${j} in category ${i}`,
-                      400
+                      400,
                     );
                   }
 
-                  // Validate fields array
-                  if (product.fields && !Array.isArray(product.fields)) {
+                  // Validate tables array nested inside the product
+                  if (product.tables && !Array.isArray(product.tables)) {
                     return errorResponse(
                       res,
-                      `fields must be an array for product at index ${k} in service ${j} in category ${i}`,
-                      400
+                      `tables must be an array for product at index ${k} in service ${j} in category ${i}`,
+                      400,
                     );
+                  }
+
+                  // Validate each table (and its nested fields)
+                  if (product.tables) {
+                    for (let t = 0; t < product.tables.length; t++) {
+                      const table = product.tables[t];
+
+                      if (table.index == null || table.index === undefined) {
+                        return errorResponse(
+                          res,
+                          `index is required for table at index ${t} in product ${k} in service ${j} in category ${i}`,
+                          400,
+                        );
+                      }
+
+                      // Validate fields array
+                      if (table.fields && !Array.isArray(table.fields)) {
+                        return errorResponse(
+                          res,
+                          `fields must be an array for table at index ${t} in product ${k} in service ${j} in category ${i}`,
+                          400,
+                        );
+                      }
+                    }
                   }
                 }
               }
@@ -285,7 +309,7 @@ class PreOrderController {
             return errorResponse(
               res,
               `services_supporting must be an array for category at index ${i}`,
-              400
+              400,
             );
           }
 
@@ -298,7 +322,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `id_service_pricing_supporting is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -306,7 +330,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `id_quotation_service_supporting is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -314,7 +338,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `product_name_indo is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -322,7 +346,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `product_name_mandarin is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -333,7 +357,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `price_idr is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -344,7 +368,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `price_rmb is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -352,7 +376,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `qty is required for services_supporting at index ${s} in category ${i}`,
-                  400
+                  400,
                 );
               }
             }
@@ -373,7 +397,7 @@ class PreOrderController {
         preparedPreOrderData,
         pre_order_category || [],
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "PreOrder created successfully", 201);
@@ -383,7 +407,7 @@ class PreOrderController {
   }
 
   /**
-   * Update pre order with nested categories, services, products, fields, and services_supporting
+   * Update pre order with nested categories, services, products, tables, fields, and services_supporting
    */
   async update(req, res) {
     try {
@@ -413,11 +437,11 @@ class PreOrderController {
             return errorResponse(
               res,
               `services must be an array for category at index ${i}`,
-              400
+              400,
             );
           }
 
-          // Validate products nested inside each service
+          // Validate products nested inside each service, and tables nested inside each product
           if (category.services) {
             for (let j = 0; j < category.services.length; j++) {
               const service = category.services[j];
@@ -426,7 +450,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `products must be an array for service at index ${j} in category ${i}`,
-                  400
+                  400,
                 );
               }
 
@@ -434,12 +458,26 @@ class PreOrderController {
                 for (let k = 0; k < service.products.length; k++) {
                   const product = service.products[k];
 
-                  if (product.fields && !Array.isArray(product.fields)) {
+                  if (product.tables && !Array.isArray(product.tables)) {
                     return errorResponse(
                       res,
-                      `fields must be an array for product at index ${k} in service ${j} in category ${i}`,
-                      400
+                      `tables must be an array for product at index ${k} in service ${j} in category ${i}`,
+                      400,
                     );
+                  }
+
+                  if (product.tables) {
+                    for (let t = 0; t < product.tables.length; t++) {
+                      const table = product.tables[t];
+
+                      if (table.fields && !Array.isArray(table.fields)) {
+                        return errorResponse(
+                          res,
+                          `fields must be an array for table at index ${t} in product ${k} in service ${j} in category ${i}`,
+                          400,
+                        );
+                      }
+                    }
                   }
                 }
               }
@@ -454,7 +492,7 @@ class PreOrderController {
             return errorResponse(
               res,
               `services_supporting must be an array for category at index ${i}`,
-              400
+              400,
             );
           }
         }
@@ -464,7 +502,7 @@ class PreOrderController {
         id,
         preOrderData,
         pre_order_category || [],
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "PreOrder updated successfully");
@@ -511,7 +549,7 @@ class PreOrderController {
             return errorResponse(
               res,
               `${field} is required for payment at index ${i}`,
-              400
+              400,
             );
           }
         }
@@ -520,7 +558,7 @@ class PreOrderController {
           return errorResponse(
             res,
             `currency_type must be 'idr' or 'rmb' for payment at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -531,7 +569,7 @@ class PreOrderController {
           return errorResponse(
             res,
             `payment_list must be an array for payment at index ${i}`,
-            400
+            400,
           );
         }
 
@@ -551,7 +589,7 @@ class PreOrderController {
                 return errorResponse(
                   res,
                   `${field} is required for payment_list at index ${j} in payment ${i}`,
-                  400
+                  400,
                 );
               }
             }
@@ -560,7 +598,7 @@ class PreOrderController {
               return errorResponse(
                 res,
                 `services must be an array for payment_list at index ${j} in payment ${i}`,
-                400
+                400,
               );
             }
 
@@ -570,7 +608,7 @@ class PreOrderController {
                   return errorResponse(
                     res,
                     `id_pre_order_service is required for service at index ${k} in payment_list ${j} in payment ${i}`,
-                    400
+                    400,
                   );
                 }
               }
@@ -582,13 +620,13 @@ class PreOrderController {
       const result = await preOrderService.syncPayment(
         id,
         payments,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(
         res,
         result,
-        "PreOrder payments synced successfully"
+        "PreOrder payments synced successfully",
       );
     } catch (error) {
       return errorResponse(res, error.message);
@@ -613,7 +651,7 @@ class PreOrderController {
       const result = await preOrderService.approve(
         id,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "PreOrder approved successfully");
@@ -640,7 +678,7 @@ class PreOrderController {
       const result = await preOrderService.reject(
         id,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
       );
 
       return successResponse(res, result, "PreOrder rejected successfully");

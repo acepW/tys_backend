@@ -28,6 +28,16 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to pre_order_service table",
       },
+      title_indo: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "title for Indonesian",
+      },
+      title_mandarin: {
+        type: DataTypes.STRING(200),
+        allowNull: true,
+        comment: "title for mandarin",
+      },
       index: {
         allowNull: false,
         type: DataTypes.FLOAT,
@@ -71,9 +81,9 @@ module.exports = (sequelize) => {
     });
 
     // PreOrderProduct has many PreOrder Product field
-    PreOrderProduct.hasMany(models.PreOrderProductField, {
+    PreOrderProduct.hasMany(models.PreOrderProductTable, {
       foreignKey: "id_pre_order_product",
-      as: "fields",
+      as: "tables",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

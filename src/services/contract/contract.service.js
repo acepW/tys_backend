@@ -394,8 +394,14 @@ class ContractService extends DualDatabaseService {
                   as: "products",
                   include: [
                     {
-                      model: dbModels.QuotationProductField,
-                      as: "fields",
+                      model: dbModels.QuotationProductTable,
+                      as: "tables",
+                      include: [
+                        {
+                          model: dbModels.QuotationProductField,
+                          as: "fields",
+                        },
+                      ],
                     },
                   ],
                 },

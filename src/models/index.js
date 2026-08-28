@@ -91,6 +91,7 @@ const PreOrderCategoryModel = require("./preOrder/preOrderCategory.model");
 const PreOrderServiceModel = require("./preOrder/preOrderService.model");
 const PreOrderServiceSupportingModel = require("./preOrder/preOrderServiceSupporting.model");
 const PreOrderProductModel = require("./preOrder/preOrderProduct.model");
+const PreOrderProductTableModel = require("./preOrder/preOrderProductTable.model");
 const PreOrderProductFieldModel = require("./preOrder/preOrderProductField.model");
 const PreOrderPaymentModel = require("./preOrder/preOrderPayment.model");
 const PreOrderPaymentListModel = require("./preOrder/preOrderPaymentList.model");
@@ -207,6 +208,7 @@ const initializeModels = (sequelize) => {
     PreOrderService: PreOrderServiceModel(sequelize),
     PreOrderServiceSupporting: PreOrderServiceSupportingModel(sequelize),
     PreOrderProduct: PreOrderProductModel(sequelize),
+    PreOrderProductTable: PreOrderProductTableModel(sequelize),
     PreOrderProductField: PreOrderProductFieldModel(sequelize),
     PreOrderPayment: PreOrderPaymentModel(sequelize),
     PreOrderPaymentList: PreOrderPaymentListModel(sequelize),

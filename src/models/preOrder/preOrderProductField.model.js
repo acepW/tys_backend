@@ -10,11 +10,11 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for preOrder product",
       },
-      id_pre_order_product: {
+      id_pre_order_product_table: {
         type: DataTypes.INTEGER,
         allowNull: false,
         references: {
-          model: "pre_order_product",
+          model: "pre_order_product_table",
           key: "id",
         },
         comment: "Product id from pre_order_product table",
@@ -64,8 +64,8 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
-          name: "idx_id_pre_order_product",
-          fields: ["id_pre_order_product"],
+          name: "idx_id_pre_order_product_table",
+          fields: ["id_pre_order_product_table"],
         },
       ],
     },
@@ -74,8 +74,8 @@ module.exports = (sequelize) => {
   // Define associations
   PreOrderProductFields.associate = (models) => {
     // Product Fields belongs to Product
-    PreOrderProductFields.belongsTo(models.PreOrderProduct, {
-      foreignKey: "id_pre_order_product",
+    PreOrderProductFields.belongsTo(models.PreOrderProductTable, {
+      foreignKey: "id_pre_order_product_table",
       as: "pre_order_product",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
