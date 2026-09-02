@@ -46,6 +46,9 @@ const QuotationPaymentModel = require("./quotation/quotationPayment.model");
 const QuotationPaymentListModel = require("./quotation/quotationPaymentList.model");
 const QuotationPaymentServiceModel = require("./quotation/quotationPaymentService.model");
 const QuotationVerificationProgressModel = require("./quotation/quotationVerificationProgress.model");
+const QuotationGovernmentCostModel = require("./quotation/quotationGovernmentCost.model");
+const QuotationGovernmentCostTableModel = require("./quotation/quotationGovernmentCostTable.model");
+const QuotationGovernmentCostFieldModel = require("./quotation/quotationGovernmentCostField.model");
 
 //contract
 const ContractModel = require("./contract/contract.model");
@@ -162,6 +165,9 @@ const initializeModels = (sequelize) => {
     QuotationPaymentService: QuotationPaymentServiceModel(sequelize),
     QuotationVerificationProgress:
       QuotationVerificationProgressModel(sequelize),
+    QuotationGovernmentCost: QuotationGovernmentCostModel(sequelize),
+    QuotationGovernmentCostTable: QuotationGovernmentCostTableModel(sequelize),
+    QuotationGovernmentCostField: QuotationGovernmentCostFieldModel(sequelize),
 
     //contract
     Contract: ContractModel(sequelize),

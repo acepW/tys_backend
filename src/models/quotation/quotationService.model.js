@@ -103,7 +103,7 @@ module.exports = (sequelize) => {
           fields: ["id_service_pricing"],
         },
       ],
-    }
+    },
   );
 
   // Define associations
@@ -160,6 +160,14 @@ module.exports = (sequelize) => {
     QuotationService.hasMany(models.InvoiceService, {
       foreignKey: "id_quotation_service",
       as: "invoice_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // QuotationService has many Government cost
+    QuotationService.hasMany(models.QuotationGovernmentCost, {
+      foreignKey: "id_quotation_service",
+      as: "government_cost",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

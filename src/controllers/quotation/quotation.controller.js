@@ -135,6 +135,82 @@ function validateProducts(res, products, pathLabel) {
   return null;
 }
 
+/**
+ * Validate a `government_cost` array (government_cost[].tables[].fields[]) —
+ * shared shape used wherever quotation service government_cost is validated.
+ * `pathLabel` is used to build readable error messages, e.g.
+ * "service at index 0 in category 0".
+ * `requireFields` controls whether title_indo/title_mandarin/index are
+ * required (true on create, false on update/revision where partial updates
+ * are allowed).
+ * Returns an error response object if invalid, or null if valid.
+ */
+function validateGovernmentCost(res, governmentCost, pathLabel, requireFields) {
+  if (!Array.isArray(governmentCost)) {
+    return errorResponse(
+      res,
+      `government_cost must be an array for ${pathLabel}`,
+      400,
+    );
+  }
+
+  for (let j = 0; j < governmentCost.length; j++) {
+    const gov = governmentCost[j];
+
+    if (requireFields) {
+      if (!gov.title_indo) {
+        return errorResponse(
+          res,
+          `title_indo is required for government_cost at index ${j} in ${pathLabel}`,
+          400,
+        );
+      }
+
+      if (!gov.title_mandarin) {
+        return errorResponse(
+          res,
+          `title_mandarin is required for government_cost at index ${j} in ${pathLabel}`,
+          400,
+        );
+      }
+
+      if (gov.index == null) {
+        return errorResponse(
+          res,
+          `index is required for government_cost at index ${j} in ${pathLabel}`,
+          400,
+        );
+      }
+    }
+
+    // Validate tables array
+    if (gov.tables !== undefined && !Array.isArray(gov.tables)) {
+      return errorResponse(
+        res,
+        `tables must be an array for government_cost at index ${j} in ${pathLabel}`,
+        400,
+      );
+    }
+
+    // Validate fields inside each table
+    if (gov.tables) {
+      for (let k = 0; k < gov.tables.length; k++) {
+        const table = gov.tables[k];
+
+        if (table.fields !== undefined && !Array.isArray(table.fields)) {
+          return errorResponse(
+            res,
+            `fields must be an array for table at index ${k} in government_cost ${j} in ${pathLabel}`,
+            400,
+          );
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 class QuotationController {
   /**
    * Get all quotations
@@ -260,7 +336,7 @@ class QuotationController {
 
   /**
    * Create quotation with nested categories, services, products, tables, fields,
-   * and services_supporting
+   * government_cost, and services_supporting
    */
   async create(req, res) {
     try {
@@ -404,6 +480,17 @@ class QuotationController {
                 );
                 if (validationError) return validationError;
               }
+
+              // Validate government_cost (-> tables -> fields) nested under this service
+              if (service.government_cost !== undefined) {
+                const validationError = validateGovernmentCost(
+                  res,
+                  service.government_cost,
+                  `service at index ${j} in category ${i}`,
+                  true, // wajib title_indo/title_mandarin/index saat create
+                );
+                if (validationError) return validationError;
+              }
             }
           }
 
@@ -457,7 +544,7 @@ class QuotationController {
 
   /**
    * Update quotation with nested categories, services, products, tables, fields,
-   * and services_supporting
+   * government_cost, and services_supporting
    */
   async update(req, res) {
     try {
@@ -495,7 +582,8 @@ class QuotationController {
             );
           }
 
-          // Validate products (-> tables -> fields) nested under each service
+          // Validate products (-> tables -> fields) and government_cost
+          // (-> tables -> fields) nested under each service
           if (category.services) {
             for (let j = 0; j < category.services.length; j++) {
               const service = category.services[j];
@@ -505,6 +593,16 @@ class QuotationController {
                   res,
                   service.products,
                   `service at index ${j} in category ${i}`,
+                );
+                if (validationError) return validationError;
+              }
+
+              if (service.government_cost !== undefined) {
+                const validationError = validateGovernmentCost(
+                  res,
+                  service.government_cost,
+                  `service at index ${j} in category ${i}`,
+                  false,
                 );
                 if (validationError) return validationError;
               }
@@ -666,7 +764,7 @@ class QuotationController {
   /**
    * revision quotation: simpan snapshot lama sebagai history, lalu update
    * data aktif (quotation + category/service/product/table/field/services_supporting
-   * + payment)
+   * + government_cost/table/field + payment)
    * Body: {
    *   is_double_database,
    *   quotation_category: [...],
@@ -722,6 +820,17 @@ class QuotationController {
                   res,
                   service.products,
                   `service at index ${j} in category ${i}`,
+                );
+                if (validationError) return validationError;
+              }
+
+              // Validate government_cost (-> tables -> fields) nested under this service
+              if (service.government_cost !== undefined) {
+                const validationError = validateGovernmentCost(
+                  res,
+                  service.government_cost,
+                  `service at index ${j} in category ${i}`,
+                  false,
                 );
                 if (validationError) return validationError;
               }

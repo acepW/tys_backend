@@ -252,6 +252,23 @@ class QuotationService extends DualDatabaseService {
                     },
                   ],
                 },
+                {
+                  model: dbModels.QuotationGovernmentCost,
+                  as: "government_cost",
+                  order: [["index", "ASC"]],
+                  include: [
+                    {
+                      model: dbModels.QuotationGovernmentCostTable,
+                      as: "tables",
+                      include: [
+                        {
+                          model: dbModels.QuotationGovernmentCostField,
+                          as: "fields",
+                        },
+                      ],
+                    },
+                  ],
+                },
               ],
             },
             {
@@ -1387,7 +1404,8 @@ class QuotationService extends DualDatabaseService {
 
   /**
    * Sync Quotation Categories with nested services (and each service's nested
-   * products → tables → fields), plus flat services_supporting
+   * products → tables → fields, and each service's nested
+   * government_cost → tables → fields), plus flat services_supporting
    * (QuotationServiceSupporting) per category.
    * @private
    */
@@ -1450,7 +1468,7 @@ class QuotationService extends DualDatabaseService {
         `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`,
       );
 
-      // Get services that belong to categories being deleted (products now hang off services)
+      // Get services that belong to categories being deleted (products/government_cost now hang off services)
       const servicesToDelete = await models.db1.QuotationService.findAll({
         where: { id_quotation_category: deletedCategoryIds },
         attributes: ["id"],
@@ -1526,6 +1544,76 @@ class QuotationService extends DualDatabaseService {
         console.log(
           `   ✓ Deleted products for ${serviceIdsToDelete.length} services`,
         );
+
+        // Get government_cost that belong to those services
+        const govCostsToDelete =
+          await models.db1.QuotationGovernmentCost.findAll({
+            where: { id_quotation_service: serviceIdsToDelete },
+            attributes: ["id"],
+            transaction: transaction1,
+          });
+        const govCostIdsToDelete = govCostsToDelete.map((g) => g.id);
+
+        if (govCostIdsToDelete.length > 0) {
+          const govTablesToDelete =
+            await models.db1.QuotationGovernmentCostTable.findAll({
+              where: { id_quotation_government_cost: govCostIdsToDelete },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+          const govTableIdsToDelete = govTablesToDelete.map((t) => t.id);
+
+          if (govTableIdsToDelete.length > 0) {
+            await models.db1.QuotationGovernmentCostField.destroy({
+              where: {
+                id_quotation_government_cost_table: govTableIdsToDelete,
+              },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationGovernmentCostField.destroy({
+                where: {
+                  id_quotation_government_cost_table: govTableIdsToDelete,
+                },
+                transaction: transaction2,
+              });
+            }
+            console.log(
+              `   ✓ Deleted fields for ${govTableIdsToDelete.length} government_cost tables`,
+            );
+          }
+
+          await models.db1.QuotationGovernmentCostTable.destroy({
+            where: { id_quotation_government_cost: govCostIdsToDelete },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationGovernmentCostTable.destroy({
+              where: { id_quotation_government_cost: govCostIdsToDelete },
+              transaction: transaction2,
+            });
+          }
+          console.log(
+            `   ✓ Deleted tables for ${govCostIdsToDelete.length} government_cost`,
+          );
+        }
+
+        await models.db1.QuotationGovernmentCost.destroy({
+          where: { id_quotation_service: serviceIdsToDelete },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.QuotationGovernmentCost.destroy({
+            where: { id_quotation_service: serviceIdsToDelete },
+            transaction: transaction2,
+          });
+        }
+        console.log(
+          `   ✓ Deleted government_cost for ${serviceIdsToDelete.length} services`,
+        );
       }
 
       // Delete services
@@ -1542,7 +1630,7 @@ class QuotationService extends DualDatabaseService {
       }
 
       console.log(
-        `   ✓ Cleaned up services and products for deleted categories`,
+        `   ✓ Cleaned up services, products & government_cost for deleted categories`,
       );
 
       // Delete services_supporting that belong to categories being deleted
@@ -1589,7 +1677,8 @@ class QuotationService extends DualDatabaseService {
     }
 
     // Process each category's nested services (and each service's nested
-    // products → tables → fields) plus its flat services_supporting
+    // products → tables → fields, and government_cost → tables → fields)
+    // plus its flat services_supporting
     for (let i = 0; i < categoriesData.length; i++) {
       const categoryData = categoriesData[i];
       const syncedCategory = categoryMapping.get(i);
@@ -1609,7 +1698,7 @@ class QuotationService extends DualDatabaseService {
         categoryData.services.length > 0
       ) {
         const preparedServices = categoryData.services.map((service) => {
-          const { products, ...serviceData } = service;
+          const { products, government_cost, ...serviceData } = service;
           return {
             ...serviceData,
             id_quotation_category: categoryId,
@@ -1641,7 +1730,7 @@ class QuotationService extends DualDatabaseService {
             `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
         );
 
-        // Cleanup products (+ tables/fields) belonging to services that will be deleted
+        // Cleanup products/government_cost (+ their tables/fields) belonging to services that will be deleted
         const keepServiceIds = syncedServices.map((s) => s.id);
         const existingServices = await models.db1.QuotationService.findAll({
           where: { id_quotation_category: categoryId },
@@ -1711,6 +1800,71 @@ class QuotationService extends DualDatabaseService {
           console.log(
             `   🗑️ Cleaned up products, tables & fields for ${deletedServiceIds.length} deleted service(s)`,
           );
+
+          // Cleanup government_cost + tables + fields for deleted services
+          const govCostsToDelete =
+            await models.db1.QuotationGovernmentCost.findAll({
+              where: { id_quotation_service: deletedServiceIds },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+          const govCostIdsToDelete = govCostsToDelete.map((g) => g.id);
+
+          if (govCostIdsToDelete.length > 0) {
+            const govTablesToDelete =
+              await models.db1.QuotationGovernmentCostTable.findAll({
+                where: { id_quotation_government_cost: govCostIdsToDelete },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const govTableIdsToDelete = govTablesToDelete.map((t) => t.id);
+
+            if (govTableIdsToDelete.length > 0) {
+              await models.db1.QuotationGovernmentCostField.destroy({
+                where: {
+                  id_quotation_government_cost_table: govTableIdsToDelete,
+                },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationGovernmentCostField.destroy({
+                  where: {
+                    id_quotation_government_cost_table: govTableIdsToDelete,
+                  },
+                  transaction: transaction2,
+                });
+              }
+            }
+
+            await models.db1.QuotationGovernmentCostTable.destroy({
+              where: { id_quotation_government_cost: govCostIdsToDelete },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationGovernmentCostTable.destroy({
+                where: { id_quotation_government_cost: govCostIdsToDelete },
+                transaction: transaction2,
+              });
+            }
+          }
+
+          await models.db1.QuotationGovernmentCost.destroy({
+            where: { id_quotation_service: deletedServiceIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationGovernmentCost.destroy({
+              where: { id_quotation_service: deletedServiceIds },
+              transaction: transaction2,
+            });
+          }
+
+          console.log(
+            `   🗑️ Cleaned up government_cost, tables & fields for ${deletedServiceIds.length} deleted service(s)`,
+          );
         }
 
         // Map categoryData.services[k] → syncedServices entry
@@ -1736,7 +1890,8 @@ class QuotationService extends DualDatabaseService {
           }
         }
 
-        // Sync Products (+ tables + fields) for each service
+        // Sync Products (+ tables + fields) and Government Cost (+ tables + fields)
+        // for each service
         for (let k = 0; k < categoryData.services.length; k++) {
           const serviceData = categoryData.services[k];
           const syncedService = serviceMapping.get(k);
@@ -2136,10 +2291,417 @@ class QuotationService extends DualDatabaseService {
               });
             }
           }
+
+          // Sync Government Cost (+ tables + fields) for this service
+          if (
+            serviceData.government_cost &&
+            Array.isArray(serviceData.government_cost) &&
+            serviceData.government_cost.length > 0
+          ) {
+            const govCostData = serviceData.government_cost.map((gov) => {
+              const { tables, ...govFields } = gov;
+              return {
+                ...govFields,
+                id_quotation_service: serviceId,
+              };
+            });
+
+            console.log(
+              `🏛️ Syncing ${govCostData.length} government_cost for service ${serviceId}`,
+            );
+
+            // Get existing government_cost to identify which will be deleted
+            const existingGovCosts =
+              await models.db1.QuotationGovernmentCost.findAll({
+                where: { id_quotation_service: serviceId },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+
+            const keepGovCostIds = govCostData
+              .filter((g) => g.id)
+              .map((g) => g.id);
+            const existingGovCostIds = existingGovCosts.map((g) => g.id);
+            const deletedGovCostIds = existingGovCostIds.filter(
+              (id) => !keepGovCostIds.includes(id),
+            );
+
+            // Delete tables + fields for government_cost that will be deleted
+            if (deletedGovCostIds.length > 0) {
+              console.log(
+                `🗑️ Deleting tables & fields for ${deletedGovCostIds.length} government_cost...`,
+              );
+
+              const govTablesToDelete =
+                await models.db1.QuotationGovernmentCostTable.findAll({
+                  where: { id_quotation_government_cost: deletedGovCostIds },
+                  attributes: ["id"],
+                  transaction: transaction1,
+                });
+              const govTableIdsToDelete = govTablesToDelete.map((t) => t.id);
+
+              if (govTableIdsToDelete.length > 0) {
+                await models.db1.QuotationGovernmentCostField.destroy({
+                  where: {
+                    id_quotation_government_cost_table: govTableIdsToDelete,
+                  },
+                  transaction: transaction1,
+                });
+
+                if (isDoubleDatabase) {
+                  await models.db2.QuotationGovernmentCostField.destroy({
+                    where: {
+                      id_quotation_government_cost_table: govTableIdsToDelete,
+                    },
+                    transaction: transaction2,
+                  });
+                }
+              }
+
+              await models.db1.QuotationGovernmentCostTable.destroy({
+                where: { id_quotation_government_cost: deletedGovCostIds },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationGovernmentCostTable.destroy({
+                  where: { id_quotation_government_cost: deletedGovCostIds },
+                  transaction: transaction2,
+                });
+              }
+            }
+
+            const govCostResult = await syncChildRecords({
+              Model1: models.db1.QuotationGovernmentCost,
+              Model2: isDoubleDatabase
+                ? models.db2.QuotationGovernmentCost
+                : null,
+              foreignKey: "id_quotation_service",
+              parentId: serviceId,
+              newData: govCostData,
+              transaction1,
+              transaction2,
+              isDoubleDatabase,
+            });
+
+            const syncedGovCosts = [
+              ...(govCostResult.created || []),
+              ...(govCostResult.updated || []),
+            ];
+
+            console.log(
+              `✅ Synced ${syncedGovCosts.length} government_cost for service ${serviceId}`,
+            );
+
+            const govCostMapping = new Map();
+            let govCostCreatedIndex = 0;
+
+            for (let j = 0; j < serviceData.government_cost.length; j++) {
+              const govData = serviceData.government_cost[j];
+
+              if (govData.id) {
+                const syncedGov = syncedGovCosts.find(
+                  (sg) => sg.id === govData.id,
+                );
+                if (syncedGov) govCostMapping.set(j, syncedGov);
+              } else {
+                const createdGovCosts = govCostResult.created || [];
+                if (govCostCreatedIndex < createdGovCosts.length) {
+                  govCostMapping.set(j, createdGovCosts[govCostCreatedIndex]);
+                  govCostCreatedIndex++;
+                }
+              }
+            }
+
+            // Sync Tables (+ fields) for each government_cost
+            for (let j = 0; j < serviceData.government_cost.length; j++) {
+              const govData = serviceData.government_cost[j];
+              const syncedGov = govCostMapping.get(j);
+
+              if (!syncedGov || !syncedGov.id) {
+                console.warn(
+                  `⚠️ Government cost at index ${j} in service ${serviceId} was not synced properly`,
+                );
+                continue;
+              }
+
+              const govCostId = syncedGov.id;
+
+              if (
+                govData.tables &&
+                Array.isArray(govData.tables) &&
+                govData.tables.length > 0
+              ) {
+                const govTablesData = govData.tables.map((table) => {
+                  const { fields, ...tableData } = table;
+                  return {
+                    ...tableData,
+                    id_quotation_government_cost: govCostId,
+                  };
+                });
+
+                console.log(
+                  `🔧 Syncing ${govTablesData.length} tables for government_cost ${govCostId}`,
+                );
+
+                const existingGovTables =
+                  await models.db1.QuotationGovernmentCostTable.findAll({
+                    where: { id_quotation_government_cost: govCostId },
+                    attributes: ["id"],
+                    transaction: transaction1,
+                  });
+
+                const keepGovTableIds = govTablesData
+                  .filter((t) => t.id)
+                  .map((t) => t.id);
+                const existingGovTableIds = existingGovTables.map((t) => t.id);
+                const deletedGovTableIds = existingGovTableIds.filter(
+                  (id) => !keepGovTableIds.includes(id),
+                );
+
+                if (deletedGovTableIds.length > 0) {
+                  await models.db1.QuotationGovernmentCostField.destroy({
+                    where: {
+                      id_quotation_government_cost_table: deletedGovTableIds,
+                    },
+                    transaction: transaction1,
+                  });
+
+                  if (isDoubleDatabase) {
+                    await models.db2.QuotationGovernmentCostField.destroy({
+                      where: {
+                        id_quotation_government_cost_table: deletedGovTableIds,
+                      },
+                      transaction: transaction2,
+                    });
+                  }
+
+                  console.log(
+                    `   🗑️ Cleaned up fields for ${deletedGovTableIds.length} deleted table(s)`,
+                  );
+                }
+
+                const govTablesResult = await syncChildRecords({
+                  Model1: models.db1.QuotationGovernmentCostTable,
+                  Model2: isDoubleDatabase
+                    ? models.db2.QuotationGovernmentCostTable
+                    : null,
+                  foreignKey: "id_quotation_government_cost",
+                  parentId: govCostId,
+                  newData: govTablesData,
+                  transaction1,
+                  transaction2,
+                  isDoubleDatabase,
+                });
+
+                const syncedGovTables = [
+                  ...(govTablesResult.created || []),
+                  ...(govTablesResult.updated || []),
+                ];
+
+                console.log(
+                  `✅ Synced ${syncedGovTables.length} tables for government_cost ${govCostId}`,
+                );
+
+                const govTableMapping = new Map();
+                let govTableCreatedIndex = 0;
+
+                for (let k = 0; k < govData.tables.length; k++) {
+                  const tableData = govData.tables[k];
+
+                  if (tableData.id) {
+                    const syncedTable = syncedGovTables.find(
+                      (st) => st.id === tableData.id,
+                    );
+                    if (syncedTable) {
+                      govTableMapping.set(k, syncedTable);
+                    }
+                  } else {
+                    const createdGovTables = govTablesResult.created || [];
+                    if (govTableCreatedIndex < createdGovTables.length) {
+                      govTableMapping.set(
+                        k,
+                        createdGovTables[govTableCreatedIndex],
+                      );
+                      govTableCreatedIndex++;
+                    }
+                  }
+                }
+
+                // Sync Fields for each table
+                for (let k = 0; k < govData.tables.length; k++) {
+                  const tableData = govData.tables[k];
+                  const syncedTable = govTableMapping.get(k);
+
+                  if (!syncedTable || !syncedTable.id) {
+                    console.warn(
+                      `⚠️ Table at index ${k} in government_cost ${govCostId} was not synced properly`,
+                    );
+                    continue;
+                  }
+
+                  const tableId = syncedTable.id;
+
+                  if (
+                    tableData.fields &&
+                    Array.isArray(tableData.fields) &&
+                    tableData.fields.length > 0
+                  ) {
+                    const fieldsData = tableData.fields.map((field) => ({
+                      ...field,
+                      id_quotation_government_cost_table: tableId,
+                    }));
+
+                    console.log(
+                      `🔧 Syncing ${fieldsData.length} fields for table ${tableId}`,
+                    );
+
+                    const govFieldsResult = await syncChildRecords({
+                      Model1: models.db1.QuotationGovernmentCostField,
+                      Model2: isDoubleDatabase
+                        ? models.db2.QuotationGovernmentCostField
+                        : null,
+                      foreignKey: "id_quotation_government_cost_table",
+                      parentId: tableId,
+                      newData: fieldsData,
+                      transaction1,
+                      transaction2,
+                      isDoubleDatabase,
+                    });
+
+                    const syncedGovFieldsCount =
+                      (govFieldsResult.created?.length || 0) +
+                      (govFieldsResult.updated?.length || 0);
+                    console.log(
+                      `✅ Synced ${syncedGovFieldsCount} fields for table ${tableId}`,
+                    );
+                  } else {
+                    // If no fields provided, delete all existing fields
+                    await models.db1.QuotationGovernmentCostField.destroy({
+                      where: { id_quotation_government_cost_table: tableId },
+                      transaction: transaction1,
+                    });
+
+                    if (isDoubleDatabase) {
+                      await models.db2.QuotationGovernmentCostField.destroy({
+                        where: {
+                          id_quotation_government_cost_table: tableId,
+                        },
+                        transaction: transaction2,
+                      });
+                    }
+                  }
+                }
+              } else {
+                // If no tables provided for this government_cost, delete all
+                // existing tables and their fields
+                const existingGovTables =
+                  await models.db1.QuotationGovernmentCostTable.findAll({
+                    where: { id_quotation_government_cost: govCostId },
+                    attributes: ["id"],
+                    transaction: transaction1,
+                  });
+
+                const govTableIds = existingGovTables.map((t) => t.id);
+
+                if (govTableIds.length > 0) {
+                  await models.db1.QuotationGovernmentCostField.destroy({
+                    where: {
+                      id_quotation_government_cost_table: govTableIds,
+                    },
+                    transaction: transaction1,
+                  });
+
+                  if (isDoubleDatabase) {
+                    await models.db2.QuotationGovernmentCostField.destroy({
+                      where: {
+                        id_quotation_government_cost_table: govTableIds,
+                      },
+                      transaction: transaction2,
+                    });
+                  }
+                }
+
+                await models.db1.QuotationGovernmentCostTable.destroy({
+                  where: { id_quotation_government_cost: govCostId },
+                  transaction: transaction1,
+                });
+
+                if (isDoubleDatabase) {
+                  await models.db2.QuotationGovernmentCostTable.destroy({
+                    where: { id_quotation_government_cost: govCostId },
+                    transaction: transaction2,
+                  });
+                }
+              }
+            }
+          } else {
+            // If no government_cost provided for this service, delete all
+            // existing government_cost, their tables, and their fields
+            const existingGovCosts =
+              await models.db1.QuotationGovernmentCost.findAll({
+                where: { id_quotation_service: serviceId },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const existingGovCostIds = existingGovCosts.map((g) => g.id);
+
+            if (existingGovCostIds.length > 0) {
+              const govTablesToDelete =
+                await models.db1.QuotationGovernmentCostTable.findAll({
+                  where: { id_quotation_government_cost: existingGovCostIds },
+                  attributes: ["id"],
+                  transaction: transaction1,
+                });
+              const govTableIdsToDelete = govTablesToDelete.map((t) => t.id);
+
+              if (govTableIdsToDelete.length > 0) {
+                await models.db1.QuotationGovernmentCostField.destroy({
+                  where: {
+                    id_quotation_government_cost_table: govTableIdsToDelete,
+                  },
+                  transaction: transaction1,
+                });
+
+                if (isDoubleDatabase) {
+                  await models.db2.QuotationGovernmentCostField.destroy({
+                    where: {
+                      id_quotation_government_cost_table: govTableIdsToDelete,
+                    },
+                    transaction: transaction2,
+                  });
+                }
+              }
+
+              await models.db1.QuotationGovernmentCostTable.destroy({
+                where: { id_quotation_government_cost: existingGovCostIds },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationGovernmentCostTable.destroy({
+                  where: { id_quotation_government_cost: existingGovCostIds },
+                  transaction: transaction2,
+                });
+              }
+            }
+
+            await models.db1.QuotationGovernmentCost.destroy({
+              where: { id_quotation_service: serviceId },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationGovernmentCost.destroy({
+                where: { id_quotation_service: serviceId },
+                transaction: transaction2,
+              });
+            }
+          }
         }
       } else {
         // If no services provided, delete all existing services (and their
-        // products/tables/fields)
+        // products/tables/fields + government_cost/tables/fields)
         const existingServices = await models.db1.QuotationService.findAll({
           where: { id_quotation_category: categoryId },
           attributes: ["id"],
@@ -2198,6 +2760,67 @@ class QuotationService extends DualDatabaseService {
 
           if (isDoubleDatabase) {
             await models.db2.QuotationProduct.destroy({
+              where: { id_quotation_service: existingServiceIds },
+              transaction: transaction2,
+            });
+          }
+
+          // Cleanup government_cost + tables + fields for these services too
+          const govCostsToDelete =
+            await models.db1.QuotationGovernmentCost.findAll({
+              where: { id_quotation_service: existingServiceIds },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+          const govCostIdsToDelete = govCostsToDelete.map((g) => g.id);
+
+          if (govCostIdsToDelete.length > 0) {
+            const govTablesToDelete =
+              await models.db1.QuotationGovernmentCostTable.findAll({
+                where: { id_quotation_government_cost: govCostIdsToDelete },
+                attributes: ["id"],
+                transaction: transaction1,
+              });
+            const govTableIdsToDelete = govTablesToDelete.map((t) => t.id);
+
+            if (govTableIdsToDelete.length > 0) {
+              await models.db1.QuotationGovernmentCostField.destroy({
+                where: {
+                  id_quotation_government_cost_table: govTableIdsToDelete,
+                },
+                transaction: transaction1,
+              });
+
+              if (isDoubleDatabase) {
+                await models.db2.QuotationGovernmentCostField.destroy({
+                  where: {
+                    id_quotation_government_cost_table: govTableIdsToDelete,
+                  },
+                  transaction: transaction2,
+                });
+              }
+            }
+
+            await models.db1.QuotationGovernmentCostTable.destroy({
+              where: { id_quotation_government_cost: govCostIdsToDelete },
+              transaction: transaction1,
+            });
+
+            if (isDoubleDatabase) {
+              await models.db2.QuotationGovernmentCostTable.destroy({
+                where: { id_quotation_government_cost: govCostIdsToDelete },
+                transaction: transaction2,
+              });
+            }
+          }
+
+          await models.db1.QuotationGovernmentCost.destroy({
+            where: { id_quotation_service: existingServiceIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.QuotationGovernmentCost.destroy({
               where: { id_quotation_service: existingServiceIds },
               transaction: transaction2,
             });
@@ -2322,7 +2945,8 @@ class QuotationService extends DualDatabaseService {
       );
     }
 
-    // 2. Clone category -> service -> product -> table -> field, plus services_supporting
+    // 2. Clone category -> service -> product -> table -> field,
+    // service -> government_cost -> table -> field, plus services_supporting
     for (const cat of quotation_category || []) {
       const {
         id: catId,
@@ -2344,7 +2968,13 @@ class QuotationService extends DualDatabaseService {
       }
 
       for (const svc of services || []) {
-        const { id: svcId, service_pricing, products, ...svcFields } = svc;
+        const {
+          id: svcId,
+          service_pricing,
+          products,
+          government_cost,
+          ...svcFields
+        } = svc;
 
         const newSvc1 = await models.db1.QuotationService.create(
           { ...svcFields, id_quotation_category: newCat1.id },
@@ -2410,6 +3040,69 @@ class QuotationService extends DualDatabaseService {
                   {
                     ...fieldFields,
                     id_quotation_product_table: newTable1.id,
+                    id: newField1.id,
+                  },
+                  { transaction: transaction2 },
+                );
+              }
+            }
+          }
+        }
+
+        // Clone government_cost -> tables -> fields
+        for (const gov of government_cost || []) {
+          const { id: govId, tables, ...govFields } = gov;
+
+          const newGov1 = await models.db1.QuotationGovernmentCost.create(
+            { ...govFields, id_quotation_service: newSvc1.id },
+            { transaction: transaction1 },
+          );
+          if (isDoubleDatabase) {
+            await models.db2.QuotationGovernmentCost.create(
+              {
+                ...govFields,
+                id_quotation_service: newSvc1.id,
+                id: newGov1.id,
+              },
+              { transaction: transaction2 },
+            );
+          }
+
+          for (const table of tables || []) {
+            const { id: tableId, fields, ...tableFields } = table;
+
+            const newTable1 =
+              await models.db1.QuotationGovernmentCostTable.create(
+                { ...tableFields, id_quotation_government_cost: newGov1.id },
+                { transaction: transaction1 },
+              );
+            if (isDoubleDatabase) {
+              await models.db2.QuotationGovernmentCostTable.create(
+                {
+                  ...tableFields,
+                  id_quotation_government_cost: newGov1.id,
+                  id: newTable1.id,
+                },
+                { transaction: transaction2 },
+              );
+            }
+
+            for (const field of fields || []) {
+              const { id: fieldId, ...fieldFields } = field;
+
+              const newField1 =
+                await models.db1.QuotationGovernmentCostField.create(
+                  {
+                    ...fieldFields,
+                    id_quotation_government_cost_table: newTable1.id,
+                  },
+                  { transaction: transaction1 },
+                );
+              if (isDoubleDatabase) {
+                await models.db2.QuotationGovernmentCostField.create(
+                  {
+                    ...fieldFields,
+                    id_quotation_government_cost_table: newTable1.id,
                     id: newField1.id,
                   },
                   { transaction: transaction2 },
