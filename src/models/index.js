@@ -100,6 +100,9 @@ const PreOrderPaymentModel = require("./preOrder/preOrderPayment.model");
 const PreOrderPaymentListModel = require("./preOrder/preOrderPaymentList.model");
 const PreOrderPaymentServiceModel = require("./preOrder/preOrderPaymentService.model");
 const PreOrderVerificationProgressModel = require("./preOrder/preOrderVerificationProgress.model");
+const PreOrderGovernmentCostModel = require("./preOrder/preOrderGovernmentCost.model");
+const PreOrderGovernmentCostTableModel = require("./preOrder/preOrderGovernmentCostTable.model");
+const PreOrderGovernmentCostFieldModel = require("./preOrder/preOrderGovernmentCostField.model");
 
 //approval Work Flow
 const ApprovalFlowModel = require("./approvalFlow/approvalFlow.model");
@@ -220,6 +223,9 @@ const initializeModels = (sequelize) => {
     PreOrderPaymentList: PreOrderPaymentListModel(sequelize),
     PreOrderPaymentService: PreOrderPaymentServiceModel(sequelize),
     PreOrderVerificationProgress: PreOrderVerificationProgressModel(sequelize),
+    PreOrderGovernmentCost: PreOrderGovernmentCostModel(sequelize),
+    PreOrderGovernmentCostTable: PreOrderGovernmentCostTableModel(sequelize),
+    PreOrderGovernmentCostField: PreOrderGovernmentCostFieldModel(sequelize),
 
     //approval Work Flow
     ApprovalFlow: ApprovalFlowModel(sequelize),

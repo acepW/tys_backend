@@ -1,3 +1,4 @@
+// preOrder.service.js
 const DualDatabaseService = require("../dualDatabase.service");
 const companyService = require("../company.service");
 const { syncChildRecords } = require("../../utils/transactionHelper");
@@ -253,6 +254,22 @@ class PreOrderService extends DualDatabaseService {
                     },
                   ],
                 },
+                {
+                  model: dbModels.PreOrderGovernmentCost,
+                  as: "government_cost",
+                  include: [
+                    {
+                      model: dbModels.PreOrderGovernmentCostTable,
+                      as: "tables",
+                      include: [
+                        {
+                          model: dbModels.PreOrderGovernmentCostField,
+                          as: "fields",
+                        },
+                      ],
+                    },
+                  ],
+                },
               ],
             },
 
@@ -397,7 +414,7 @@ class PreOrderService extends DualDatabaseService {
   /**
    * Create pre order with nested categories, services, products, tables, fields
    * @param {Object} preOrderData - PreOrder data
-   * @param {Array} categoriesData - Array of pre order categories with services (and each service's products -> tables -> fields), plus services_supporting
+   * @param {Array} categoriesData - Array of pre order categories with services (and each service's products -> tables -> fields, plus government_cost -> tables -> fields), plus services_supporting
    * @param {Number} id_user_create
    * @param {Boolean} isDoubleDatabase - Hit both databases if true
    * @returns {Object} Created pre order with all nested relations
@@ -1184,8 +1201,366 @@ class PreOrderService extends DualDatabaseService {
   }
 
   /**
-   * Sync PreOrder Categories with nested services (and each service's nested products -> tables -> fields),
-   * plus flat services_supporting per category
+   * Delete PreOrderGovernmentCostTable + PreOrderGovernmentCostField for a set of government cost IDs
+   * (only deletes children — does not delete the PreOrderGovernmentCost itself)
+   * @private
+   */
+  async _deleteGovernmentCostChildren(
+    governmentCostIds,
+    transaction1,
+    transaction2,
+    isDoubleDatabase,
+  ) {
+    if (!governmentCostIds || governmentCostIds.length === 0) return;
+
+    const tables = await models.db1.PreOrderGovernmentCostTable.findAll({
+      where: { id_pre_order_government_cost: governmentCostIds },
+      attributes: ["id"],
+      transaction: transaction1,
+    });
+    const tableIds = tables.map((t) => t.id);
+
+    if (tableIds.length > 0) {
+      await models.db1.PreOrderGovernmentCostField.destroy({
+        where: { id_pre_order_government_cost_table: tableIds },
+        transaction: transaction1,
+      });
+
+      if (isDoubleDatabase) {
+        await models.db2.PreOrderGovernmentCostField.destroy({
+          where: { id_pre_order_government_cost_table: tableIds },
+          transaction: transaction2,
+        });
+      }
+    }
+
+    await models.db1.PreOrderGovernmentCostTable.destroy({
+      where: { id_pre_order_government_cost: governmentCostIds },
+      transaction: transaction1,
+    });
+
+    if (isDoubleDatabase) {
+      await models.db2.PreOrderGovernmentCostTable.destroy({
+        where: { id_pre_order_government_cost: governmentCostIds },
+        transaction: transaction2,
+      });
+    }
+  }
+
+  /**
+   * Sync a single government cost's tables (and each table's fields)
+   * @private
+   */
+  async _syncGovernmentCostTables(
+    governmentCostId,
+    tablesData,
+    transaction1,
+    transaction2,
+    isDoubleDatabase,
+  ) {
+    if (!tablesData || tablesData.length === 0) {
+      // Tidak ada tables → hapus semua table + field milik government cost ini
+      await this._deleteGovernmentCostChildren(
+        [governmentCostId],
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
+      return;
+    }
+
+    const preparedTables = tablesData.map((table) => {
+      const { fields, ...tableData } = table;
+      return { ...tableData, id_pre_order_government_cost: governmentCostId };
+    });
+
+    console.log(
+      `📦 Syncing ${preparedTables.length} tables for government cost ${governmentCostId}`,
+    );
+
+    // Cleanup fields for tables that will be deleted
+    const existingTables = await models.db1.PreOrderGovernmentCostTable.findAll(
+      {
+        where: { id_pre_order_government_cost: governmentCostId },
+        attributes: ["id"],
+        transaction: transaction1,
+      },
+    );
+
+    const keepTableIds = preparedTables.filter((t) => t.id).map((t) => t.id);
+    const existingTableIds = existingTables.map((t) => t.id);
+    const deletedTableIds = existingTableIds.filter(
+      (id) => !keepTableIds.includes(id),
+    );
+
+    if (deletedTableIds.length > 0) {
+      console.log(
+        `🗑️ Deleting fields for ${deletedTableIds.length} government cost tables...`,
+      );
+      await models.db1.PreOrderGovernmentCostField.destroy({
+        where: { id_pre_order_government_cost_table: deletedTableIds },
+        transaction: transaction1,
+      });
+
+      if (isDoubleDatabase) {
+        await models.db2.PreOrderGovernmentCostField.destroy({
+          where: { id_pre_order_government_cost_table: deletedTableIds },
+          transaction: transaction2,
+        });
+      }
+    }
+
+    const tablesResult = await syncChildRecords({
+      Model1: models.db1.PreOrderGovernmentCostTable,
+      Model2: isDoubleDatabase ? models.db2.PreOrderGovernmentCostTable : null,
+      foreignKey: "id_pre_order_government_cost",
+      parentId: governmentCostId,
+      newData: preparedTables,
+      transaction1,
+      transaction2,
+      isDoubleDatabase,
+    });
+
+    const syncedTables = [
+      ...(tablesResult.created || []),
+      ...(tablesResult.updated || []),
+    ];
+
+    console.log(
+      `✅ Synced ${syncedTables.length} tables for government cost ${governmentCostId} ` +
+        `(${tablesResult.summary.totalCreated} created, ${tablesResult.summary.totalUpdated} updated)`,
+    );
+
+    // Map tablesData[k] → syncedTables entry
+    const tableMapping = new Map();
+    let tableCreatedIndex = 0;
+
+    for (let k = 0; k < tablesData.length; k++) {
+      const tableData = tablesData[k];
+
+      if (tableData.id) {
+        const syncedTable = syncedTables.find((st) => st.id === tableData.id);
+        if (syncedTable) tableMapping.set(k, syncedTable);
+      } else {
+        const createdTables = tablesResult.created || [];
+        if (tableCreatedIndex < createdTables.length) {
+          tableMapping.set(k, createdTables[tableCreatedIndex]);
+          tableCreatedIndex++;
+        }
+      }
+    }
+
+    // Sync Fields for each table
+    for (let k = 0; k < tablesData.length; k++) {
+      const tableData = tablesData[k];
+      const syncedTable = tableMapping.get(k);
+
+      if (!syncedTable || !syncedTable.id) {
+        console.warn(
+          `⚠️ Table at index ${k} in government cost ${governmentCostId} was not synced properly`,
+        );
+        continue;
+      }
+
+      const tableId = syncedTable.id;
+
+      if (
+        tableData.fields &&
+        Array.isArray(tableData.fields) &&
+        tableData.fields.length > 0
+      ) {
+        const fieldsData = tableData.fields.map((field) => ({
+          ...field,
+          id_pre_order_government_cost_table: tableId,
+        }));
+
+        console.log(
+          `🔧 Syncing ${fieldsData.length} fields for government cost table ${tableId}`,
+        );
+
+        const fieldsResult = await syncChildRecords({
+          Model1: models.db1.PreOrderGovernmentCostField,
+          Model2: isDoubleDatabase
+            ? models.db2.PreOrderGovernmentCostField
+            : null,
+          foreignKey: "id_pre_order_government_cost_table",
+          parentId: tableId,
+          newData: fieldsData,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
+        const syncedFieldsCount =
+          (fieldsResult.created?.length || 0) +
+          (fieldsResult.updated?.length || 0);
+        console.log(
+          `✅ Synced ${syncedFieldsCount} fields for government cost table ${tableId}`,
+        );
+      } else {
+        // Tidak ada fields → hapus semua field milik table ini
+        await models.db1.PreOrderGovernmentCostField.destroy({
+          where: { id_pre_order_government_cost_table: tableId },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.PreOrderGovernmentCostField.destroy({
+            where: { id_pre_order_government_cost_table: tableId },
+            transaction: transaction2,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Sync a single service's government_cost array (each with nested tables -> fields)
+   * Logic: no id = create, has id = update, missing from data = delete
+   * @private
+   */
+  async _syncServiceGovernmentCost(
+    serviceId,
+    governmentCostData,
+    transaction1,
+    transaction2,
+    isDoubleDatabase,
+  ) {
+    if (!governmentCostData || governmentCostData.length === 0) {
+      // Tidak ada government_cost → hapus semua government cost + children milik service ini
+      const existingCosts = await models.db1.PreOrderGovernmentCost.findAll({
+        where: { id_pre_order_service: serviceId },
+        attributes: ["id"],
+        transaction: transaction1,
+      });
+      const costIds = existingCosts.map((c) => c.id);
+
+      if (costIds.length > 0) {
+        await this._deleteGovernmentCostChildren(
+          costIds,
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        );
+
+        await models.db1.PreOrderGovernmentCost.destroy({
+          where: { id_pre_order_service: serviceId },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.PreOrderGovernmentCost.destroy({
+            where: { id_pre_order_service: serviceId },
+            transaction: transaction2,
+          });
+        }
+
+        console.log(
+          `🗑️ Cleared all government cost(s) & children for Service ID: ${serviceId}`,
+        );
+      }
+      return;
+    }
+
+    const preparedCosts = governmentCostData.map((gc) => {
+      const { tables, ...gcData } = gc;
+      return { ...gcData, id_pre_order_service: serviceId };
+    });
+
+    console.log(
+      `💰 Syncing ${preparedCosts.length} government cost(s) for service ${serviceId}`,
+    );
+
+    // Cleanup children for government costs that will be deleted
+    const existingCosts = await models.db1.PreOrderGovernmentCost.findAll({
+      where: { id_pre_order_service: serviceId },
+      attributes: ["id"],
+      transaction: transaction1,
+    });
+
+    const keepCostIds = preparedCosts.filter((c) => c.id).map((c) => c.id);
+    const existingCostIds = existingCosts.map((c) => c.id);
+    const deletedCostIds = existingCostIds.filter(
+      (id) => !keepCostIds.includes(id),
+    );
+
+    if (deletedCostIds.length > 0) {
+      console.log(
+        `🗑️ Deleting tables & fields for ${deletedCostIds.length} government cost(s)...`,
+      );
+      await this._deleteGovernmentCostChildren(
+        deletedCostIds,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
+    }
+
+    const costsResult = await syncChildRecords({
+      Model1: models.db1.PreOrderGovernmentCost,
+      Model2: isDoubleDatabase ? models.db2.PreOrderGovernmentCost : null,
+      foreignKey: "id_pre_order_service",
+      parentId: serviceId,
+      newData: preparedCosts,
+      transaction1,
+      transaction2,
+      isDoubleDatabase,
+    });
+
+    const syncedCosts = [
+      ...(costsResult.created || []),
+      ...(costsResult.updated || []),
+    ];
+
+    console.log(
+      `✅ Synced ${syncedCosts.length} government cost(s) for service ${serviceId} ` +
+        `(${costsResult.summary.totalCreated} created, ${costsResult.summary.totalUpdated} updated)`,
+    );
+
+    // Map governmentCostData[i] → syncedCosts entry
+    const costMapping = new Map();
+    let costCreatedIndex = 0;
+
+    for (let i = 0; i < governmentCostData.length; i++) {
+      const gcData = governmentCostData[i];
+
+      if (gcData.id) {
+        const syncedCost = syncedCosts.find((sc) => sc.id === gcData.id);
+        if (syncedCost) costMapping.set(i, syncedCost);
+      } else {
+        const createdCosts = costsResult.created || [];
+        if (costCreatedIndex < createdCosts.length) {
+          costMapping.set(i, createdCosts[costCreatedIndex]);
+          costCreatedIndex++;
+        }
+      }
+    }
+
+    // Sync Tables (+ fields) for each government cost
+    for (let i = 0; i < governmentCostData.length; i++) {
+      const gcData = governmentCostData[i];
+      const syncedCost = costMapping.get(i);
+
+      if (!syncedCost || !syncedCost.id) {
+        console.warn(
+          `⚠️ Government cost at index ${i} for service ${serviceId} was not synced properly`,
+        );
+        continue;
+      }
+
+      await this._syncGovernmentCostTables(
+        syncedCost.id,
+        gcData.tables || [],
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
+    }
+  }
+
+  /**
+   * Sync PreOrder Categories with nested services (and each service's nested products -> tables -> fields,
+   * plus government_cost -> tables -> fields), plus flat services_supporting per category
    * @private
    */
   async _syncPreOrderCategories(
@@ -1247,7 +1622,7 @@ class PreOrderService extends DualDatabaseService {
         `🗑️ Cleaning up ${deletedCategoryIds.length} categories and their children...`,
       );
 
-      // Get services that belong to categories being deleted (products hang off services)
+      // Get services that belong to categories being deleted (products/government_cost hang off services)
       const servicesToDelete = await models.db1.PreOrderService.findAll({
         where: { id_pre_order_category: deletedCategoryIds },
         attributes: ["id"],
@@ -1291,6 +1666,46 @@ class PreOrderService extends DualDatabaseService {
         }
         console.log(
           `   ✓ Deleted products for ${serviceIdsToDelete.length} services`,
+        );
+
+        // Get government costs that belong to those services
+        const governmentCostsToDelete =
+          await models.db1.PreOrderGovernmentCost.findAll({
+            where: { id_pre_order_service: serviceIdsToDelete },
+            attributes: ["id"],
+            transaction: transaction1,
+          });
+        const governmentCostIdsToDelete = governmentCostsToDelete.map(
+          (gc) => gc.id,
+        );
+
+        // Delete tables + fields first (deepest children)
+        if (governmentCostIdsToDelete.length > 0) {
+          await this._deleteGovernmentCostChildren(
+            governmentCostIdsToDelete,
+            transaction1,
+            transaction2,
+            isDoubleDatabase,
+          );
+          console.log(
+            `   ✓ Deleted tables & fields for ${governmentCostIdsToDelete.length} government cost(s)`,
+          );
+        }
+
+        // Delete government costs
+        await models.db1.PreOrderGovernmentCost.destroy({
+          where: { id_pre_order_service: serviceIdsToDelete },
+          transaction: transaction1,
+        });
+
+        if (isDoubleDatabase) {
+          await models.db2.PreOrderGovernmentCost.destroy({
+            where: { id_pre_order_service: serviceIdsToDelete },
+            transaction: transaction2,
+          });
+        }
+        console.log(
+          `   ✓ Deleted government cost(s) for ${serviceIdsToDelete.length} services`,
         );
       }
 
@@ -1354,8 +1769,8 @@ class PreOrderService extends DualDatabaseService {
       }
     }
 
-    // Process each category's nested services (and each service's nested products -> tables -> fields),
-    // plus its flat services_supporting
+    // Process each category's nested services (and each service's nested products -> tables -> fields,
+    // plus government_cost -> tables -> fields), plus its flat services_supporting
     for (let i = 0; i < categoriesData.length; i++) {
       const categoryData = categoriesData[i];
       const syncedCategory = categoryMapping.get(i);
@@ -1375,7 +1790,7 @@ class PreOrderService extends DualDatabaseService {
         categoryData.services.length > 0
       ) {
         const preparedServices = categoryData.services.map((service) => {
-          const { products, ...serviceData } = service;
+          const { products, government_cost, ...serviceData } = service;
           return {
             ...serviceData,
             id_pre_order_category: categoryId,
@@ -1407,7 +1822,7 @@ class PreOrderService extends DualDatabaseService {
             `(${servicesResult.summary.totalCreated} created, ${servicesResult.summary.totalUpdated} updated)`,
         );
 
-        // Cleanup products+tables+fields belonging to services that will be deleted
+        // Cleanup products+tables+fields and government_cost+tables+fields belonging to services that will be deleted
         const keepServiceIds = syncedServices.map((s) => s.id);
         const existingServices = await models.db1.PreOrderService.findAll({
           where: { id_pre_order_category: categoryId },
@@ -1449,6 +1864,42 @@ class PreOrderService extends DualDatabaseService {
 
           console.log(
             `   🗑️ Cleaned up products, tables & fields for ${deletedServiceIds.length} deleted service(s)`,
+          );
+
+          // Cleanup government_cost + tables + fields for the same deleted services
+          const governmentCostsToDelete =
+            await models.db1.PreOrderGovernmentCost.findAll({
+              where: { id_pre_order_service: deletedServiceIds },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+          const governmentCostIdsToDelete = governmentCostsToDelete.map(
+            (gc) => gc.id,
+          );
+
+          if (governmentCostIdsToDelete.length > 0) {
+            await this._deleteGovernmentCostChildren(
+              governmentCostIdsToDelete,
+              transaction1,
+              transaction2,
+              isDoubleDatabase,
+            );
+          }
+
+          await models.db1.PreOrderGovernmentCost.destroy({
+            where: { id_pre_order_service: deletedServiceIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.PreOrderGovernmentCost.destroy({
+              where: { id_pre_order_service: deletedServiceIds },
+              transaction: transaction2,
+            });
+          }
+
+          console.log(
+            `   🗑️ Cleaned up government cost, tables & fields for ${deletedServiceIds.length} deleted service(s)`,
           );
         }
 
@@ -1632,8 +2083,31 @@ class PreOrderService extends DualDatabaseService {
             }
           }
         }
+
+        // Sync Government Cost (+ tables + fields) for each service
+        for (let k = 0; k < categoryData.services.length; k++) {
+          const serviceData = categoryData.services[k];
+          const syncedService = serviceMapping.get(k);
+
+          if (!syncedService || !syncedService.id) {
+            console.warn(
+              `⚠️ Service at index ${k} in category ${categoryId} was not synced properly (government cost)`,
+            );
+            continue;
+          }
+
+          const serviceId = syncedService.id;
+
+          await this._syncServiceGovernmentCost(
+            serviceId,
+            serviceData.government_cost || [],
+            transaction1,
+            transaction2,
+            isDoubleDatabase,
+          );
+        }
       } else {
-        // If no services provided, delete all existing services (and their products/tables/fields)
+        // If no services provided, delete all existing services (and their products/tables/fields, government_cost/tables/fields)
         const existingServices = await models.db1.PreOrderService.findAll({
           where: { id_pre_order_category: categoryId },
           attributes: ["id"],
@@ -1665,6 +2139,37 @@ class PreOrderService extends DualDatabaseService {
 
           if (isDoubleDatabase) {
             await models.db2.PreOrderProduct.destroy({
+              where: { id_pre_order_service: existingServiceIds },
+              transaction: transaction2,
+            });
+          }
+
+          const governmentCostsToDelete =
+            await models.db1.PreOrderGovernmentCost.findAll({
+              where: { id_pre_order_service: existingServiceIds },
+              attributes: ["id"],
+              transaction: transaction1,
+            });
+          const governmentCostIdsToDelete = governmentCostsToDelete.map(
+            (gc) => gc.id,
+          );
+
+          if (governmentCostIdsToDelete.length > 0) {
+            await this._deleteGovernmentCostChildren(
+              governmentCostIdsToDelete,
+              transaction1,
+              transaction2,
+              isDoubleDatabase,
+            );
+          }
+
+          await models.db1.PreOrderGovernmentCost.destroy({
+            where: { id_pre_order_service: existingServiceIds },
+            transaction: transaction1,
+          });
+
+          if (isDoubleDatabase) {
+            await models.db2.PreOrderGovernmentCost.destroy({
               where: { id_pre_order_service: existingServiceIds },
               transaction: transaction2,
             });

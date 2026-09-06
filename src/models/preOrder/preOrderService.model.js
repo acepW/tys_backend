@@ -145,6 +145,14 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+
+    // PreOrderService has many Government Costs
+    PreOrderService.hasMany(models.PreOrderGovernmentCost, {
+      foreignKey: "id_pre_order_service",
+      as: "government_cost",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
   };
 
   return PreOrderService;

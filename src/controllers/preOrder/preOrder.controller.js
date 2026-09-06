@@ -1,3 +1,4 @@
+// preOrder.controller.js
 const preOrderService = require("../../services/preOrder/preOrder.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
@@ -111,7 +112,8 @@ class PreOrderController {
   }
 
   /**
-   * Create pre order with nested categories, services, products, tables, fields, and services_supporting
+   * Create pre order with nested categories, services, products, tables, fields,
+   * government_cost, and services_supporting
    */
   async create(req, res) {
     try {
@@ -183,7 +185,7 @@ class PreOrderController {
             );
           }
 
-          // Validate each service (and its nested products -> tables)
+          // Validate each service (and its nested products -> tables, and government_cost -> tables)
           if (category.services) {
             for (let j = 0; j < category.services.length; j++) {
               const service = category.services[j];
@@ -291,6 +293,121 @@ class PreOrderController {
                         return errorResponse(
                           res,
                           `fields must be an array for table at index ${t} in product ${k} in service ${j} in category ${i}`,
+                          400,
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Validate government_cost array nested inside the service
+              if (
+                service.government_cost &&
+                !Array.isArray(service.government_cost)
+              ) {
+                return errorResponse(
+                  res,
+                  `government_cost must be an array for service at index ${j} in category ${i}`,
+                  400,
+                );
+              }
+
+              // Validate each government_cost
+              if (service.government_cost) {
+                for (let g = 0; g < service.government_cost.length; g++) {
+                  const governmentCost = service.government_cost[g];
+
+                  if (!governmentCost.title_indo) {
+                    return errorResponse(
+                      res,
+                      `title_indo is required for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  if (!governmentCost.title_mandarin) {
+                    return errorResponse(
+                      res,
+                      `title_mandarin is required for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  if (
+                    governmentCost.price_idr == null ||
+                    governmentCost.price_idr === undefined
+                  ) {
+                    return errorResponse(
+                      res,
+                      `price_idr is required for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  if (
+                    governmentCost.price_rmb == null ||
+                    governmentCost.price_rmb === undefined
+                  ) {
+                    return errorResponse(
+                      res,
+                      `price_rmb is required for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  if (
+                    governmentCost.qty == null ||
+                    governmentCost.qty === undefined
+                  ) {
+                    return errorResponse(
+                      res,
+                      `qty is required for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  if (
+                    governmentCost.index == null ||
+                    governmentCost.index === undefined
+                  ) {
+                    return errorResponse(
+                      res,
+                      `index is required for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  // Validate tables array nested inside the government_cost
+                  if (
+                    governmentCost.tables &&
+                    !Array.isArray(governmentCost.tables)
+                  ) {
+                    return errorResponse(
+                      res,
+                      `tables must be an array for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  // Validate each government_cost table (and its nested fields)
+                  if (governmentCost.tables) {
+                    for (let t = 0; t < governmentCost.tables.length; t++) {
+                      const table = governmentCost.tables[t];
+
+                      if (table.index == null || table.index === undefined) {
+                        return errorResponse(
+                          res,
+                          `index is required for table at index ${t} in government_cost ${g} in service ${j} in category ${i}`,
+                          400,
+                        );
+                      }
+
+                      // Validate fields array
+                      if (table.fields && !Array.isArray(table.fields)) {
+                        return errorResponse(
+                          res,
+                          `fields must be an array for table at index ${t} in government_cost ${g} in service ${j} in category ${i}`,
                           400,
                         );
                       }
@@ -407,7 +524,8 @@ class PreOrderController {
   }
 
   /**
-   * Update pre order with nested categories, services, products, tables, fields, and services_supporting
+   * Update pre order with nested categories, services, products, tables, fields,
+   * government_cost, and services_supporting
    */
   async update(req, res) {
     try {
@@ -441,7 +559,8 @@ class PreOrderController {
             );
           }
 
-          // Validate products nested inside each service, and tables nested inside each product
+          // Validate products nested inside each service, tables nested inside each product,
+          // and government_cost (+ tables) nested inside each service
           if (category.services) {
             for (let j = 0; j < category.services.length; j++) {
               const service = category.services[j];
@@ -474,6 +593,48 @@ class PreOrderController {
                         return errorResponse(
                           res,
                           `fields must be an array for table at index ${t} in product ${k} in service ${j} in category ${i}`,
+                          400,
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (
+                service.government_cost &&
+                !Array.isArray(service.government_cost)
+              ) {
+                return errorResponse(
+                  res,
+                  `government_cost must be an array for service at index ${j} in category ${i}`,
+                  400,
+                );
+              }
+
+              if (service.government_cost) {
+                for (let g = 0; g < service.government_cost.length; g++) {
+                  const governmentCost = service.government_cost[g];
+
+                  if (
+                    governmentCost.tables &&
+                    !Array.isArray(governmentCost.tables)
+                  ) {
+                    return errorResponse(
+                      res,
+                      `tables must be an array for government_cost at index ${g} in service ${j} in category ${i}`,
+                      400,
+                    );
+                  }
+
+                  if (governmentCost.tables) {
+                    for (let t = 0; t < governmentCost.tables.length; t++) {
+                      const table = governmentCost.tables[t];
+
+                      if (table.fields && !Array.isArray(table.fields)) {
+                        return errorResponse(
+                          res,
+                          `fields must be an array for table at index ${t} in government_cost ${g} in service ${j} in category ${i}`,
                           400,
                         );
                       }
