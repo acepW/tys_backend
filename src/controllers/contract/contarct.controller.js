@@ -1,4 +1,5 @@
 const contractService = require("../../services/contract/contract.service");
+const contractPaymentService = require("../../services/contract/contractPayment.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
 class ContractController {
@@ -607,27 +608,15 @@ class ContractController {
     try {
       const { id_payment } = req.params;
       const { is_double_database = true } = req.body || {};
-      const isDoubleDatabase = is_double_database;
-
-      // Check if contract exists
-      const existing = await paymentService.findById(
+      const result = await contractPaymentService.openPayment(
         id_payment,
-        {},
-        isDoubleDatabase,
-      );
-      if (!existing) {
-        return errorResponse(res, "Payment not found", 404);
-      }
-
-      const result = await paymentService.update(
-        id_payment,
-        { is_open: true },
-        isDoubleDatabase,
+        is_double_database,
+        req.user?.id,
       );
 
       return successResponse(res, result, "Payment opened successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 

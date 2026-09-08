@@ -10,6 +10,12 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for Invoice",
       },
+      source_type: {
+        type: DataTypes.ENUM("contract", "pre_order"),
+        allowNull: false,
+        defaultValue: "contract",
+        comment: "Direct source of the invoice",
+      },
       id_quotation: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -21,21 +27,39 @@ module.exports = (sequelize) => {
       },
       id_contract: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "contracts",
           key: "id",
         },
         comment: "Foreign key to contracts table",
       },
+      id_pre_order: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "pre_orders",
+          key: "id",
+        },
+        comment: "Direct PreOrder source; null for Contract invoices",
+      },
       id_contract_payment: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
         references: {
           model: "contract_payment",
           key: "id",
         },
-        comment: "Foreign key to contracts_payment table",
+        comment: "Contract payment source; null for PreOrder invoices",
+      },
+      id_pre_order_payment: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "pre_order_payment",
+          key: "id",
+        },
+        comment: "PreOrder payment source; null for Contract invoices",
       },
       id_company: {
         type: DataTypes.INTEGER,
@@ -90,6 +114,12 @@ module.exports = (sequelize) => {
           key: "id",
         },
         comment: "Id user who reject the service pricing",
+      },
+      currency_type: {
+        type: DataTypes.ENUM("idr", "rmb"),
+        allowNull: false,
+        defaultValue: "idr",
+        comment: "Invoice currency inherited from its payment source",
       },
       date: {
         type: DataTypes.DATE,
@@ -203,12 +233,28 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
+          name: "idx_invoice_source_type",
+          fields: ["source_type"],
+        },
+        {
           name: "idx_id_quotation",
           fields: ["id_quotation"],
         },
         {
           name: "idx_id_contract",
           fields: ["id_contract"],
+        },
+        {
+          name: "idx_id_pre_order",
+          fields: ["id_pre_order"],
+        },
+        {
+          name: "idx_id_contract_payment",
+          fields: ["id_contract_payment"],
+        },
+        {
+          name: "idx_id_pre_order_payment",
+          fields: ["id_pre_order_payment"],
         },
         {
           name: "idx_id_company",
@@ -254,11 +300,25 @@ module.exports = (sequelize) => {
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
+    // Invoice belongs to PreOrder
+    Invoice.belongsTo(models.PreOrder, {
+      foreignKey: "id_pre_order",
+      as: "pre_order",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     // Invoice belongs to Contract Payment
     Invoice.belongsTo(models.ContractPayment, {
       foreignKey: "id_contract_payment",
       as: "contract_payment",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+    // Invoice belongs to PreOrder Payment
+    Invoice.belongsTo(models.PreOrderPayment, {
+      foreignKey: "id_pre_order_payment",
+      as: "pre_order_payment",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
@@ -303,6 +363,13 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    // Invoice has many incoming source payment lists
+    Invoice.hasMany(models.IncomingInvoice, {
+      foreignKey: "id_invoice",
+      as: "incoming_sources",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
     // Invoice has many Invoice Services
     Invoice.hasMany(models.InvoiceService, {
       foreignKey: "id_invoice",

@@ -1,8 +1,38 @@
 const invoiceService = require("../../services/invoice/invoice.service");
+const incomingInvoiceService = require("../../services/invoice/incomingInvoice.service");
 const { successResponse, errorResponse } = require("../../utils/response");
-const { Op } = require("sequelize");
 
 class InvoiceController {
+  /**
+   * Get incoming or history invoice sources from Contract and PreOrder.
+   */
+  async getIncoming(req, res) {
+    try {
+      const {
+        status = "incoming",
+        source_type = "all",
+        search,
+        page = 1,
+        limit = 10,
+      } = req.query || {};
+      const result = await incomingInvoiceService.getAll({
+        status,
+        sourceType: source_type,
+        search,
+        page,
+        limit,
+      });
+
+      return successResponse(
+        res,
+        result,
+        `${status === "history" ? "History" : "Incoming"} invoices retrieved successfully`,
+      );
+    } catch (error) {
+      const statusCode = error.message.includes("must be") ? 400 : 500;
+      return errorResponse(res, error.message, statusCode);
+    }
+  }
   /**
    * Get all invoices
    */
@@ -13,7 +43,9 @@ class InvoiceController {
         id_company,
         id_customer,
         id_contract,
+        id_pre_order,
         id_quotation,
+        source_type,
         status,
         search,
         page,
@@ -21,19 +53,14 @@ class InvoiceController {
       } = req.query;
       const isDoubleDatabase = is_double_database !== "false";
 
-      let obj = {};
-      if (search) {
-        obj = {
-          [Op.or]: [
-            { invoice_no: { [Op.like]: `%${search}%` } },
-            { note: { [Op.like]: `%${search}%` } },
-          ],
-        };
-      }
+      const obj = {};
+
       if (id_company) obj.id_company = id_company;
       if (id_customer) obj.id_customer = id_customer;
       if (id_contract) obj.id_contract = id_contract;
+      if (id_pre_order) obj.id_pre_order = id_pre_order;
       if (id_quotation) obj.id_quotation = id_quotation;
+      if (source_type) obj.source_type = source_type;
       if (status) obj.status = status;
       obj.is_active = true;
 
@@ -41,7 +68,8 @@ class InvoiceController {
         { where: obj },
         parseInt(page),
         parseInt(limit),
-        isDoubleDatabase
+        isDoubleDatabase,
+        search,
       );
 
       return successResponse(res, invoices, "Invoices retrieved successfully");
@@ -92,6 +120,64 @@ class InvoiceController {
   }
 
   /**
+   * Create invoice from incoming Contract/PreOrder payment lists.
+   */
+  async createFromIncoming(req, res) {
+    try {
+      const {
+        is_double_database,
+        incoming_invoice_ids,
+        ...invoiceData
+      } = req.body || {};
+      const isDoubleDatabase = is_double_database !== false;
+
+      if (
+        !Array.isArray(incoming_invoice_ids) ||
+        incoming_invoice_ids.length === 0
+      ) {
+        return errorResponse(
+          res,
+          "incoming_invoice_ids must be a non-empty array",
+          400,
+        );
+      }
+      if (
+        incoming_invoice_ids.some(
+          (id) => !Number.isInteger(Number(id)) || Number(id) <= 0,
+        )
+      ) {
+        return errorResponse(
+          res,
+          "incoming_invoice_ids must contain valid IDs",
+          400,
+        );
+      }
+      if (!invoiceData.invoice_no) {
+        return errorResponse(res, "invoice_no is required", 400);
+      }
+      if (!invoiceData.date) {
+        return errorResponse(res, "date is required", 400);
+      }
+
+      const result = await invoiceService.createFromIncoming(
+        invoiceData,
+        incoming_invoice_ids,
+        req.user.id,
+        isDoubleDatabase,
+      );
+
+      return successResponse(
+        res,
+        result,
+        "Invoice created from incoming payment successfully",
+        201,
+      );
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
    * Create invoice with invoice services
    */
   async create(req, res) {
@@ -115,6 +201,7 @@ class InvoiceController {
       if (!invoiceData.id_customer) {
         return errorResponse(res, "id_customer is required", 400);
       }
+
       if (!invoiceData.invoice_no) {
         return errorResponse(res, "invoice_no is required", 400);
       }
@@ -130,6 +217,9 @@ class InvoiceController {
       // Set default values
       const invoiceDataToCreate = {
         ...invoiceData,
+        source_type: "contract",
+        id_pre_order: null,
+        id_pre_order_payment: null,
         id_user_create: req.user.id,
         status: "pending",
         is_active:

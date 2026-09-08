@@ -4,10 +4,19 @@ const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
 const { Op, fn, col, where } = require("sequelize");
 const debitNoteService = require("../debitNote/debitNote.service");
+const incomingInvoiceService = require("./incomingInvoice.service");
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
     super("Invoice");
+  }
+  async _nextSharedId(Model1, Model2, transaction1, transaction2) {
+    const [maxId1, maxId2] = await Promise.all([
+      Model1.max("id", { transaction: transaction1 }),
+      Model2.max("id", { transaction: transaction2 }),
+    ]);
+
+    return Math.max(Number(maxId1 || 0), Number(maxId2 || 0)) + 1;
   }
 
   /**
@@ -23,11 +32,49 @@ class InvoiceService extends DualDatabaseService {
     page = null,
     limit = null,
     isDoubleDatabase = true,
+    search = null,
   ) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
+    let resolvedOptions = options;
+
+    if (search) {
+      const searchPattern = `%${search}%`;
+      const [matchingContracts, matchingPreOrders] = await Promise.all([
+        dbModels.Contract.findAll({
+          attributes: ["id"],
+          where: { contract_no: { [Op.like]: searchPattern } },
+          raw: true,
+        }),
+        dbModels.PreOrder.findAll({
+          attributes: ["id"],
+          where: { pre_order_no: { [Op.like]: searchPattern } },
+          raw: true,
+        }),
+      ]);
+      const contractIds = matchingContracts.map((contract) => contract.id);
+      const preOrderIds = matchingPreOrders.map((preOrder) => preOrder.id);
+      const searchConditions = [
+        { invoice_no: { [Op.like]: searchPattern } },
+        { note: { [Op.like]: searchPattern } },
+      ];
+
+      if (contractIds.length > 0) {
+        searchConditions.push({ id_contract: { [Op.in]: contractIds } });
+      }
+      if (preOrderIds.length > 0) {
+        searchConditions.push({ id_pre_order: { [Op.in]: preOrderIds } });
+      }
+
+      resolvedOptions = {
+        ...options,
+        where: {
+          [Op.and]: [options.where || {}, { [Op.or]: searchConditions }],
+        },
+      };
+    }
 
     const queryOptions = {
-      ...options,
+      ...resolvedOptions,
       include: [
         {
           model: dbModels.Quotation,
@@ -49,6 +96,11 @@ class InvoiceService extends DualDatabaseService {
           ],
         },
         {
+          model: dbModels.PreOrder,
+          as: "pre_order",
+          required: false,
+        },
+        {
           model: dbModels.ContractPayment,
           as: "contract_payment",
           attributes: [
@@ -59,6 +111,11 @@ class InvoiceService extends DualDatabaseService {
             "total_payment_rmb",
             "payment_to",
           ],
+        },
+        {
+          model: dbModels.PreOrderPayment,
+          as: "pre_order_payment",
+          required: false,
         },
         {
           model: dbModels.Company,
@@ -169,8 +226,18 @@ class InvoiceService extends DualDatabaseService {
           as: "contract",
         },
         {
+          model: dbModels.PreOrder,
+          as: "pre_order",
+          required: false,
+        },
+        {
           model: dbModels.ContractPayment,
           as: "contract_payment",
+        },
+        {
+          model: dbModels.PreOrderPayment,
+          as: "pre_order_payment",
+          required: false,
         },
         {
           model: dbModels.Company,
@@ -656,6 +723,379 @@ class InvoiceService extends DualDatabaseService {
     }
   }
 
+  /**
+   * Create an invoice from one or more incoming payment-list records.
+   */
+  async createFromIncoming(
+    invoiceData,
+    incomingInvoiceIds,
+    idUserCreate,
+    isDoubleDatabase = true,
+  ) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      const uniqueIds = [...new Set(incomingInvoiceIds.map(Number))];
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+
+      const incomingRows = await models.db1.IncomingInvoice.findAll({
+        where: {
+          id: uniqueIds,
+          status: "incoming",
+          is_active: true,
+        },
+        transaction: transaction1,
+        lock: transaction1.LOCK.UPDATE,
+      });
+
+      if (incomingRows.length !== uniqueIds.length) {
+        const error = new Error(
+          "One or more incoming invoice items are not found or already used",
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const sources = incomingRows.map((row) => row.toJSON());
+      const sourceTypes = [...new Set(sources.map((row) => row.source_type))];
+      if (sourceTypes.length !== 1) {
+        const error = new Error(
+          "All incoming invoice items must have the same source type",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const sourceType = sourceTypes[0];
+      const paymentField =
+        sourceType === "contract"
+          ? "id_contract_payment"
+          : "id_pre_order_payment";
+      const paymentIds = [
+        ...new Set(sources.map((row) => row[paymentField])),
+      ];
+      if (paymentIds.length !== 1) {
+        const error = new Error(
+          "All incoming invoice items must belong to the same payment",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const paymentId = paymentIds[0];
+      let payment;
+      let document;
+      let paymentLists;
+
+      if (sourceType === "contract") {
+        const listIds = sources.map((row) => row.id_contract_payment_list);
+        payment = await models.db1.ContractPayment.findByPk(paymentId, {
+          include: [
+            {
+              model: models.db1.Contract,
+              as: "contract",
+              required: true,
+            },
+            {
+              model: models.db1.ContractPaymentList,
+              as: "contract_payment_list",
+              required: true,
+              where: {
+                id: listIds,
+                payment_purpose: "invoice",
+                is_active: true,
+              },
+              include: [
+                {
+                  model: models.db1.ContractPaymentService,
+                  as: "contract_payment_services",
+                  include: [
+                    {
+                      model: models.db1.QuotationService,
+                      as: "quotation_service",
+                      required: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          transaction: transaction1,
+        });
+        document = payment?.contract;
+        paymentLists = payment?.contract_payment_list || [];
+      } else {
+        const listIds = sources.map((row) => row.id_pre_order_payment_list);
+        payment = await models.db1.PreOrderPayment.findByPk(paymentId, {
+          include: [
+            {
+              model: models.db1.PreOrder,
+              as: "pre_order",
+              required: true,
+            },
+            {
+              model: models.db1.PreOrderPaymentList,
+              as: "pre_order_payment_list",
+              required: true,
+              where: {
+                id: listIds,
+                payment_purpose: "invoice",
+                is_active: true,
+              },
+              include: [
+                {
+                  model: models.db1.PreOrderPaymentService,
+                  as: "pre_order_payment_services",
+                  include: [
+                    {
+                      model: models.db1.PreOrderService,
+                      as: "pre_order_service",
+                      required: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          transaction: transaction1,
+        });
+        document = payment?.pre_order;
+        paymentLists = payment?.pre_order_payment_list || [];
+      }
+
+      if (!payment || !payment.is_open || paymentLists.length !== uniqueIds.length) {
+        const error = new Error(
+          "Payment is closed or one or more payment lists are invalid",
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const allocateAmount = (total, weights, index) => {
+        const numericTotal = Number(total || 0);
+        const normalizedWeights = weights.map((weight) => Number(weight || 0));
+        const totalWeight = normalizedWeights.reduce(
+          (sum, weight) => sum + weight,
+          0,
+        );
+        const effectiveWeights =
+          totalWeight > 0
+            ? normalizedWeights
+            : normalizedWeights.map(() => 1);
+        const effectiveTotal = effectiveWeights.reduce(
+          (sum, weight) => sum + weight,
+          0,
+        );
+
+        if (index === effectiveWeights.length - 1) {
+          const allocatedBefore = effectiveWeights
+            .slice(0, index)
+            .reduce(
+              (sum, weight) =>
+                sum + Math.floor((numericTotal * weight) / effectiveTotal),
+              0,
+            );
+          return numericTotal - allocatedBefore;
+        }
+
+        return Math.floor(
+          (numericTotal * effectiveWeights[index]) / effectiveTotal,
+        );
+      };
+      const invoiceServices = [];
+
+      for (const paymentList of paymentLists) {
+        const links =
+          sourceType === "contract"
+            ? paymentList.contract_payment_services
+            : paymentList.pre_order_payment_services;
+
+        if (!links || links.length === 0) {
+          const error = new Error(
+            `Payment list ${paymentList.id} does not have any services`,
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const sourceServices = links.map((link) =>
+          sourceType === "contract"
+            ? link.quotation_service
+            : link.pre_order_service,
+        );
+        const idrWeights = sourceServices.map(
+          (service) => service.total_price_idr,
+        );
+        const rmbWeights = sourceServices.map(
+          (service) => service.total_price_rmb,
+        );
+
+        links.forEach((link, index) => {
+          const sourceService = sourceServices[index];
+          const qty = Math.max(Number(sourceService.qty) || 1, 1);
+          const totalIdr = allocateAmount(
+            paymentList.price_idr,
+            idrWeights,
+            index,
+          );
+          const totalRmb = allocateAmount(
+            paymentList.price_rmb,
+            rmbWeights,
+            index,
+          );
+
+          invoiceServices.push({
+            id_quotation_service:
+              sourceType === "contract"
+                ? link.id_quotation_service
+                : sourceService.id_quotation_service,
+            product_name_indo: sourceService.product_name_indo,
+            product_name_mandarin: sourceService.product_name_mandarin,
+            price_idr: Math.round(totalIdr / qty),
+            price_rmb: Math.round(totalRmb / qty),
+            qty,
+            total_price_idr: totalIdr,
+            total_price_rmb: totalRmb,
+            payment_type: paymentList.payment_type,
+            is_active: true,
+          });
+        });
+      }
+
+      const useRmb = payment.currency_type === "rmb";
+      const subTotal = paymentLists.reduce(
+        (sum, list) =>
+          sum + Number(useRmb ? list.price_rmb || 0 : list.price_idr || 0),
+        0,
+      );
+      const ppn = invoiceData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
+      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.04) : 0;
+      const dataToCreate = {
+        date: invoiceData.date,
+        due_date: invoiceData.due_date || null,
+        invoice_no: invoiceData.invoice_no,
+        tax_ppn: invoiceData.tax_ppn === true,
+        tax_pph_23: invoiceData.tax_pph_23 === true,
+        note: invoiceData.note || "",
+        file_invoice: invoiceData.file_invoice || null,
+        source_type: sourceType,
+        id_quotation: document.id_quotation,
+        id_contract: sourceType === "contract" ? document.id : null,
+        id_pre_order: sourceType === "pre_order" ? document.id : null,
+        id_contract_payment:
+          sourceType === "contract" ? paymentId : null,
+        id_pre_order_payment:
+          sourceType === "pre_order" ? paymentId : null,
+        id_company: document.id_company,
+        id_customer: document.id_customer,
+        id_user_create: idUserCreate,
+        currency_type: payment.currency_type,
+        status: "pending",
+        is_active: true,
+        sub_total: subTotal,
+        ppn,
+        pph,
+        total: subTotal + ppn + pph,
+      };
+
+      const invoiceDataWithSharedId = { ...dataToCreate };
+      if (isDoubleDatabase) {
+        invoiceDataWithSharedId.id = await this._nextSharedId(
+          models.db1.Invoice,
+          models.db2.Invoice,
+          transaction1,
+          transaction2,
+        );
+      }
+
+      const invoice1 = await models.db1.Invoice.create(
+        invoiceDataWithSharedId,
+        { transaction: transaction1 },
+      );
+      if (isDoubleDatabase) {
+        await models.db2.Invoice.create(invoiceDataWithSharedId, {
+          transaction: transaction2,
+        });
+      }
+
+      let nextInvoiceServiceId = null;
+      if (isDoubleDatabase && invoiceServices.length > 0) {
+        nextInvoiceServiceId = await this._nextSharedId(
+          models.db1.InvoiceService,
+          models.db2.InvoiceService,
+          transaction1,
+          transaction2,
+        );
+      }
+
+      for (const invoiceService of invoiceServices) {
+        const serviceData = {
+          ...invoiceService,
+          id_invoice: invoice1.id,
+        };
+        if (isDoubleDatabase) {
+          serviceData.id = nextInvoiceServiceId;
+          nextInvoiceServiceId += 1;
+        }
+
+        await models.db1.InvoiceService.create(serviceData, {
+          transaction: transaction1,
+        });
+        if (isDoubleDatabase) {
+          await models.db2.InvoiceService.create(serviceData, {
+            transaction: transaction2,
+          });
+        }
+      }
+
+      const progressData = {
+        id_invoice: invoice1.id,
+        id_user: idUserCreate,
+        status: "created",
+        note: "Invoice created from incoming payment list",
+      };
+      if (isDoubleDatabase) {
+        progressData.id = await this._nextSharedId(
+          models.db1.InvoiceVerificationProgress,
+          models.db2.InvoiceVerificationProgress,
+          transaction1,
+          transaction2,
+        );
+      }
+
+      await models.db1.InvoiceVerificationProgress.create(progressData, {
+        transaction: transaction1,
+      });
+      if (isDoubleDatabase) {
+        await models.db2.InvoiceVerificationProgress.create(progressData, {
+          transaction: transaction2,
+        });
+      }
+
+      await incomingInvoiceService.markAsHistory(
+        uniqueIds,
+        invoice1.id,
+        isDoubleDatabase,
+        transaction1,
+        transaction2,
+      );
+
+      await transaction1.commit();
+      if (transaction2) await transaction2.commit();
+
+      return await this.getById(invoice1.id, {}, true);
+    } catch (error) {
+      if (transaction1 && !transaction1.finished) {
+        await transaction1.rollback();
+      }
+      if (transaction2 && !transaction2.finished) {
+        await transaction2.rollback();
+      }
+      throw error;
+    }
+  }
   /**
    * Update invoice with invoice services (create/update/delete)
    * @param {Number} id - Invoice ID

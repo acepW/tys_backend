@@ -17,6 +17,12 @@ router.put("/:id", authenticate, PreOrderController.update);
 //PATCH payment
 router.patch("/payment/:id", authenticate, PreOrderController.syncPayment);
 
+// PATCH open payment
+router.patch(
+  "/open-payment/:id_payment",
+  authenticate,
+  PreOrderController.openPayment,
+);
 // DELETE routes
 router.delete("/:id", authenticate, PreOrderController.delete);
 

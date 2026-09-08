@@ -148,6 +148,13 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    // PreOrder has many Invoices
+    PreOrder.hasMany(models.Invoice, {
+      foreignKey: "id_pre_order",
+      as: "invoices",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
     // PreOrder has many PreOrder category
     PreOrder.hasMany(models.PreOrderCategory, {
       foreignKey: "id_pre_order",

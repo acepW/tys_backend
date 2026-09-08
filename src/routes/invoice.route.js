@@ -4,11 +4,13 @@ const InvoiceController = require("../controllers/invoice/invoice.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
+router.get("/incoming", authenticate, InvoiceController.getIncoming);
 router.get("/", authenticate, InvoiceController.getAll);
-router.get("/:id", authenticate, InvoiceController.getById);
 router.get("/no/documents", authenticate, InvoiceController.getNoInvoice);
+router.get("/:id", authenticate, InvoiceController.getById);
 
 // POST routes
+router.post("/from-incoming", authenticate, InvoiceController.createFromIncoming);
 router.post("/", authenticate, InvoiceController.create);
 
 // PUT routes

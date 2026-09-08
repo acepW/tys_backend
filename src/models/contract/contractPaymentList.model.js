@@ -44,6 +44,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Payment type",
       },
+      payment_purpose: {
+        type: DataTypes.ENUM("invoice", "debit note"),
+        allowNull: true,
+        comment: "Payment purpose",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -60,7 +65,7 @@ module.exports = (sequelize) => {
           fields: ["id_contract_payment"],
         },
       ],
-    }
+    },
   );
 
   // Define associations

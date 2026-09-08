@@ -1,16 +1,16 @@
 const DualDatabaseService = require("../dualDatabase.service");
 const incomingInvoiceService = require("../invoice/incomingInvoice.service");
 
-class ContractPaymentService extends DualDatabaseService {
+class PreOrderPaymentService extends DualDatabaseService {
   constructor() {
-    super("ContractPayment");
+    super("PreOrderPayment");
   }
 
   /**
-   * Open a contract payment.
-   * @param {Number} idPayment - Contract payment ID
+   * Open a pre order payment.
+   * @param {Number} idPayment - Pre order payment ID
    * @param {Boolean} isDoubleDatabase - Update both databases if true
-   * @returns {Object} Updated contract payment
+   * @returns {Object} Updated pre order payment
    */
   async openPayment(
     idPayment,
@@ -20,13 +20,13 @@ class ContractPaymentService extends DualDatabaseService {
     const existing = await this.Model1.findByPk(idPayment);
 
     if (!existing) {
-      const error = new Error("Payment not found");
+      const error = new Error("PreOrder payment not found");
       error.statusCode = 404;
       throw error;
     }
 
     await incomingInvoiceService.createFromPayment(
-      "contract",
+      "pre_order",
       idPayment,
       idUserCreate,
       isDoubleDatabase,
@@ -41,4 +41,4 @@ return result;
   }
 }
 
-module.exports = new ContractPaymentService();
+module.exports = new PreOrderPaymentService();

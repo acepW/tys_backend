@@ -49,10 +49,15 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Payment to (example:payment_to : 1)",
       },
+      is_open: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Open status of PreOrder Payment",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
-        comment: "Status of Quotation Payment (active/inactive)",
+        comment: "Status of PreOrder Payment (active/inactive)",
       },
     },
     {

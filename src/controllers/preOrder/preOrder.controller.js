@@ -1,5 +1,6 @@
 // preOrder.controller.js
 const preOrderService = require("../../services/preOrder/preOrder.service");
+const preOrderPaymentService = require("../../services/preOrder/preOrderPayment.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
@@ -794,6 +795,24 @@ class PreOrderController {
     }
   }
 
+  /**
+   * Open pre order payment
+   */
+  async openPayment(req, res) {
+    try {
+      const { id_payment } = req.params;
+      const { is_double_database = true } = req.body || {};
+      const result = await preOrderPaymentService.openPayment(
+        id_payment,
+        is_double_database,
+        req.user?.id,
+      );
+
+      return successResponse(res, result, "PreOrder payment opened successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
   /**
    * Approve pre order
    */
