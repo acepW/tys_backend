@@ -249,6 +249,13 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    Users.hasMany(models.DebitNoteVerificationProgress, {
+      foreignKey: "id_user",
+      as: "debit_note_verification_progress",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     //Users has many contract plan (started)
     Users.hasMany(models.ContractProjectPlan, {
       foreignKey: "id_user_started",

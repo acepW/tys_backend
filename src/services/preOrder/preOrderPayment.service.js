@@ -1,5 +1,6 @@
 const DualDatabaseService = require("../dualDatabase.service");
 const incomingInvoiceService = require("../invoice/incomingInvoice.service");
+const incomingDebitNoteService = require("../debitNote/incomingDebitNote.service");
 
 class PreOrderPaymentService extends DualDatabaseService {
   constructor() {
@@ -32,12 +33,19 @@ class PreOrderPaymentService extends DualDatabaseService {
       isDoubleDatabase,
     );
 
-        const result = await this.update(
+    await incomingDebitNoteService.createFromPayment(
+      "pre_order",
+      idPayment,
+      idUserCreate,
+      isDoubleDatabase,
+    );
+
+    const result = await this.update(
       idPayment,
       { is_open: true },
       isDoubleDatabase,
     );
-return result;
+    return result;
   }
 }
 

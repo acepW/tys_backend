@@ -19,6 +19,11 @@ module.exports = (sequelize) => {
         },
         comment: "Foreign key to payment_requests table",
       },
+      source_type: {
+        type: DataTypes.ENUM("contract", "pre_order"),
+        allowNull: true,
+        comment: "Direct payment source; null for legacy/manual debit notes",
+      },
       id_quotation: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -36,6 +41,33 @@ module.exports = (sequelize) => {
           key: "id",
         },
         comment: "Foreign key to contracts table",
+      },
+      id_pre_order: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "pre_orders",
+          key: "id",
+        },
+        comment: "Direct PreOrder source",
+      },
+      id_contract_payment: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "contract_payment",
+          key: "id",
+        },
+        comment: "Contract payment source",
+      },
+      id_pre_order_payment: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "pre_order_payment",
+          key: "id",
+        },
+        comment: "PreOrder payment source",
       },
       // id_invoice: {
       //   type: DataTypes.INTEGER,
@@ -99,6 +131,12 @@ module.exports = (sequelize) => {
           key: "id",
         },
         comment: "Id user who paid the debit note",
+      },
+      currency_type: {
+        type: DataTypes.ENUM("idr", "rmb"),
+        allowNull: false,
+        defaultValue: "idr",
+        comment: "Debit note currency inherited from its payment source",
       },
       date: {
         type: DataTypes.DATE,
@@ -167,7 +205,13 @@ module.exports = (sequelize) => {
         comment: "Proof of payment for Invoice",
       },
       status: {
-        type: DataTypes.ENUM("pending", "rejected", "approved", "paid"),
+        type: DataTypes.ENUM(
+          "pending",
+          "on verification",
+          "rejected",
+          "approved",
+          "paid",
+        ),
         allowNull: false,
         defaultValue: "pending",
         comment: "Status of DebitNote",
@@ -184,6 +228,10 @@ module.exports = (sequelize) => {
       underscored: true,
       indexes: [
         {
+          name: "idx_debit_note_source_type",
+          fields: ["source_type"],
+        },
+        {
           name: "idx_id_payment_request",
           fields: ["id_payment_request"],
         },
@@ -194,6 +242,18 @@ module.exports = (sequelize) => {
         {
           name: "idx_id_contract",
           fields: ["id_contract"],
+        },
+        {
+          name: "idx_debit_note_id_pre_order",
+          fields: ["id_pre_order"],
+        },
+        {
+          name: "idx_debit_note_id_contract_payment",
+          fields: ["id_contract_payment"],
+        },
+        {
+          name: "idx_debit_note_id_pre_order_payment",
+          fields: ["id_pre_order_payment"],
         },
         // {
         //   name: "idx_id_invoice",
@@ -243,6 +303,27 @@ module.exports = (sequelize) => {
     DebitNote.belongsTo(models.Contract, {
       foreignKey: "id_contract",
       as: "contract",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    DebitNote.belongsTo(models.PreOrder, {
+      foreignKey: "id_pre_order",
+      as: "pre_order",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    DebitNote.belongsTo(models.ContractPayment, {
+      foreignKey: "id_contract_payment",
+      as: "contract_payment",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    DebitNote.belongsTo(models.PreOrderPayment, {
+      foreignKey: "id_pre_order_payment",
+      as: "pre_order_payment",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });
@@ -307,6 +388,20 @@ module.exports = (sequelize) => {
     DebitNote.hasMany(models.DebitNoteItem, {
       foreignKey: "id_debit_note",
       as: "debit_note_items",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    DebitNote.hasMany(models.IncomingDebitNote, {
+      foreignKey: "id_debit_note",
+      as: "incoming_sources",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    DebitNote.hasMany(models.DebitNoteVerificationProgress, {
+      foreignKey: "id_debit_note",
+      as: "verification_progress",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

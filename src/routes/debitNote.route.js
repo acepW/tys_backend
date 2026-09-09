@@ -4,11 +4,17 @@ const DebitNoteController = require("../controllers/debitNote/debitNote.controll
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
+router.get("/incoming", authenticate, DebitNoteController.getIncoming);
 router.get("/", authenticate, DebitNoteController.getAll);
 router.get("/:id", authenticate, DebitNoteController.getById);
 router.get("/no/documents", authenticate, DebitNoteController.getNoDebitNote);
 
 // POST routes
+router.post(
+  "/from-incoming",
+  authenticate,
+  DebitNoteController.createFromIncoming,
+);
 router.post("/", authenticate, DebitNoteController.create);
 
 // PUT routes

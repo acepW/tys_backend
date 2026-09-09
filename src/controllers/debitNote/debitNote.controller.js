@@ -1,8 +1,39 @@
 const debitNoteService = require("../../services/debitNote/debitNote.service");
+const incomingDebitNoteService = require("../../services/debitNote/incomingDebitNote.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
 class DebitNoteController {
+  /**
+   * Get incoming or history debit-note sources from Contract and PreOrder.
+   */
+  async getIncoming(req, res) {
+    try {
+      const {
+        status = "incoming",
+        source_type = "all",
+        search,
+        page = 1,
+        limit = 10,
+      } = req.query || {};
+      const result = await incomingDebitNoteService.getAll({
+        status,
+        sourceType: source_type,
+        search,
+        page,
+        limit,
+      });
+      return successResponse(
+        res,
+        result,
+        `${status === "history" ? "History" : "Incoming"} debit notes retrieved successfully`,
+      );
+    } catch (error) {
+      const statusCode = error.message.includes("must be") ? 400 : 500;
+      return errorResponse(res, error.message, statusCode);
+    }
+  }
+
   /**
    * Get all debit notes
    */
@@ -13,8 +44,10 @@ class DebitNoteController {
         id_company,
         id_customer,
         id_contract,
+        id_pre_order,
         id_quotation,
         id_invoice,
+        source_type,
         status,
         search,
         page,
@@ -34,8 +67,10 @@ class DebitNoteController {
       if (id_company) obj.id_company = id_company;
       if (id_customer) obj.id_customer = id_customer;
       if (id_contract) obj.id_contract = id_contract;
+      if (id_pre_order) obj.id_pre_order = id_pre_order;
       if (id_quotation) obj.id_quotation = id_quotation;
       if (id_invoice) obj.id_invoice = id_invoice;
+      if (source_type) obj.source_type = source_type;
       if (status) obj.status = status;
       obj.is_active = true;
 
@@ -106,6 +141,63 @@ class DebitNoteController {
       );
     } catch (error) {
       return errorResponse(res, error.message);
+    }
+  }
+
+  /**
+   * Create debit note from incoming Contract/PreOrder payment lists.
+   */
+  async createFromIncoming(req, res) {
+    try {
+      const {
+        is_double_database,
+        incoming_debit_note_ids,
+        ...debitNoteData
+      } = req.body || {};
+      const isDoubleDatabase = is_double_database !== false;
+
+      if (
+        !Array.isArray(incoming_debit_note_ids) ||
+        incoming_debit_note_ids.length === 0
+      ) {
+        return errorResponse(
+          res,
+          "incoming_debit_note_ids must be a non-empty array",
+          400,
+        );
+      }
+      if (
+        incoming_debit_note_ids.some(
+          (id) => !Number.isInteger(Number(id)) || Number(id) <= 0,
+        )
+      ) {
+        return errorResponse(
+          res,
+          "incoming_debit_note_ids must contain valid IDs",
+          400,
+        );
+      }
+      if (!debitNoteData.debit_note_no) {
+        return errorResponse(res, "debit_note_no is required", 400);
+      }
+      if (!debitNoteData.date) {
+        return errorResponse(res, "date is required", 400);
+      }
+
+      const result = await debitNoteService.createFromIncoming(
+        debitNoteData,
+        incoming_debit_note_ids,
+        req.user.id,
+        isDoubleDatabase,
+      );
+      return successResponse(
+        res,
+        result,
+        "Debit note created from incoming payment successfully",
+        201,
+      );
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 

@@ -3,10 +3,19 @@ const companyService = require("../company.service");
 const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
 const { Op, fn, col } = require("sequelize");
+const incomingDebitNoteService = require("./incomingDebitNote.service");
 
 class DebitNoteService extends DualDatabaseService {
   constructor() {
     super("DebitNote");
+  }
+
+  async _nextSharedId(Model1, Model2, transaction1, transaction2) {
+    const [maxId1, maxId2] = await Promise.all([
+      Model1.max("id", { transaction: transaction1 }),
+      Model2.max("id", { transaction: transaction2 }),
+    ]);
+    return Math.max(Number(maxId1 || 0), Number(maxId2 || 0)) + 1;
   }
 
   /**
@@ -49,6 +58,18 @@ class DebitNoteService extends DualDatabaseService {
           ],
         },
         {
+          model: dbModels.PreOrder,
+          as: "pre_order",
+        },
+        {
+          model: dbModels.ContractPayment,
+          as: "contract_payment",
+        },
+        {
+          model: dbModels.PreOrderPayment,
+          as: "pre_order_payment",
+        },
+        {
           model: dbModels.Invoice,
           as: "invoices",
           attributes: ["id", "invoice_no", "date", "total"],
@@ -87,6 +108,22 @@ class DebitNoteService extends DualDatabaseService {
           model: dbModels.DebitNoteItem,
           as: "debit_note_items",
           separate: true,
+        },
+        {
+          model: dbModels.DebitNoteVerificationProgress,
+          as: "verification_progress",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+              include: [
+                { model: dbModels.Department, as: "department" },
+                { model: dbModels.Position, as: "position" },
+              ],
+            },
+          ],
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -135,6 +172,18 @@ class DebitNoteService extends DualDatabaseService {
           as: "contract",
         },
         {
+          model: dbModels.PreOrder,
+          as: "pre_order",
+        },
+        {
+          model: dbModels.ContractPayment,
+          as: "contract_payment",
+        },
+        {
+          model: dbModels.PreOrderPayment,
+          as: "pre_order_payment",
+        },
+        {
           model: dbModels.Invoice,
           as: "invoices",
         },
@@ -170,6 +219,22 @@ class DebitNoteService extends DualDatabaseService {
           model: dbModels.DebitNoteItem,
           as: "debit_note_items",
           separate: true,
+        },
+        {
+          model: dbModels.DebitNoteVerificationProgress,
+          as: "verification_progress",
+          separate: true,
+          include: [
+            {
+              model: dbModels.User,
+              as: "user",
+              attributes: ["id", "name", "email"],
+              include: [
+                { model: dbModels.Department, as: "department" },
+                { model: dbModels.Position, as: "position" },
+              ],
+            },
+          ],
         },
       ],
     };
@@ -319,6 +384,21 @@ class DebitNoteService extends DualDatabaseService {
           isDoubleDatabase,
         });
 
+        const progressData = {
+          id_debit_note: debitNote1.id,
+          id_user: id_user_create,
+          status: "created",
+          note: "Debit note created",
+        };
+        const progress1 =
+          await models.db1.DebitNoteVerificationProgress.create(progressData, {
+            transaction: transaction1,
+          });
+        await models.db2.DebitNoteVerificationProgress.create(
+          { ...progressData, id: progress1.id },
+          { transaction: transaction2 },
+        );
+
         console.log(
           `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
         );
@@ -333,6 +413,7 @@ class DebitNoteService extends DualDatabaseService {
         return {
           debit_note: debitNote1.toJSON(),
           debit_note_items: itemsResult,
+          verification_progress: progress1.toJSON(),
         };
       } else {
         // Single database (DB1 only)
@@ -361,6 +442,17 @@ class DebitNoteService extends DualDatabaseService {
           isDoubleDatabase: false,
         });
 
+        const progressData = {
+          id_debit_note: debitNote.id,
+          id_user: id_user_create,
+          status: "created",
+          note: "Debit note created",
+        };
+        const progress =
+          await models.db1.DebitNoteVerificationProgress.create(progressData, {
+            transaction: transaction1,
+          });
+
         console.log(
           `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
         );
@@ -374,6 +466,7 @@ class DebitNoteService extends DualDatabaseService {
         return {
           debit_note: debitNote.toJSON(),
           debit_note_items: itemsResult,
+          verification_progress: progress.toJSON(),
         };
       }
     } catch (error) {
@@ -383,6 +476,344 @@ class DebitNoteService extends DualDatabaseService {
         if (transaction2) await transaction2.rollback();
       }
       throw new Error(`Failed to create DebitNote: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a debit note from one or more incoming payment-list records.
+   * The existing manual createWithRelations flow remains unchanged.
+   */
+  async createFromIncoming(
+    debitNoteData,
+    incomingDebitNoteIds,
+    idUserCreate,
+    isDoubleDatabase = true,
+  ) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      const uniqueIds = [...new Set(incomingDebitNoteIds.map(Number))];
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+
+      const incomingRows = await models.db1.IncomingDebitNote.findAll({
+        where: {
+          id: uniqueIds,
+          status: "incoming",
+          is_active: true,
+        },
+        transaction: transaction1,
+        lock: transaction1.LOCK.UPDATE,
+      });
+
+      if (incomingRows.length !== uniqueIds.length) {
+        const error = new Error(
+          "One or more incoming debit note items are not found or already used",
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const sources = incomingRows.map((row) => row.toJSON());
+      const sourceTypes = [...new Set(sources.map((row) => row.source_type))];
+      if (sourceTypes.length !== 1) {
+        const error = new Error(
+          "All incoming debit note items must have the same source type",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const sourceType = sourceTypes[0];
+      const paymentField =
+        sourceType === "contract"
+          ? "id_contract_payment"
+          : "id_pre_order_payment";
+      const paymentIds = [...new Set(sources.map((row) => row[paymentField]))];
+      if (paymentIds.length !== 1) {
+        const error = new Error(
+          "All incoming debit note items must belong to the same payment",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const paymentId = paymentIds[0];
+      let payment;
+      let document;
+      let paymentLists;
+
+      if (sourceType === "contract") {
+        const listIds = sources.map((row) => row.id_contract_payment_list);
+        payment = await models.db1.ContractPayment.findByPk(paymentId, {
+          include: [
+            {
+              model: models.db1.Contract,
+              as: "contract",
+              required: true,
+            },
+            {
+              model: models.db1.ContractPaymentList,
+              as: "contract_payment_list",
+              required: true,
+              where: {
+                id: listIds,
+                payment_purpose: "debit note",
+                is_active: true,
+              },
+              include: [
+                {
+                  model: models.db1.ContractPaymentService,
+                  as: "contract_payment_services",
+                  include: [
+                    {
+                      model: models.db1.QuotationService,
+                      as: "quotation_service",
+                      required: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          transaction: transaction1,
+        });
+        document = payment?.contract;
+        paymentLists = payment?.contract_payment_list || [];
+      } else {
+        const listIds = sources.map((row) => row.id_pre_order_payment_list);
+        payment = await models.db1.PreOrderPayment.findByPk(paymentId, {
+          include: [
+            {
+              model: models.db1.PreOrder,
+              as: "pre_order",
+              required: true,
+            },
+            {
+              model: models.db1.PreOrderPaymentList,
+              as: "pre_order_payment_list",
+              required: true,
+              where: {
+                id: listIds,
+                payment_purpose: "debit note",
+                is_active: true,
+              },
+              include: [
+                {
+                  model: models.db1.PreOrderPaymentService,
+                  as: "pre_order_payment_services",
+                  include: [
+                    {
+                      model: models.db1.PreOrderService,
+                      as: "pre_order_service",
+                      required: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          transaction: transaction1,
+        });
+        document = payment?.pre_order;
+        paymentLists = payment?.pre_order_payment_list || [];
+      }
+
+      if (!payment || !payment.is_open || paymentLists.length !== uniqueIds.length) {
+        const error = new Error(
+          "Payment is closed or one or more payment lists are invalid",
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const allocateAmount = (total, weights, index) => {
+        const numericTotal = Number(total || 0);
+        const normalizedWeights = weights.map((weight) => Number(weight || 0));
+        const totalWeight = normalizedWeights.reduce(
+          (sum, weight) => sum + weight,
+          0,
+        );
+        const effectiveWeights =
+          totalWeight > 0 ? normalizedWeights : normalizedWeights.map(() => 1);
+        const effectiveTotal = effectiveWeights.reduce(
+          (sum, weight) => sum + weight,
+          0,
+        );
+        if (index === effectiveWeights.length - 1) {
+          const allocatedBefore = effectiveWeights
+            .slice(0, index)
+            .reduce(
+              (sum, weight) =>
+                sum + Math.floor((numericTotal * weight) / effectiveTotal),
+              0,
+            );
+          return numericTotal - allocatedBefore;
+        }
+        return Math.floor(
+          (numericTotal * effectiveWeights[index]) / effectiveTotal,
+        );
+      };
+
+      const debitNoteItems = [];
+      for (const paymentList of paymentLists) {
+        const links =
+          sourceType === "contract"
+            ? paymentList.contract_payment_services
+            : paymentList.pre_order_payment_services;
+        if (!links || links.length === 0) {
+          const error = new Error(
+            `Payment list ${paymentList.id} does not have any services`,
+          );
+          error.statusCode = 400;
+          throw error;
+        }
+
+        const sourceServices = links.map((link) =>
+          sourceType === "contract"
+            ? link.quotation_service
+            : link.pre_order_service,
+        );
+        const idrWeights = sourceServices.map(
+          (service) => service.total_price_idr,
+        );
+        const rmbWeights = sourceServices.map(
+          (service) => service.total_price_rmb,
+        );
+
+        links.forEach((link, index) => {
+          const sourceService = sourceServices[index];
+          const qty = Math.max(Number(sourceService.qty) || 1, 1);
+          const totalIdr = allocateAmount(paymentList.price_idr, idrWeights, index);
+          const totalRmb = allocateAmount(paymentList.price_rmb, rmbWeights, index);
+          debitNoteItems.push({
+            product_name_indo: sourceService.product_name_indo,
+            product_name_mandarin: sourceService.product_name_mandarin,
+            price_idr: Math.round(totalIdr / qty),
+            price_rmb: Math.round(totalRmb / qty),
+            qty,
+            total_price_idr: totalIdr,
+            total_price_rmb: totalRmb,
+            payment_type: paymentList.payment_type,
+            is_active: true,
+          });
+        });
+      }
+
+      const useRmb = payment.currency_type === "rmb";
+      const subTotal = paymentLists.reduce(
+        (sum, list) =>
+          sum + Number(useRmb ? list.price_rmb || 0 : list.price_idr || 0),
+        0,
+      );
+      const ppn = debitNoteData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
+      const pph = debitNoteData.tax_pph_23 ? Math.round(subTotal * 0.04) : 0;
+      const dataToCreate = {
+        date: debitNoteData.date,
+        debit_note_no: debitNoteData.debit_note_no,
+        tax_ppn: debitNoteData.tax_ppn === true,
+        tax_pph_23: debitNoteData.tax_pph_23 === true,
+        note: debitNoteData.note || "",
+        source_type: sourceType,
+        id_quotation: document.id_quotation,
+        id_contract:
+          sourceType === "contract" ? document.id : document.id_contract,
+        id_pre_order: sourceType === "pre_order" ? document.id : null,
+        id_contract_payment: sourceType === "contract" ? paymentId : null,
+        id_pre_order_payment: sourceType === "pre_order" ? paymentId : null,
+        id_company: document.id_company,
+        id_customer: document.id_customer,
+        id_user_create: idUserCreate,
+        currency_type: payment.currency_type,
+        status: "pending",
+        is_active: true,
+        sub_total: subTotal,
+        ppn,
+        pph,
+        total: subTotal + ppn + pph,
+      };
+
+      if (isDoubleDatabase) {
+        dataToCreate.id = await this._nextSharedId(
+          models.db1.DebitNote,
+          models.db2.DebitNote,
+          transaction1,
+          transaction2,
+        );
+      }
+      const debitNote1 = await models.db1.DebitNote.create(dataToCreate, {
+        transaction: transaction1,
+      });
+      if (isDoubleDatabase) {
+        await models.db2.DebitNote.create(dataToCreate, {
+          transaction: transaction2,
+        });
+      }
+
+      let nextItemId = null;
+      if (isDoubleDatabase && debitNoteItems.length > 0) {
+        nextItemId = await this._nextSharedId(
+          models.db1.DebitNoteItem,
+          models.db2.DebitNoteItem,
+          transaction1,
+          transaction2,
+        );
+      }
+      for (const item of debitNoteItems) {
+        const itemData = { ...item, id_debit_note: debitNote1.id };
+        if (isDoubleDatabase) {
+          itemData.id = nextItemId;
+          nextItemId += 1;
+        }
+        await models.db1.DebitNoteItem.create(itemData, {
+          transaction: transaction1,
+        });
+        if (isDoubleDatabase) {
+          await models.db2.DebitNoteItem.create(itemData, {
+            transaction: transaction2,
+          });
+        }
+      }
+
+      const progressData = {
+        id_debit_note: debitNote1.id,
+        id_user: idUserCreate,
+        status: "created",
+        note: "Debit note created from incoming payment list",
+      };
+      if (isDoubleDatabase) {
+        progressData.id = await this._nextSharedId(
+          models.db1.DebitNoteVerificationProgress,
+          models.db2.DebitNoteVerificationProgress,
+          transaction1,
+          transaction2,
+        );
+      }
+      await models.db1.DebitNoteVerificationProgress.create(progressData, {
+        transaction: transaction1,
+      });
+      if (isDoubleDatabase) {
+        await models.db2.DebitNoteVerificationProgress.create(progressData, {
+          transaction: transaction2,
+        });
+      }
+
+      await incomingDebitNoteService.markAsHistory(
+        uniqueIds,
+        debitNote1.id,
+        isDoubleDatabase,
+        transaction1,
+        transaction2,
+      );
+
+      await transaction1.commit();
+      if (transaction2) await transaction2.commit();
+      return await this.getById(debitNote1.id, {}, true);
+    } catch (error) {
+      if (transaction1 && !transaction1.finished) await transaction1.rollback();
+      if (transaction2 && !transaction2.finished) await transaction2.rollback();
+      throw error;
     }
   }
 
@@ -598,6 +1029,8 @@ class DebitNoteService extends DualDatabaseService {
   ) {
     let transaction1 = null;
     let transaction2 = null;
+    const progressStatus =
+      status === "on verification" ? "submitted" : status;
 
     try {
       if (isDoubleDatabase) {
@@ -634,6 +1067,21 @@ class DebitNoteService extends DualDatabaseService {
         if (updatedRows1 === 0 && updatedRows2 === 0) {
           throw new Error(`DebitNote with ID ${id} not found`);
         }
+
+        const progressData = {
+          id_debit_note: id,
+          id_user,
+          status: progressStatus,
+          note,
+        };
+        const progress1 =
+          await models.db1.DebitNoteVerificationProgress.create(progressData, {
+            transaction: transaction1,
+          });
+        await models.db2.DebitNoteVerificationProgress.create(
+          { ...progressData, id: progress1.id },
+          { transaction: transaction2 },
+        );
 
         const getDataDebitNote = await this.getById(id, {}, isDoubleDatabase);
         if (!getDataDebitNote) {
@@ -695,6 +1143,16 @@ class DebitNoteService extends DualDatabaseService {
         if (updatedRows === 0) {
           throw new Error(`DebitNote with ID ${id} not found`);
         }
+
+        await models.db1.DebitNoteVerificationProgress.create(
+          {
+            id_debit_note: id,
+            id_user,
+            status: progressStatus,
+            note,
+          },
+          { transaction: transaction1 },
+        );
 
         await transaction1.commit();
         console.log(`✅ DebitNote status changed to "${status}" in DB1 only`);
