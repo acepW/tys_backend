@@ -120,7 +120,7 @@ class InvoiceService extends DualDatabaseService {
         {
           model: dbModels.Company,
           as: "company",
-          attributes: ["id", "company_name"],
+          attributes: ["id", "company_name", "initial_company"],
         },
         {
           model: dbModels.Customer,
@@ -540,8 +540,8 @@ class InvoiceService extends DualDatabaseService {
 
       // Hitung pajak
       const ppn = invoiceData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
-      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.04) : 0;
-      const total = subTotal + ppn + pph;
+      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.02) : 0;
+      const total = subTotal + ppn - pph;
 
       // Bentuk output akhir
       const debitNotePayload = {
@@ -731,6 +731,8 @@ class InvoiceService extends DualDatabaseService {
     incomingInvoiceIds,
     idUserCreate,
     isDoubleDatabase = true,
+    incomingDebitNoteIds = [],
+    debitNoteData = null,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -773,9 +775,7 @@ class InvoiceService extends DualDatabaseService {
         sourceType === "contract"
           ? "id_contract_payment"
           : "id_pre_order_payment";
-      const paymentIds = [
-        ...new Set(sources.map((row) => row[paymentField])),
-      ];
+      const paymentIds = [...new Set(sources.map((row) => row[paymentField]))];
       if (paymentIds.length !== 1) {
         const error = new Error(
           "All incoming invoice items must belong to the same payment",
@@ -865,12 +865,59 @@ class InvoiceService extends DualDatabaseService {
         paymentLists = payment?.pre_order_payment_list || [];
       }
 
-      if (!payment || !payment.is_open || paymentLists.length !== uniqueIds.length) {
+      if (
+        !payment ||
+        !payment.is_open ||
+        paymentLists.length !== uniqueIds.length
+      ) {
         const error = new Error(
           "Payment is closed or one or more payment lists are invalid",
         );
         error.statusCode = 409;
         throw error;
+      }
+
+      let createdDebitNote = null;
+      if (incomingDebitNoteIds.length > 0) {
+        const debitNoteResult = await debitNoteService.createFromIncoming(
+          {
+            date: debitNoteData?.date || invoiceData.date,
+            debit_note_no: debitNoteData?.debit_note_no,
+            tax_ppn:
+              debitNoteData?.tax_ppn !== undefined
+                ? debitNoteData.tax_ppn
+                : invoiceData.tax_ppn,
+            tax_pph_23:
+              debitNoteData?.tax_pph_23 !== undefined
+                ? debitNoteData.tax_pph_23
+                : invoiceData.tax_pph_23,
+            note:
+              debitNoteData?.note !== undefined
+                ? debitNoteData.note
+                : invoiceData.note,
+          },
+          incomingDebitNoteIds,
+          idUserCreate,
+          isDoubleDatabase,
+          transaction1,
+          transaction2,
+        );
+        createdDebitNote = debitNoteResult.debit_note;
+
+        const debitNotePaymentId =
+          sourceType === "contract"
+            ? createdDebitNote.id_contract_payment
+            : createdDebitNote.id_pre_order_payment;
+        if (
+          createdDebitNote.source_type !== sourceType ||
+          Number(debitNotePaymentId) !== Number(paymentId)
+        ) {
+          const error = new Error(
+            "Incoming invoice and debit note items must belong to the same source and payment",
+          );
+          error.statusCode = 400;
+          throw error;
+        }
       }
 
       const allocateAmount = (total, weights, index) => {
@@ -881,9 +928,7 @@ class InvoiceService extends DualDatabaseService {
           0,
         );
         const effectiveWeights =
-          totalWeight > 0
-            ? normalizedWeights
-            : normalizedWeights.map(() => 1);
+          totalWeight > 0 ? normalizedWeights : normalizedWeights.map(() => 1);
         const effectiveTotal = effectiveWeights.reduce(
           (sum, weight) => sum + weight,
           0,
@@ -971,7 +1016,7 @@ class InvoiceService extends DualDatabaseService {
         0,
       );
       const ppn = invoiceData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
-      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.04) : 0;
+      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.02) : 0;
       const dataToCreate = {
         date: invoiceData.date,
         due_date: invoiceData.due_date || null,
@@ -982,14 +1027,14 @@ class InvoiceService extends DualDatabaseService {
         file_invoice: invoiceData.file_invoice || null,
         source_type: sourceType,
         id_quotation: document.id_quotation,
-        id_contract: sourceType === "contract" ? document.id : null,
+        id_contract:
+          sourceType === "contract" ? document.id : document.id_contract,
         id_pre_order: sourceType === "pre_order" ? document.id : null,
-        id_contract_payment:
-          sourceType === "contract" ? paymentId : null,
-        id_pre_order_payment:
-          sourceType === "pre_order" ? paymentId : null,
+        id_contract_payment: sourceType === "contract" ? paymentId : null,
+        id_pre_order_payment: sourceType === "pre_order" ? paymentId : null,
         id_company: document.id_company,
         id_customer: document.id_customer,
+        id_debit_note: createdDebitNote?.id || null,
         id_user_create: idUserCreate,
         currency_type: payment.currency_type,
         status: "pending",
@@ -997,7 +1042,7 @@ class InvoiceService extends DualDatabaseService {
         sub_total: subTotal,
         ppn,
         pph,
-        total: subTotal + ppn + pph,
+        total: subTotal + ppn - pph,
       };
 
       const invoiceDataWithSharedId = { ...dataToCreate };

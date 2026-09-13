@@ -251,41 +251,7 @@ class IncomingDebitNoteService {
     };
   }
 
-  async getAll({
-    status = "incoming",
-    sourceType = "all",
-    search = null,
-    page = 1,
-    limit = 10,
-  } = {}) {
-    if (!["incoming", "history"].includes(status)) {
-      throw new Error("status must be 'incoming' or 'history'");
-    }
-    if (!["all", "contract", "pre_order"].includes(sourceType)) {
-      throw new Error("source_type must be 'all', 'contract', or 'pre_order'");
-    }
-
-    const dbModels = models.db1;
-    const baseWhere = { status, is_active: true };
-    const rows = [];
-
-    if (sourceType === "all" || sourceType === "contract") {
-      const found = await dbModels.IncomingDebitNote.findAll({
-        where: { ...baseWhere, source_type: "contract" },
-        include: this._contractIncludes(dbModels, search, status),
-        order: [["createdAt", "DESC"]],
-      });
-      rows.push(...found.map((row) => this._normalize(row.toJSON(), "contract")));
-    }
-    if (sourceType === "all" || sourceType === "pre_order") {
-      const found = await dbModels.IncomingDebitNote.findAll({
-        where: { ...baseWhere, source_type: "pre_order" },
-        include: this._preOrderIncludes(dbModels, search, status),
-        order: [["createdAt", "DESC"]],
-      });
-      rows.push(...found.map((row) => this._normalize(row.toJSON(), "pre_order")));
-    }
-
+  _groupRows(rows, status) {
     const grouped = new Map();
     for (const row of rows) {
       const key = `${row.source_type}:${row.payment.id}`;
@@ -319,7 +285,54 @@ class IncomingDebitNoteService {
       );
     }
 
-    const data = Array.from(grouped.values());
+    return Array.from(grouped.values());
+  }
+
+  async getGrouped({
+    status = "incoming",
+    sourceType = "all",
+    search = null,
+  } = {}) {
+    if (!["incoming", "history"].includes(status)) {
+      throw new Error("status must be 'incoming' or 'history'");
+    }
+    if (!["all", "contract", "pre_order"].includes(sourceType)) {
+      throw new Error("source_type must be 'all', 'contract', or 'pre_order'");
+    }
+
+    const dbModels = models.db1;
+    const baseWhere = { status, is_active: true };
+    const rows = [];
+
+    if (sourceType === "all" || sourceType === "contract") {
+      const found = await dbModels.IncomingDebitNote.findAll({
+        where: { ...baseWhere, source_type: "contract" },
+        include: this._contractIncludes(dbModels, search, status),
+        order: [["createdAt", "DESC"]],
+      });
+      rows.push(...found.map((row) => this._normalize(row.toJSON(), "contract")));
+    }
+
+    if (sourceType === "all" || sourceType === "pre_order") {
+      const found = await dbModels.IncomingDebitNote.findAll({
+        where: { ...baseWhere, source_type: "pre_order" },
+        include: this._preOrderIncludes(dbModels, search, status),
+        order: [["createdAt", "DESC"]],
+      });
+      rows.push(...found.map((row) => this._normalize(row.toJSON(), "pre_order")));
+    }
+
+    return this._groupRows(rows, status);
+  }
+
+  async getAll({
+    status = "incoming",
+    sourceType = "all",
+    search = null,
+    page = 1,
+    limit = 10,
+  } = {}) {
+    const data = await this.getGrouped({ status, sourceType, search });
     const currentPage = Math.max(Number.parseInt(page, 10) || 1, 1);
     const perPage = Math.max(Number.parseInt(limit, 10) || 10, 1);
     const offset = (currentPage - 1) * perPage;

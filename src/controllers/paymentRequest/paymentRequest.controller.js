@@ -15,6 +15,8 @@ class PaymentRequestController {
         id_contract_project_plan,
         status,
         cost_bearer,
+        payment_purpose,
+        top_up_petty_cash,
         search,
         page,
         limit,
@@ -28,6 +30,7 @@ class PaymentRequestController {
             { payment_request_no: { [Op.like]: `%${search}%` } },
             { vendor_name: { [Op.like]: `%${search}%` } },
             { invoice_no: { [Op.like]: `%${search}%` } },
+            { payment_purpose: { [Op.like]: `%${search}%` } },
           ],
         };
       }
@@ -37,6 +40,10 @@ class PaymentRequestController {
         obj.id_contract_project_plan = id_contract_project_plan;
       if (status) obj.status = status;
       if (cost_bearer) obj.cost_bearer = cost_bearer;
+      if (payment_purpose) obj.payment_purpose = payment_purpose;
+      if (top_up_petty_cash !== undefined) {
+        obj.top_up_petty_cash = top_up_petty_cash;
+      }
       obj.is_active = true;
 
       const paymentRequests = await paymentRequestService.getAllWithRelations(
@@ -104,6 +111,18 @@ class PaymentRequestController {
         return errorResponse(res, "payment_type is required", 400);
       }
 
+      if (
+        paymentRequestData.top_up_petty_cash !== undefined &&
+        (Number.isNaN(Number(paymentRequestData.top_up_petty_cash)) ||
+          Number(paymentRequestData.top_up_petty_cash) < 0)
+      ) {
+        return errorResponse(
+          res,
+          "top_up_petty_cash must be a non-negative number",
+          400,
+        );
+      }
+
       if (!paymentRequestData.vendor_name) {
         return errorResponse(res, "vendor_name is required", 400);
       }
@@ -133,6 +152,7 @@ class PaymentRequestController {
         id_user_request: req.user.id,
         id_department_request: req.user.id_department,
         status: "pending",
+        top_up_petty_cash: Number(paymentRequestData.top_up_petty_cash || 0),
         is_active:
           paymentRequestData.is_active !== undefined
             ? paymentRequestData.is_active

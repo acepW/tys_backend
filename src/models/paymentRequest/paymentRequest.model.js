@@ -101,6 +101,17 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Payment type",
       },
+      payment_purpose: {
+        type: DataTypes.STRING(1000),
+        allowNull: true,
+        comment: "Purpose of the payment request",
+      },
+      top_up_petty_cash: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Petty cash top-up amount",
+      },
       vendor_name: {
         type: DataTypes.STRING(500),
         allowNull: false,

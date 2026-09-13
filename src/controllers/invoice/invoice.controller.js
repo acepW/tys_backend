@@ -127,6 +127,8 @@ class InvoiceController {
       const {
         is_double_database,
         incoming_invoice_ids,
+        incoming_debit_note_ids = [],
+        debit_note_data = null,
         ...invoiceData
       } = req.body || {};
       const isDoubleDatabase = is_double_database !== false;
@@ -152,6 +154,34 @@ class InvoiceController {
           400,
         );
       }
+      if (!Array.isArray(incoming_debit_note_ids)) {
+        return errorResponse(
+          res,
+          "incoming_debit_note_ids must be an array",
+          400,
+        );
+      }
+      if (
+        incoming_debit_note_ids.some(
+          (id) => !Number.isInteger(Number(id)) || Number(id) <= 0,
+        )
+      ) {
+        return errorResponse(
+          res,
+          "incoming_debit_note_ids must contain valid IDs",
+          400,
+        );
+      }
+      if (
+        incoming_debit_note_ids.length > 0 &&
+        (!debit_note_data || !debit_note_data.debit_note_no)
+      ) {
+        return errorResponse(
+          res,
+          "debit_note_data.debit_note_no is required",
+          400,
+        );
+      }
       if (!invoiceData.invoice_no) {
         return errorResponse(res, "invoice_no is required", 400);
       }
@@ -164,6 +194,8 @@ class InvoiceController {
         incoming_invoice_ids,
         req.user.id,
         isDoubleDatabase,
+        incoming_debit_note_ids,
+        debit_note_data,
       );
 
       return successResponse(

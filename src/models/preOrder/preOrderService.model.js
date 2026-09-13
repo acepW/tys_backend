@@ -81,6 +81,11 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(15, 0),
         comment: "Total Price in RMB",
       },
+      note: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        comment: "Note for the category",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,

@@ -1,5 +1,6 @@
 const { Op } = require("sequelize");
 const { models, db1, db2 } = require("../../models");
+const incomingDebitNoteService = require("../debitNote/incomingDebitNote.service");
 
 class IncomingInvoiceService {
   _sourceConfig(sourceType, dbModels) {
@@ -364,7 +365,37 @@ class IncomingInvoiceService {
       );
     }
 
-    const data = Array.from(grouped.values());
+    const relatedDebitNotes = await incomingDebitNoteService.getGrouped({
+      status,
+      sourceType,
+      search,
+    });
+    for (const debitNote of relatedDebitNotes) {
+      const key = `${debitNote.source_type}:${debitNote.payment.id}`;
+      if (grouped.has(key)) {
+        grouped.get(key).incoming_debit_notes = debitNote.payment_lists;
+        continue;
+      }
+
+      grouped.set(key, {
+        source_type: debitNote.source_type,
+        source_document: debitNote.source_document,
+        company: debitNote.company,
+        customer: debitNote.customer,
+        payment: {
+          ...debitNote.payment,
+          invoice_total_idr: "0",
+          invoice_total_rmb: "0",
+        },
+        payment_lists: [],
+        incoming_debit_notes: debitNote.payment_lists,
+      });
+    }
+
+    const data = Array.from(grouped.values()).map((item) => ({
+      ...item,
+      incoming_debit_notes: item.incoming_debit_notes || [],
+    }));
     const currentPage = Math.max(Number.parseInt(page, 10) || 1, 1);
     const perPage = Math.max(Number.parseInt(limit, 10) || 10, 1);
     const offset = (currentPage - 1) * perPage;

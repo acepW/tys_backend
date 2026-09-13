@@ -77,7 +77,7 @@ class DebitNoteService extends DualDatabaseService {
         {
           model: dbModels.Company,
           as: "company",
-          attributes: ["id", "company_name"],
+          attributes: ["id", "company_name", "initial_company"],
         },
         {
           model: dbModels.Customer,
@@ -390,10 +390,12 @@ class DebitNoteService extends DualDatabaseService {
           status: "created",
           note: "Debit note created",
         };
-        const progress1 =
-          await models.db1.DebitNoteVerificationProgress.create(progressData, {
+        const progress1 = await models.db1.DebitNoteVerificationProgress.create(
+          progressData,
+          {
             transaction: transaction1,
-          });
+          },
+        );
         await models.db2.DebitNoteVerificationProgress.create(
           { ...progressData, id: progress1.id },
           { transaction: transaction2 },
@@ -448,10 +450,12 @@ class DebitNoteService extends DualDatabaseService {
           status: "created",
           note: "Debit note created",
         };
-        const progress =
-          await models.db1.DebitNoteVerificationProgress.create(progressData, {
+        const progress = await models.db1.DebitNoteVerificationProgress.create(
+          progressData,
+          {
             transaction: transaction1,
-          });
+          },
+        );
 
         console.log(
           `✅ Synced ${itemsResult.created?.length || 0} DebitNote Items`,
@@ -488,14 +492,23 @@ class DebitNoteService extends DualDatabaseService {
     incomingDebitNoteIds,
     idUserCreate,
     isDoubleDatabase = true,
+    externalTransaction1 = null,
+    externalTransaction2 = null,
   ) {
-    let transaction1 = null;
-    let transaction2 = null;
+    const ownsTransaction = !externalTransaction1;
+    let transaction1 = externalTransaction1;
+    let transaction2 = externalTransaction2;
 
     try {
       const uniqueIds = [...new Set(incomingDebitNoteIds.map(Number))];
-      transaction1 = await db1.transaction();
-      if (isDoubleDatabase) transaction2 = await db2.transaction();
+      if (ownsTransaction) {
+        transaction1 = await db1.transaction();
+        if (isDoubleDatabase) transaction2 = await db2.transaction();
+      } else if (isDoubleDatabase && !transaction2) {
+        throw new Error(
+          "Both database transactions are required for combined creation",
+        );
+      }
 
       const incomingRows = await models.db1.IncomingDebitNote.findAll({
         where: {
@@ -620,7 +633,11 @@ class DebitNoteService extends DualDatabaseService {
         paymentLists = payment?.pre_order_payment_list || [];
       }
 
-      if (!payment || !payment.is_open || paymentLists.length !== uniqueIds.length) {
+      if (
+        !payment ||
+        !payment.is_open ||
+        paymentLists.length !== uniqueIds.length
+      ) {
         const error = new Error(
           "Payment is closed or one or more payment lists are invalid",
         );
@@ -685,8 +702,16 @@ class DebitNoteService extends DualDatabaseService {
         links.forEach((link, index) => {
           const sourceService = sourceServices[index];
           const qty = Math.max(Number(sourceService.qty) || 1, 1);
-          const totalIdr = allocateAmount(paymentList.price_idr, idrWeights, index);
-          const totalRmb = allocateAmount(paymentList.price_rmb, rmbWeights, index);
+          const totalIdr = allocateAmount(
+            paymentList.price_idr,
+            idrWeights,
+            index,
+          );
+          const totalRmb = allocateAmount(
+            paymentList.price_rmb,
+            rmbWeights,
+            index,
+          );
           debitNoteItems.push({
             product_name_indo: sourceService.product_name_indo,
             product_name_mandarin: sourceService.product_name_mandarin,
@@ -708,7 +733,7 @@ class DebitNoteService extends DualDatabaseService {
         0,
       );
       const ppn = debitNoteData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
-      const pph = debitNoteData.tax_pph_23 ? Math.round(subTotal * 0.04) : 0;
+      const pph = debitNoteData.tax_pph_23 ? Math.round(subTotal * 0.02) : 0;
       const dataToCreate = {
         date: debitNoteData.date,
         debit_note_no: debitNoteData.debit_note_no,
@@ -731,7 +756,7 @@ class DebitNoteService extends DualDatabaseService {
         sub_total: subTotal,
         ppn,
         pph,
-        total: subTotal + ppn + pph,
+        total: subTotal + ppn - pph,
       };
 
       if (isDoubleDatabase) {
@@ -807,12 +832,25 @@ class DebitNoteService extends DualDatabaseService {
         transaction2,
       );
 
-      await transaction1.commit();
-      if (transaction2) await transaction2.commit();
-      return await this.getById(debitNote1.id, {}, true);
+      if (ownsTransaction) {
+        await transaction1.commit();
+        if (transaction2) await transaction2.commit();
+        return await this.getById(debitNote1.id, {}, isDoubleDatabase);
+      }
+
+      return {
+        debit_note: debitNote1.toJSON(),
+        debit_note_items: debitNoteItems,
+      };
     } catch (error) {
-      if (transaction1 && !transaction1.finished) await transaction1.rollback();
-      if (transaction2 && !transaction2.finished) await transaction2.rollback();
+      if (ownsTransaction) {
+        if (transaction1 && !transaction1.finished) {
+          await transaction1.rollback();
+        }
+        if (transaction2 && !transaction2.finished) {
+          await transaction2.rollback();
+        }
+      }
       throw error;
     }
   }
@@ -1029,8 +1067,7 @@ class DebitNoteService extends DualDatabaseService {
   ) {
     let transaction1 = null;
     let transaction2 = null;
-    const progressStatus =
-      status === "on verification" ? "submitted" : status;
+    const progressStatus = status === "on verification" ? "submitted" : status;
 
     try {
       if (isDoubleDatabase) {
@@ -1074,10 +1111,12 @@ class DebitNoteService extends DualDatabaseService {
           status: progressStatus,
           note,
         };
-        const progress1 =
-          await models.db1.DebitNoteVerificationProgress.create(progressData, {
+        const progress1 = await models.db1.DebitNoteVerificationProgress.create(
+          progressData,
+          {
             transaction: transaction1,
-          });
+          },
+        );
         await models.db2.DebitNoteVerificationProgress.create(
           { ...progressData, id: progress1.id },
           { transaction: transaction2 },
