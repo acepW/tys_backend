@@ -4,6 +4,7 @@ const { syncChildRecords } = require("../../utils/transactionHelper");
 const { models, db1, db2 } = require("../../models");
 const { Op, fn, col } = require("sequelize");
 const incomingDebitNoteService = require("./incomingDebitNote.service");
+const taxService = require("../masterTax/tax.service");
 
 class DebitNoteService extends DualDatabaseService {
   constructor() {
@@ -732,8 +733,12 @@ class DebitNoteService extends DualDatabaseService {
           sum + Number(useRmb ? list.price_rmb || 0 : list.price_idr || 0),
         0,
       );
-      const ppn = debitNoteData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
-      const pph = debitNoteData.tax_pph_23 ? Math.round(subTotal * 0.02) : 0;
+      const { ppn, pph } = await taxService.calculate(
+        subTotal,
+        debitNoteData.tax_ppn,
+        debitNoteData.tax_pph_23,
+        transaction1,
+      );
       const dataToCreate = {
         date: debitNoteData.date,
         debit_note_no: debitNoteData.debit_note_no,

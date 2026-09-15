@@ -5,6 +5,7 @@ const { models, db1, db2 } = require("../../models");
 const { Op, fn, col, where } = require("sequelize");
 const debitNoteService = require("../debitNote/debitNote.service");
 const incomingInvoiceService = require("./incomingInvoice.service");
+const taxService = require("../masterTax/tax.service");
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
@@ -538,9 +539,12 @@ class InvoiceService extends DualDatabaseService {
         0,
       );
 
-      // Hitung pajak
-      const ppn = invoiceData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
-      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.02) : 0;
+      // Hitung pajak menggunakan persentase dari master pajak.
+      const { ppn, pph } = await taxService.calculate(
+        subTotal,
+        invoiceData.tax_ppn,
+        invoiceData.tax_pph_23,
+      );
       const total = subTotal + ppn - pph;
 
       // Bentuk output akhir
@@ -1015,8 +1019,12 @@ class InvoiceService extends DualDatabaseService {
           sum + Number(useRmb ? list.price_rmb || 0 : list.price_idr || 0),
         0,
       );
-      const ppn = invoiceData.tax_ppn ? Math.round(subTotal * 0.11) : 0;
-      const pph = invoiceData.tax_pph_23 ? Math.round(subTotal * 0.02) : 0;
+      const { ppn, pph } = await taxService.calculate(
+        subTotal,
+        invoiceData.tax_ppn,
+        invoiceData.tax_pph_23,
+        transaction1,
+      );
       const dataToCreate = {
         date: invoiceData.date,
         due_date: invoiceData.due_date || null,

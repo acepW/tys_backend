@@ -20,6 +20,7 @@ const menuRoute = require("./menu.route");
 const positionMenuRoute = require("./positionMenu.route");
 const serviceCodeRoute = require("./serviceCode.route");
 const governmentCostRoutes = require("./governmentCost.route");
+const taxRoutes = require("./tax.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
@@ -78,6 +79,7 @@ router.use("/menus", menuRoute);
 router.use("/position-menus", positionMenuRoute);
 router.use("/service-codes", serviceCodeRoute);
 router.use("/government-costs", governmentCostRoutes);
+router.use("/taxes", taxRoutes);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
@@ -141,6 +143,7 @@ router.get("/", (req, res) => {
       menus: "/api/menus",
       positionMenus: "/api/position-menus",
       serviceCodes: "/api/service-codes",
+      taxes: "/api/taxes",
 
       //service pricing
       servicePricing: "/api/service-pricing",

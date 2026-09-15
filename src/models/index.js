@@ -21,6 +21,7 @@ const MenuModel = require("./menu.model");
 const PositionMenuModel = require("./position/positionMenu.model");
 const ServiceCodeModel = require("./serviceCode.model");
 const GovernmentCostModel = require("./masterGovernmentCost/governmentCost.model");
+const TaxModel = require("./masterTax/tax.model");
 
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
@@ -145,6 +146,7 @@ const initializeModels = (sequelize) => {
     ServiceCode: ServiceCodeModel(sequelize),
     GovernmentCost: GovernmentCostModel(sequelize),
     GovernmentCostFields: GovernmentCostFieldsModel(sequelize),
+    Tax: TaxModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
