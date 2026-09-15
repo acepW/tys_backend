@@ -3,6 +3,7 @@ const cors = require("cors");
 const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
 const cookieParser = require("cookie-parser");
+const zktecoProtocolRoutes = require("./routes/zktecoProtocol.route");
 
 const app = express();
 
@@ -15,6 +16,10 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
+// ZKTeco Push devices send text payloads and cannot use the application's JWT.
+// Mount this route before the global JSON/urlencoded body parsers.
+app.use("/iclock", zktecoProtocolRoutes);
 
 app.use(express.json());
 app.use(cookieParser());

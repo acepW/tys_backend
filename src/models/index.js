@@ -23,6 +23,12 @@ const ServiceCodeModel = require("./serviceCode.model");
 const GovernmentCostModel = require("./masterGovernmentCost/governmentCost.model");
 const TaxModel = require("./masterTax/tax.model");
 
+// attendance
+const AttendanceDeviceModel = require("./attendance/attendanceDevice.model");
+const EmployeeModel = require("./attendance/employee.model");
+const AttendanceLogModel = require("./attendance/attendanceLog.model");
+const AttendanceModel = require("./attendance/attendance.model");
+
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
 //service pricing
@@ -147,6 +153,12 @@ const initializeModels = (sequelize) => {
     GovernmentCost: GovernmentCostModel(sequelize),
     GovernmentCostFields: GovernmentCostFieldsModel(sequelize),
     Tax: TaxModel(sequelize),
+
+    // Attendance
+    AttendanceDevice: AttendanceDeviceModel(sequelize),
+    Employee: EmployeeModel(sequelize),
+    AttendanceLog: AttendanceLogModel(sequelize),
+    Attendance: AttendanceModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
