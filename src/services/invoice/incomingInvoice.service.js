@@ -399,9 +399,51 @@ class IncomingInvoiceService {
     const currentPage = Math.max(Number.parseInt(page, 10) || 1, 1);
     const perPage = Math.max(Number.parseInt(limit, 10) || 10, 1);
     const offset = (currentPage - 1) * perPage;
+    const pagedData = data.slice(offset, offset + perPage);
+
+    const preOrderIds = [
+      ...new Set(
+        pagedData
+          .filter((item) => item.source_type === "pre_order")
+          .map((item) => item.source_document.id),
+      ),
+    ];
+    if (preOrderIds.length > 0) {
+      const preOrders = await dbModels.PreOrder.findAll({
+        attributes: ["id"],
+        where: { id: { [Op.in]: preOrderIds } },
+        include: [
+          {
+            model: dbModels.Contract,
+            as: "contract",
+            attributes: [
+              "id",
+              "contract_no",
+              "contract_title_indo",
+              "contract_title_mandarin",
+            ],
+          },
+        ],
+      });
+      const contractsByPreOrder = new Map(
+        preOrders.map((preOrder) => [preOrder.id, preOrder.contract]),
+      );
+      for (const item of pagedData) {
+        if (item.source_type !== "pre_order") continue;
+        const contract = contractsByPreOrder.get(item.source_document.id);
+        item.contract_document = contract
+          ? {
+              id: contract.id,
+              document_no: contract.contract_no,
+              document_title_indo: contract.contract_title_indo,
+              document_title_mandarin: contract.contract_title_mandarin,
+            }
+          : null;
+      }
+    }
 
     return {
-      data: data.slice(offset, offset + perPage),
+      data: pagedData,
       pagination: {
         total_data: data.length,
         total_page: Math.ceil(data.length / perPage),
