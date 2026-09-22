@@ -10,6 +10,9 @@ router.get("/:id", authenticate, PaymentRequestController.getById);
 // POST routes
 router.post("/", authenticate, PaymentRequestController.create);
 
+// PUT file list
+router.put("/:id/files", authenticate, PaymentRequestController.updateFiles);
+
 // PATCH routes
 router.patch("/approve/:id", authenticate, PaymentRequestController.approve);
 

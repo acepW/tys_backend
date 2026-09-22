@@ -100,9 +100,16 @@ class PaymentRequestController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, ...paymentRequestData } = req.body;
+      const {
+        is_double_database,
+        files = [],
+        ...paymentRequestData
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
       console.log(req.body);
+      if (!Array.isArray(files)) {
+        return errorResponse(res, "files must be an array", 400);
+      }
       if (!paymentRequestData.payment_request_no) {
         return errorResponse(res, "payment_request_no is required", 400);
       }
@@ -164,6 +171,7 @@ class PaymentRequestController {
 
       const result = await paymentRequestService.createWithRelations(
         dataToCreate,
+        files,
         req.user.id,
         isDoubleDatabase
       );
@@ -176,6 +184,29 @@ class PaymentRequestController {
       );
     } catch (error) {
       return errorResponse(res, error.message);
+    }
+  }
+
+  async updateFiles(req, res) {
+    try {
+      const { is_double_database = true, files } = req.body || {};
+      if (!Array.isArray(files)) {
+        return errorResponse(res, "files must be an array", 400);
+      }
+
+      const result = await paymentRequestService.updateFiles(
+        req.params.id,
+        files,
+        req.user.id,
+        is_double_database !== false,
+      );
+      return successResponse(
+        res,
+        result,
+        "Payment request files updated successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 

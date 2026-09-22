@@ -6,6 +6,8 @@ const UPLOAD_BASE_DIR = path.join(__dirname, "..", "files");
 const ALLOWED_FOLDERS = {
   company: "company",
   customer: "customer",
+  employee: "employee",
+  payment_request: "payment_request",
 };
 
 const ALLOWED_MIME_TYPES = {

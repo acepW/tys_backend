@@ -165,7 +165,7 @@ module.exports = (sequelize) => {
       file: {
         type: DataTypes.STRING(500),
         allowNull: true,
-        comment: "File",
+        comment: "Legacy single file; use the files relation for new records",
       },
       payment_method: {
         type: DataTypes.ENUM("transfer", "cash"),
@@ -346,6 +346,13 @@ module.exports = (sequelize) => {
       as: "debit_notes",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
+    });
+
+    PaymentRequest.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "payment_requests", category: "files" },
+      as: "files",
     });
   };
 

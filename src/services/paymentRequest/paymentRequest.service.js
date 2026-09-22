@@ -2,6 +2,7 @@ const DualDatabaseService = require("../dualDatabase.service");
 const { models, db1, db2 } = require("../../models");
 const { where } = require("sequelize");
 const approvalFlowService = require("../approvalFlow/approvalFlow.service");
+const fileService = require("../file.service");
 
 class PaymentRequestService extends DualDatabaseService {
   constructor() {
@@ -88,6 +89,12 @@ class PaymentRequestService extends DualDatabaseService {
               ],
             },
           ],
+        },
+        {
+          model: dbModels.File,
+          as: "files",
+          required: false,
+          where: { is_active: true },
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -247,6 +254,12 @@ class PaymentRequestService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.File,
+          as: "files",
+          required: false,
+          where: { is_active: true },
+        },
       ],
     };
 
@@ -262,6 +275,7 @@ class PaymentRequestService extends DualDatabaseService {
    */
   async createWithRelations(
     paymentRequestData,
+    files,
     id_user_create,
     isDoubleDatabase = true
   ) {
@@ -320,6 +334,20 @@ class PaymentRequestService extends DualDatabaseService {
           { transaction: transaction2 }
         );
 
+        const filesResult = await fileService.syncFiles(
+          "payment_requests",
+          paymentRequest1.id,
+          files,
+          {
+            category: "files",
+            uploadedBy: id_user_create,
+            isDoubleDatabase,
+            hardDelete: false,
+          },
+          transaction1,
+          transaction2,
+        );
+
         console.log(
           `✅ Created PaymentRequestVerificationProgress with status "requested"`
         );
@@ -369,6 +397,7 @@ class PaymentRequestService extends DualDatabaseService {
         return {
           payment_request: paymentRequest1.toJSON(),
           verification_progress: progress1.toJSON(),
+          files: filesResult.created,
         };
       } else {
         // Single database (DB1 only)
@@ -390,6 +419,20 @@ class PaymentRequestService extends DualDatabaseService {
             progressData,
             { transaction: transaction1 }
           );
+
+        const filesResult = await fileService.syncFiles(
+          "payment_requests",
+          paymentRequest.id,
+          files,
+          {
+            category: "files",
+            uploadedBy: id_user_create,
+            isDoubleDatabase,
+            hardDelete: false,
+          },
+          transaction1,
+          null,
+        );
 
         if (paymentRequestData.id_contract_project_plan) {
           const contractProjectPlan =
@@ -424,15 +467,70 @@ class PaymentRequestService extends DualDatabaseService {
         return {
           payment_request: paymentRequest.toJSON(),
           verification_progress: progress.toJSON(),
+          files: filesResult.created,
         };
       }
     } catch (error) {
       console.error(`❌ Error creating PaymentRequest:`, error.message);
 
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
+      if (transaction1 && !transaction1.finished) await transaction1.rollback();
+      if (transaction2 && !transaction2.finished) await transaction2.rollback();
 
       throw new Error(`Failed to create PaymentRequest: ${error.message}`);
+    }
+  }
+
+  async updateFiles(id, files, idUser, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+
+      const existing = await models.db1.PaymentRequest.findByPk(id, {
+        transaction: transaction1,
+        lock: transaction1.LOCK.UPDATE,
+      });
+      if (!existing) {
+        const error = new Error("Payment request not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await fileService.syncFiles(
+        "payment_requests",
+        id,
+        files,
+        {
+          category: "files",
+          uploadedBy: idUser,
+          isDoubleDatabase,
+          hardDelete: false,
+        },
+        transaction1,
+        transaction2,
+      );
+
+      await transaction1.commit();
+      if (transaction2) await transaction2.commit();
+
+      if (isDoubleDatabase) return this.getById(id, {}, true);
+      const updated = await models.db1.PaymentRequest.findByPk(id, {
+        include: [
+          {
+            model: models.db1.File,
+            as: "files",
+            required: false,
+            where: { is_active: true },
+          },
+        ],
+      });
+      return updated ? updated.toJSON() : null;
+    } catch (error) {
+      if (transaction1 && !transaction1.finished) await transaction1.rollback();
+      if (transaction2 && !transaction2.finished) await transaction2.rollback();
+      throw error;
     }
   }
 
