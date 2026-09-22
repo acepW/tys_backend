@@ -104,6 +104,26 @@ class HolidayController {
       return errorResponse(res, error.message);
     }
   }
+
+  async delete(req, res) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || id <= 0) {
+        return errorResponse(res, "id must be a positive integer", 400);
+      }
+
+      const existing = await holidayService.findById(id);
+      if (!existing) return errorResponse(res, "Holiday not found", 404);
+
+      await holidayService.delete(
+        id,
+        req.body?.is_double_database !== false,
+      );
+      return successResponse(res, null, "Holiday deleted successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
 }
 
 module.exports = new HolidayController();
