@@ -259,6 +259,8 @@ class InvoiceController {
         sub_total: invoiceData.sub_total || 0,
         ppn: invoiceData.ppn || 0,
         pph: invoiceData.pph || 0,
+        pp_20: invoiceData.pp_20 || 0,
+        pph_4_ayat_2: invoiceData.pph_4_ayat_2 || 0,
         total: invoiceData.total || 0,
         note: invoiceData.note || "",
       };

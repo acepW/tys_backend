@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test",
     "db:sync-attendance": "node scripts/sync-attendance-models.js",
+    "db:sync-employee-profile": "node scripts/sync-employee-profile.js",
     "db:sync-hr": "node scripts/sync-hr-models.js",
     "start": "nodemon server.js"
   },

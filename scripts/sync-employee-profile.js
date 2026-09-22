@@ -1,13 +1,10 @@
 const { syncModel, db1, db2 } = require("../src/models");
 
-const hrModels = ["Holiday", "WorkSchedule"];
-
 const run = async () => {
   try {
-    for (const modelName of hrModels) {
-      await syncModel(modelName, "both", {});
-    }
-    console.log("HR tables synchronized successfully");
+    await syncModel("Employee", "both", { alter: true });
+    await syncModel("EmployeeEmergencyContact", "both", {});
+    console.log("Employee profile tables synchronized successfully");
   } finally {
     await Promise.allSettled([db1.close(), db2.close()]);
   }

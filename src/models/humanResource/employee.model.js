@@ -24,6 +24,10 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(200),
         allowNull: false,
       },
+      address: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       email: {
         type: DataTypes.STRING(100),
         allowNull: true,
@@ -31,6 +35,14 @@ module.exports = (sequelize) => {
       },
       phone: {
         type: DataTypes.STRING(30),
+        allowNull: true,
+      },
+      ktp: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
+      npwp: {
+        type: DataTypes.STRING(50),
         allowNull: true,
       },
       id_company: {
@@ -56,6 +68,26 @@ module.exports = (sequelize) => {
       hire_date: {
         type: DataTypes.DATEONLY,
         allowNull: true,
+        comment: "Employee join date",
+      },
+      contract_start_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      contract_end_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      contract_reminder_days: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+        defaultValue: 60,
+        validate: { min: 0 },
+      },
+      contract_reminder_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        comment: "Automatically calculated from contract end date",
       },
       termination_date: {
         type: DataTypes.DATEONLY,
@@ -74,6 +106,10 @@ module.exports = (sequelize) => {
       indexes: [
         { name: "idx_employee_company", fields: ["id_company"] },
         { name: "idx_employee_active", fields: ["is_active"] },
+        {
+          name: "idx_employee_contract_reminder_date",
+          fields: ["contract_reminder_date"],
+        },
       ],
     },
   );
@@ -114,6 +150,24 @@ module.exports = (sequelize) => {
       as: "attendances",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
+    });
+    Employee.hasMany(models.EmployeeEmergencyContact, {
+      foreignKey: "id_employee",
+      as: "emergency_contacts",
+      onDelete: "CASCADE",
+      onUpdate: "CASCADE",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "contract_documents" },
+      as: "contract_documents",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "employee_photos" },
+      as: "employee_photos",
     });
   };
 

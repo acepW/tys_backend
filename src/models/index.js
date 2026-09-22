@@ -26,9 +26,13 @@ const TaxModel = require("./masterTax/tax.model");
 // human resource
 const AttendanceDeviceModel = require("./humanResource/attendanceDevice.model");
 const EmployeeModel = require("./humanResource/employee.model");
+const EmployeeEmergencyContactModel = require(
+  "./humanResource/employeeEmergencyContact.model",
+);
 const AttendanceLogModel = require("./humanResource/attendanceLog.model");
 const AttendanceModel = require("./humanResource/attendance.model");
 const HolidayModel = require("./humanResource/holiday.model");
+const WorkScheduleModel = require("./humanResource/workSchedule.model");
 
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
@@ -158,9 +162,11 @@ const initializeModels = (sequelize) => {
     // Human Resource
     AttendanceDevice: AttendanceDeviceModel(sequelize),
     Employee: EmployeeModel(sequelize),
+    EmployeeEmergencyContact: EmployeeEmergencyContactModel(sequelize),
     AttendanceLog: AttendanceLogModel(sequelize),
     Attendance: AttendanceModel(sequelize),
     Holiday: HolidayModel(sequelize),
+    WorkSchedule: WorkScheduleModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),

@@ -435,6 +435,32 @@ class InvoiceService extends DualDatabaseService {
     let transaction2 = null;
 
     try {
+      // The legacy create endpoint accepts invoice totals from the client. When
+      // either new deduction is selected, calculate every selected tax on the
+      // server so the stored total cannot omit the deduction.
+      if (
+        invoiceData.tax_pp_20 === true ||
+        invoiceData.tax_pph_4_ayat_2 === true
+      ) {
+        const taxCalculation = await taxService.calculate(
+          Number(invoiceData.sub_total || 0),
+          invoiceData.tax_ppn,
+          invoiceData.tax_pph_23,
+          null,
+          invoiceData.tax_pp_20,
+          invoiceData.tax_pph_4_ayat_2,
+        );
+
+        invoiceData = {
+          ...invoiceData,
+          ppn: taxCalculation.ppn,
+          pph: taxCalculation.pph,
+          pp_20: taxCalculation.pp_20,
+          pph_4_ayat_2: taxCalculation.pph_4_ayat_2,
+          total: taxCalculation.total,
+        };
+      }
+
       //get data for debit note
       const getNoDebitNote = await debitNoteService.getNoDebitNote(true);
       const noDebitNote = getNoDebitNote.find(
@@ -1019,18 +1045,23 @@ class InvoiceService extends DualDatabaseService {
           sum + Number(useRmb ? list.price_rmb || 0 : list.price_idr || 0),
         0,
       );
-      const { ppn, pph } = await taxService.calculate(
-        subTotal,
-        invoiceData.tax_ppn,
-        invoiceData.tax_pph_23,
-        transaction1,
-      );
+      const { ppn, pph, pp_20, pph_4_ayat_2, total } =
+        await taxService.calculate(
+          subTotal,
+          invoiceData.tax_ppn,
+          invoiceData.tax_pph_23,
+          transaction1,
+          invoiceData.tax_pp_20,
+          invoiceData.tax_pph_4_ayat_2,
+        );
       const dataToCreate = {
         date: invoiceData.date,
         due_date: invoiceData.due_date || null,
         invoice_no: invoiceData.invoice_no,
         tax_ppn: invoiceData.tax_ppn === true,
         tax_pph_23: invoiceData.tax_pph_23 === true,
+        tax_pp_20: invoiceData.tax_pp_20 === true,
+        tax_pph_4_ayat_2: invoiceData.tax_pph_4_ayat_2 === true,
         note: invoiceData.note || "",
         file_invoice: invoiceData.file_invoice || null,
         source_type: sourceType,
@@ -1050,7 +1081,9 @@ class InvoiceService extends DualDatabaseService {
         sub_total: subTotal,
         ppn,
         pph,
-        total: subTotal + ppn - pph,
+        pp_20,
+        pph_4_ayat_2,
+        total,
       };
 
       const invoiceDataWithSharedId = { ...dataToCreate };

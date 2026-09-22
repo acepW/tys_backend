@@ -165,12 +165,12 @@ class FileService extends DualDatabaseService {
 
         return result;
       } else {
-        // Single database (DB2 only)
+        // Single database (DB1 only)
         if (!isExternalTransaction) {
           transaction1 = await db1.transaction();
         }
 
-        const existing = await this.Model2.findAll({
+        const existing = await this.Model1.findAll({
           where: {
             fileable_type: fileableType,
             fileable_id: fileableId,
@@ -202,13 +202,13 @@ class FileService extends DualDatabaseService {
           const isExisting = file.id && existingIds.includes(file.id);
 
           if (isExisting) {
-            await this.Model2.update(payload, {
+            await this.Model1.update(payload, {
               where: { id: file.id },
               transaction: transaction1,
             });
             result.updated.push({ id: file.id, ...payload });
           } else {
-            const created = await this.Model2.create(payload, {
+            const created = await this.Model1.create(payload, {
               transaction: transaction1,
             });
             result.created.push(created.toJSON());
@@ -221,12 +221,12 @@ class FileService extends DualDatabaseService {
 
         if (idsToDelete.length > 0) {
           if (hardDelete) {
-            await this.Model2.destroy({
+            await this.Model1.destroy({
               where: { id: { [Op.in]: idsToDelete } },
               transaction: transaction1,
             });
           } else {
-            await this.Model2.update(
+            await this.Model1.update(
               { is_active: false },
               {
                 where: { id: { [Op.in]: idsToDelete } },

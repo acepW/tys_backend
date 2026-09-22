@@ -147,6 +147,16 @@ module.exports = (sequelize) => {
         defaultValue: false,
         comment: "Tax pph 23 applicable flag",
       },
+      tax_pp_20: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax pp 20 applicable flag",
+      },
+      tax_pph_4_ayat_2: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax pph 4 ayat 2 applicable flag",
+      },
       sub_total: {
         type: DataTypes.DECIMAL(15, 0),
         defaultValue: 0,
@@ -160,7 +170,17 @@ module.exports = (sequelize) => {
       pph: {
         type: DataTypes.DECIMAL(15, 0),
         defaultValue: 0,
-        comment: "PPH amount",
+        comment: "PPH 23 amount",
+      },
+      pp_20: {
+        type: DataTypes.DECIMAL(15, 0),
+        defaultValue: 0,
+        comment: "PP 20 amount",
+      },
+      pph_4_ayat_2: {
+        type: DataTypes.DECIMAL(15, 0),
+        defaultValue: 0,
+        comment: "PPH 4 ayat 2 amount",
       },
       total: {
         type: DataTypes.DECIMAL(15, 0),
