@@ -1,4 +1,4 @@
-const attendanceDeviceService = require("../../services/attendance/attendanceDevice.service");
+const attendanceDeviceService = require("../../services/humanResource/attendanceDevice.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
 class AttendanceDeviceController {

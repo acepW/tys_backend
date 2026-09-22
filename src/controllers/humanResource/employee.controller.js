@@ -1,4 +1,4 @@
-const employeeService = require("../../services/attendance/employee.service");
+const employeeService = require("../../services/humanResource/employee.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
 const editableFields = [

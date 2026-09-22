@@ -1,5 +1,5 @@
-const attendanceService = require("../../services/attendance/attendance.service");
-const employeeService = require("../../services/attendance/employee.service");
+const attendanceService = require("../../services/humanResource/attendance.service");
+const employeeService = require("../../services/humanResource/employee.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
 const pagination = (query) => ({

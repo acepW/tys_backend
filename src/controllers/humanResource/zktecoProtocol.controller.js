@@ -1,4 +1,4 @@
-const attendanceService = require("../../services/attendance/attendance.service");
+const attendanceService = require("../../services/humanResource/attendance.service");
 
 const getSerialNumber = (req) =>
   String(req.query.SN || req.query.sn || "").trim();

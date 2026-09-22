@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const controller = require("../controllers/attendance/zktecoProtocol.controller");
+const controller = require("../controllers/humanResource/zktecoProtocol.controller");
 
 router.use(express.text({ type: "*/*", limit: "5mb" }));
 router.get("/cdata", controller.initialize);
