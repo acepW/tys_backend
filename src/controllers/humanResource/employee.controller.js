@@ -134,6 +134,19 @@ class EmployeeController {
     }
   }
 
+  async getNextDeviceUserId(req, res) {
+    try {
+      const result = await employeeService.getNextDeviceUserId();
+      return successResponse(
+        res,
+        result,
+        "Next device user ID retrieved successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
   async create(req, res) {
     try {
       const { is_double_database = true } = req.body || {};
