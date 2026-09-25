@@ -9,6 +9,7 @@ const editableFields = [
   "employee_code",
   "device_user_id",
   "full_name",
+  "gender",
   "address",
   "email",
   "phone",
