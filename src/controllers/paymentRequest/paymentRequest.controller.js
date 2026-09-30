@@ -2,7 +2,65 @@ const paymentRequestService = require("../../services/paymentRequest/paymentRequ
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 
+const EDITABLE_FIELDS = [
+  "payment_request_no", "payment_type", "priority", "cost_bearer", "id_company",
+  "payment_date", "total_payment_request", "description", "bank_name",
+  "account_name", "account_number", "payment_purpose", "top_up_petty_cash",
+  "vendor_name", "invoice_no", "billing_id", "payment_method", "id_vendor",
+  "id_customer", "id_contract", "id_contract_service", "id_contract_project_plan",
+  "id_contract_project_plan_cost", "sub_total_payment", "tax_ppn", "tax_pph_23",
+  "tax_pp_20", "tax_pph_4_ayat_2", "ppn", "pph", "pp_20", "pph_4_ayat_2",
+];
+
+function editableData(body) {
+  const data = {};
+  for (const field of EDITABLE_FIELDS) {
+    if (body[field] !== undefined) data[field] = body[field];
+  }
+  return data;
+}
+
+function validateAmounts(body) {
+  for (const field of [
+    "total_payment_request", "sub_total_payment", "ppn", "pph", "pp_20",
+    "pph_4_ayat_2", "top_up_petty_cash",
+  ]) {
+    if (body[field] !== undefined && body[field] !== null &&
+        (body[field] === "" || !Number.isFinite(Number(body[field])) || Number(body[field]) < 0)) {
+      return `${field} must be a non-negative number`;
+    }
+  }
+  for (const field of ["tax_ppn", "tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"]) {
+    if (body[field] !== undefined && typeof body[field] !== "boolean") return `${field} must be a boolean`;
+  }
+  return null;
+}
+
+function validateExpenses(expenses) {
+  if (!Array.isArray(expenses) || expenses.length === 0) return "expenses must be a non-empty array";
+  for (let i = 0; i < expenses.length; i++) {
+    const item = expenses[i];
+    if (!item || typeof item !== "object" || Array.isArray(item)) return `expenses[${i}] must be an object`;
+    for (const field of ["purchase_date", "category", "description", "vendor", "total"]) {
+      if (item[field] === undefined || item[field] === null || item[field] === "") return `expenses[${i}].${field} is required`;
+    }
+    if (!Number.isFinite(Number(item.total)) || Number(item.total) < 0) return `expenses[${i}].total must be a non-negative number`;
+    if (item.files !== undefined && !Array.isArray(item.files)) return `expenses[${i}].files must be an array`;
+  }
+  return null;
+}
+
 class PaymentRequestController {
+  async getNoPaymentRequest(req, res) {
+    try {
+      const isDoubleDatabase = req.query?.is_double_database !== "false";
+      const numbers = await paymentRequestService.getNoPaymentRequest(isDoubleDatabase);
+      return successResponse(res, numbers, "Payment request numbers retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
   /**
    * Get all payment requests
    */
@@ -106,7 +164,6 @@ class PaymentRequestController {
         ...paymentRequestData
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
-      console.log(req.body);
       if (!Array.isArray(files)) {
         return errorResponse(res, "files must be an array", 400);
       }
@@ -152,14 +209,26 @@ class PaymentRequestController {
       if (!paymentRequestData.description) {
         return errorResponse(res, "description is required", 400);
       }
+      const amountError = validateAmounts(paymentRequestData);
+      if (amountError) return errorResponse(res, amountError, 400);
 
       // Build data to create — exclude fields that should not be set on create
       const dataToCreate = {
-        ...paymentRequestData,
+        ...editableData(paymentRequestData),
+        request_format: "standard",
         id_user_request: req.user.id,
         id_department_request: req.user.id_department,
         status: "pending",
         top_up_petty_cash: Number(paymentRequestData.top_up_petty_cash || 0),
+        sub_total_payment: paymentRequestData.sub_total_payment ?? 0,
+        tax_ppn: paymentRequestData.tax_ppn ?? false,
+        tax_pph_23: paymentRequestData.tax_pph_23 ?? false,
+        tax_pp_20: paymentRequestData.tax_pp_20 ?? false,
+        tax_pph_4_ayat_2: paymentRequestData.tax_pph_4_ayat_2 ?? false,
+        ppn: paymentRequestData.ppn ?? 0,
+        pph: paymentRequestData.pph ?? 0,
+        pp_20: paymentRequestData.pp_20 ?? 0,
+        pph_4_ayat_2: paymentRequestData.pph_4_ayat_2 ?? 0,
         is_active:
           paymentRequestData.is_active !== undefined
             ? paymentRequestData.is_active
@@ -184,6 +253,84 @@ class PaymentRequestController {
       );
     } catch (error) {
       return errorResponse(res, error.message);
+    }
+  }
+
+  async createExpense(req, res) {
+    try {
+      const { is_double_database, files = [], expenses, ...body } = req.body || {};
+      if (!Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
+      const expenseError = validateExpenses(expenses);
+      if (expenseError) return errorResponse(res, expenseError, 400);
+      const data = editableData(body);
+      data.total_payment_request = body.total_payment_request ?? body.total_payment;
+      for (const field of [
+        "payment_request_no", "payment_type", "priority", "cost_bearer", "id_company",
+        "payment_date", "total_payment_request", "bank_name", "account_name",
+        "account_number", "description",
+      ]) {
+        if (data[field] === undefined || data[field] === null || data[field] === "") return errorResponse(res, `${field} is required`, 400);
+      }
+      const amountError = validateAmounts(data);
+      if (amountError) return errorResponse(res, amountError, 400);
+      Object.assign(data, {
+        request_format: "expense",
+        id_user_request: req.user.id,
+        id_department_request: req.user.id_department,
+        status: "pending",
+        top_up_petty_cash: 0,
+        sub_total_payment: body.sub_total_payment ?? 0,
+        tax_ppn: body.tax_ppn ?? false,
+        tax_pph_23: body.tax_pph_23 ?? false,
+        tax_pp_20: body.tax_pp_20 ?? false,
+        tax_pph_4_ayat_2: body.tax_pph_4_ayat_2 ?? false,
+        ppn: body.ppn ?? 0,
+        pph: body.pph ?? 0,
+        pp_20: body.pp_20 ?? 0,
+        pph_4_ayat_2: body.pph_4_ayat_2 ?? 0,
+        vendor_name: null,
+        invoice_no: null,
+      });
+      const result = await paymentRequestService.createWithRelations(
+        data, files, req.user.id, is_double_database !== false, expenses,
+      );
+      return successResponse(res, result, "Expense payment request created successfully", 201);
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  async update(req, res) {
+    return PaymentRequestController.prototype.updateByFormat(req, res, "standard");
+  }
+
+  async updateExpense(req, res) {
+    return PaymentRequestController.prototype.updateByFormat(req, res, "expense");
+  }
+
+  async updateByFormat(req, res, format) {
+    try {
+      const { is_double_database, files, expenses, ...body } = req.body || {};
+      const isDoubleDatabase = is_double_database !== false;
+      if (files !== undefined && !Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
+      if (format === "standard" && expenses !== undefined) return errorResponse(res, "expenses are only supported for expense payment requests", 400);
+      if (format === "expense" && expenses !== undefined) {
+        const expenseError = validateExpenses(expenses);
+        if (expenseError) return errorResponse(res, expenseError, 400);
+      }
+      const existing = await paymentRequestService.findById(req.params.id, {}, true);
+      if (!existing) return errorResponse(res, "Payment request not found", 404);
+      if (existing.request_format !== format) return errorResponse(res, "Payment request format does not match endpoint", 400);
+      const data = editableData(body);
+      if (format === "expense" && body.total_payment !== undefined) data.total_payment_request = body.total_payment;
+      const amountError = validateAmounts(data);
+      if (amountError) return errorResponse(res, amountError, 400);
+      const result = await paymentRequestService.updateWithRelations(
+        req.params.id, data, files, expenses, req.user.id, isDoubleDatabase,
+      );
+      return successResponse(res, result, "Payment request updated successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 

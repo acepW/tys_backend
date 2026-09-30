@@ -94,6 +94,7 @@ const DebitNoteVerificationProgressModel = require("./debitNote/debitNoteVerific
 
 //payment request
 const PaymentRequestModel = require("./paymentRequest/paymentRequest.model");
+const PaymentRequestExpenseModel = require("./paymentRequest/paymentRequestExpense.model");
 const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymentRequestVerificationProgress.model");
 
 //vendor
@@ -230,6 +231,7 @@ const initializeModels = (sequelize) => {
 
     //payment request
     PaymentRequest: PaymentRequestModel(sequelize),
+    PaymentRequestExpense: PaymentRequestExpenseModel(sequelize),
     PaymentRequestVerificationProgress:
       PaymentRequestVerificationProgressModel(sequelize),
 

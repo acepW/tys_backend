@@ -96,6 +96,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Payment request number",
       },
+      request_format: {
+        type: DataTypes.ENUM("standard", "expense"),
+        allowNull: false,
+        defaultValue: "standard",
+      },
       payment_type: {
         type: DataTypes.ENUM("vendor", "pnbp spb", "others"),
         allowNull: false,
@@ -114,12 +119,12 @@ module.exports = (sequelize) => {
       },
       vendor_name: {
         type: DataTypes.STRING(500),
-        allowNull: false,
+        allowNull: true,
         comment: "Vendor name",
       },
       invoice_no: {
         type: DataTypes.STRING(500),
-        allowNull: false,
+        allowNull: true,
         comment: "Invoice number",
       },
       payment_date: {
@@ -131,6 +136,51 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         comment: "Total payment request amount",
+      },
+      sub_total_payment: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      tax_ppn: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax ppn applicable flag",
+      },
+      tax_pph_23: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax pph 23 applicable flag",
+      },
+      tax_pp_20: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax pp 20 applicable flag",
+      },
+      tax_pph_4_ayat_2: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        comment: "Tax pph 4 ayat 2 applicable flag",
+      },
+      ppn: {
+        type: DataTypes.DECIMAL(15, 0),
+        defaultValue: 0,
+        comment: "PPN amount",
+      },
+      pph: {
+        type: DataTypes.DECIMAL(15, 0),
+        defaultValue: 0,
+        comment: "PPH 23 amount",
+      },
+      pp_20: {
+        type: DataTypes.DECIMAL(15, 0),
+        defaultValue: 0,
+        comment: "PP 20 amount",
+      },
+      pph_4_ayat_2: {
+        type: DataTypes.DECIMAL(15, 0),
+        defaultValue: 0,
+        comment: "PPH 4 ayat 2 amount",
       },
       billing_id: {
         type: DataTypes.STRING(500),
@@ -353,6 +403,10 @@ module.exports = (sequelize) => {
       constraints: false,
       scope: { fileable_type: "payment_requests", category: "files" },
       as: "files",
+    });
+    PaymentRequest.hasMany(models.PaymentRequestExpense, {
+      foreignKey: "id_payment_request",
+      as: "expenses",
     });
   };
 

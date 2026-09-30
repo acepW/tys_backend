@@ -5,10 +5,16 @@ const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
 router.get("/", authenticate, PaymentRequestController.getAll);
+router.get("/no/documents", authenticate, PaymentRequestController.getNoPaymentRequest);
 router.get("/:id", authenticate, PaymentRequestController.getById);
 
 // POST routes
 router.post("/", authenticate, PaymentRequestController.create);
+router.post("/expenses", authenticate, PaymentRequestController.createExpense);
+
+// Update each form through its own endpoint.
+router.put("/:id", authenticate, PaymentRequestController.update);
+router.put("/:id/expenses", authenticate, PaymentRequestController.updateExpense);
 
 // PUT file list
 router.put("/:id/files", authenticate, PaymentRequestController.updateFiles);

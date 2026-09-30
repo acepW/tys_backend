@@ -1,12 +1,51 @@
 const DualDatabaseService = require("../dualDatabase.service");
 const { models, db1, db2 } = require("../../models");
-const { where } = require("sequelize");
+const { Op, fn, col, where } = require("sequelize");
 const approvalFlowService = require("../approvalFlow/approvalFlow.service");
+const companyService = require("../company.service");
 const fileService = require("../file.service");
 
 class PaymentRequestService extends DualDatabaseService {
   constructor() {
     super("PaymentRequest");
+  }
+
+  async getNoPaymentRequest(isDoubleDatabase = true) {
+    const dbModels = isDoubleDatabase ? models.db1 : models.db2;
+    const now = new Date();
+    const year = now.getFullYear();
+
+    const dataTotal = await dbModels.PaymentRequest.findAll({
+      attributes: ["id_company", [fn("COUNT", col("id")), "total"]],
+      where: {
+        is_active: true,
+        createdAt: {
+          [Op.gte]: new Date(year, 0, 1),
+          [Op.lt]: new Date(year + 1, 0, 1),
+        },
+      },
+      group: ["id_company"],
+      raw: true,
+    });
+
+    const dataCompany = await companyService.findAll({
+      attributes: ["id", "company_name", "initial_company"],
+    }, isDoubleDatabase);
+
+    return dataCompany.map((company) => {
+      const found = dataTotal.find((row) => Number(row.id_company) === Number(company.id));
+      const total = found ? Number(found.total) : 0;
+      const nextNumber = String(total + 1).padStart(5, "0");
+      const initial = company.initial_company ? company.initial_company.toUpperCase() : "-";
+      return {
+        id_company: company.id,
+        company_name: company.company_name,
+        initial_company: initial,
+        total,
+        next_number: nextNumber,
+        no_payment_request: `PRQ-${initial}-${year}-${nextNumber}`,
+      };
+    });
   }
 
   /**
@@ -95,6 +134,11 @@ class PaymentRequestService extends DualDatabaseService {
           as: "files",
           required: false,
           where: { is_active: true },
+        },
+        {
+          model: dbModels.PaymentRequestExpense,
+          as: "expenses",
+          include: [{ model: dbModels.File, as: "files", required: false, where: { is_active: true } }],
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -260,6 +304,11 @@ class PaymentRequestService extends DualDatabaseService {
           required: false,
           where: { is_active: true },
         },
+        {
+          model: dbModels.PaymentRequestExpense,
+          as: "expenses",
+          include: [{ model: dbModels.File, as: "files", required: false, where: { is_active: true } }],
+        },
       ],
     };
 
@@ -277,7 +326,8 @@ class PaymentRequestService extends DualDatabaseService {
     paymentRequestData,
     files,
     id_user_create,
-    isDoubleDatabase = true
+    isDoubleDatabase = true,
+    expenses = [],
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -347,6 +397,7 @@ class PaymentRequestService extends DualDatabaseService {
           transaction1,
           transaction2,
         );
+        await this.syncExpenses(paymentRequest1.id, expenses, id_user_create, true, transaction1, transaction2);
 
         console.log(
           `✅ Created PaymentRequestVerificationProgress with status "requested"`
@@ -398,6 +449,10 @@ class PaymentRequestService extends DualDatabaseService {
           payment_request: paymentRequest1.toJSON(),
           verification_progress: progress1.toJSON(),
           files: filesResult.created,
+          expenses: (await models.db1.PaymentRequestExpense.findAll({
+            where: { id_payment_request: paymentRequest1.id },
+            include: [{ model: models.db1.File, as: "files", required: false, where: { is_active: true } }],
+          })).map((item) => item.toJSON()),
         };
       } else {
         // Single database (DB1 only)
@@ -433,6 +488,7 @@ class PaymentRequestService extends DualDatabaseService {
           transaction1,
           null,
         );
+        await this.syncExpenses(paymentRequest.id, expenses, id_user_create, false, transaction1, null);
 
         if (paymentRequestData.id_contract_project_plan) {
           const contractProjectPlan =
@@ -468,6 +524,10 @@ class PaymentRequestService extends DualDatabaseService {
           payment_request: paymentRequest.toJSON(),
           verification_progress: progress.toJSON(),
           files: filesResult.created,
+          expenses: (await models.db1.PaymentRequestExpense.findAll({
+            where: { id_payment_request: paymentRequest.id },
+            include: [{ model: models.db1.File, as: "files", required: false, where: { is_active: true } }],
+          })).map((item) => item.toJSON()),
         };
       }
     } catch (error) {
@@ -477,6 +537,101 @@ class PaymentRequestService extends DualDatabaseService {
       if (transaction2 && !transaction2.finished) await transaction2.rollback();
 
       throw new Error(`Failed to create PaymentRequest: ${error.message}`);
+    }
+  }
+
+  async syncExpenses(id, expenses, idUser, isDoubleDatabase, transaction1, transaction2) {
+    const existing = await models.db1.PaymentRequestExpense.findAll({
+      where: { id_payment_request: id }, transaction: transaction1,
+    });
+    const existingIds = new Set(existing.map((row) => row.id));
+    const retainedIds = new Set();
+    for (const expense of expenses) {
+      const { id: expenseId, files, ...fields } = expense;
+      const data = {
+        purchase_date: fields.purchase_date,
+        category: fields.category,
+        description: fields.description,
+        vendor: fields.vendor,
+        total: fields.total,
+        id_payment_request: id,
+      };
+      let savedId;
+      if (expenseId !== undefined && expenseId !== null) {
+        if (!existingIds.has(Number(expenseId)) || retainedIds.has(Number(expenseId))) {
+          const error = new Error(`Invalid expense id ${expenseId}`);
+          error.statusCode = 400;
+          throw error;
+        }
+        savedId = Number(expenseId);
+        retainedIds.add(savedId);
+        await models.db1.PaymentRequestExpense.update(data, { where: { id: savedId }, transaction: transaction1 });
+        if (isDoubleDatabase) {
+          const [updated] = await models.db2.PaymentRequestExpense.update(data, { where: { id: savedId }, transaction: transaction2 });
+          if (!updated) throw new Error(`Expense ${savedId} missing from second database`);
+        }
+      } else {
+        const created = await models.db1.PaymentRequestExpense.create(data, { transaction: transaction1 });
+        savedId = created.id;
+        if (isDoubleDatabase) {
+          await models.db2.PaymentRequestExpense.create({ ...data, id: savedId }, { transaction: transaction2 });
+        }
+      }
+      if (files !== undefined) {
+        await fileService.syncFiles("payment_request_expenses", savedId, files, {
+          category: "files", uploadedBy: idUser, isDoubleDatabase, hardDelete: false,
+        }, transaction1, transaction2);
+      }
+    }
+    for (const old of existing) {
+      if (retainedIds.has(old.id)) continue;
+      await models.db1.File.update({ is_active: false }, {
+        where: { fileable_type: "payment_request_expenses", fileable_id: old.id, category: "files" },
+        transaction: transaction1,
+      });
+      await models.db1.PaymentRequestExpense.destroy({ where: { id: old.id }, transaction: transaction1 });
+      if (isDoubleDatabase) {
+        await models.db2.File.update({ is_active: false }, {
+          where: { fileable_type: "payment_request_expenses", fileable_id: old.id, category: "files" },
+          transaction: transaction2,
+        });
+        await models.db2.PaymentRequestExpense.destroy({ where: { id: old.id }, transaction: transaction2 });
+      }
+    }
+  }
+
+  async updateWithRelations(id, data, files, expenses, idUser, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+    try {
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+      const existing = await this.Model1.findByPk(id, { transaction: transaction1 });
+      if (!existing) {
+        const error = new Error("Payment request not found");
+        error.statusCode = 404;
+        throw error;
+      }
+      await this.Model1.update(data, { where: { id }, transaction: transaction1 });
+      if (isDoubleDatabase) {
+        const [updated] = await this.Model2.update(data, { where: { id }, transaction: transaction2 });
+        if (!updated) throw new Error("Payment request missing from second database");
+      }
+      if (files !== undefined) {
+        await fileService.syncFiles("payment_requests", id, files, {
+          category: "files", uploadedBy: idUser, isDoubleDatabase, hardDelete: false,
+        }, transaction1, transaction2);
+      }
+      if (expenses !== undefined) {
+        await this.syncExpenses(id, expenses, idUser, isDoubleDatabase, transaction1, transaction2);
+      }
+      await transaction1.commit();
+      if (transaction2) await transaction2.commit();
+      return this.getById(id, {}, true);
+    } catch (error) {
+      if (transaction1 && !transaction1.finished) await transaction1.rollback();
+      if (transaction2 && !transaction2.finished) await transaction2.rollback();
+      throw error;
     }
   }
 
