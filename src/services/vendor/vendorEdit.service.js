@@ -257,12 +257,14 @@ class VendorEditService extends DualDatabaseService {
         "account_holder_name",
         "bank_branch",
         "transaction_currency",
+        "transaction_purpose",
         "file",
       ];
 
       const vendorUpdateData = {};
       replaceFields.forEach((field) => {
-        if (vendorEdit[field] !== undefined) {
+        if (vendorEdit[field] !== undefined &&
+            (field !== "transaction_purpose" || vendorEdit[field] !== null)) {
           vendorUpdateData[field] = vendorEdit[field];
         }
       });

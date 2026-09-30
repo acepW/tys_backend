@@ -1,7 +1,11 @@
 require("dotenv").config();
 const app = require("./src/app");
 const { testConnections } = require("./src/config/database");
-const { syncDatabases, syncModel } = require("./src/models");
+const {
+  syncDatabases,
+  syncModel,
+  syncProcurementModels,
+} = require("./src/models");
 const config = require("./src/config/config");
 
 const PORT = config.port;
@@ -21,7 +25,7 @@ const startServer = async () => {
     //await syncDatabases();
 
     //sync database by table name
-    //await syncModel("PaymentRequestExpense");
+    //await syncProcurementModels();
     //console.log("");
 
     // Start Express server

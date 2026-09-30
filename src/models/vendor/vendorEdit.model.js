@@ -103,6 +103,11 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Currency for transaction",
       },
+      transaction_purpose: {
+        type: DataTypes.ENUM("Company Services", "Internal General Affairs"),
+        allowNull: true,
+        comment: "Purpose of vendor transactions",
+      },
       file: {
         type: DataTypes.STRING(200),
         allowNull: true,

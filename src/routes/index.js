@@ -48,6 +48,8 @@ const debitNoteRoutes = require("./debitNote.route");
 
 //payment request
 const paymentRequestRoutes = require("./paymentRequest.route");
+const purchaseRequestRoutes = require("./purchaseRequest.route");
+const gaPurchaseOrderRoutes = require("./gaPurchaseOrder.route");
 
 //report
 const reportInvoiceRoutes = require("./reportInvoice.route");
@@ -115,6 +117,8 @@ router.use("/debit-notes", debitNoteRoutes);
 
 //payment request
 router.use("/payment-requests", paymentRequestRoutes);
+router.use("/purchase-requests", purchaseRequestRoutes);
+router.use("/ga-purchase-orders", gaPurchaseOrderRoutes);
 
 //report
 router.use("/report-invoices", reportInvoiceRoutes);

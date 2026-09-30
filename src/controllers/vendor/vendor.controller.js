@@ -1,6 +1,7 @@
 const vendorService = require("../../services/vendor/vendor.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const { isValidTransactionPurpose } = require("../../utils/vendorTransactionPurpose");
 
 class VendorController {
   /**
@@ -13,11 +14,16 @@ class VendorController {
         is_request,
         id_department_request,
         status,
+        transaction_purpose,
         search,
         page,
         limit,
       } = req.query || {};
-      const isDoubleDatabase = is_double_database;
+      const isDoubleDatabase = is_double_database !== "false" && is_double_database !== false;
+
+      if (!isValidTransactionPurpose(transaction_purpose)) {
+        return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
+      }
 
       let obj = {};
       if (search) {
@@ -26,6 +32,7 @@ class VendorController {
         };
       }
       if (status) obj.status = status;
+      if (transaction_purpose) obj.transaction_purpose = transaction_purpose;
       if (is_request === "false" || is_request === false) obj.is_active = true;
       if (id_department_request)
         obj.id_department_request = id_department_request;
@@ -81,6 +88,9 @@ class VendorController {
       if (!vendorData.vendor_name) {
         return errorResponse(res, "vendor_name is required", 400);
       }
+      if (!isValidTransactionPurpose(vendorData.transaction_purpose)) {
+        return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
+      }
 
       const result = await vendorService.createWithRelations(
         {
@@ -112,6 +122,10 @@ class VendorController {
         ...vendorData
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
+
+      if (!isValidTransactionPurpose(vendorData.transaction_purpose)) {
+        return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
+      }
 
       const existing = await vendorService.findById(id, {}, isDoubleDatabase);
       if (!existing) {

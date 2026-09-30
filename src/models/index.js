@@ -97,6 +97,13 @@ const PaymentRequestModel = require("./paymentRequest/paymentRequest.model");
 const PaymentRequestExpenseModel = require("./paymentRequest/paymentRequestExpense.model");
 const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymentRequestVerificationProgress.model");
 
+const PurchaseRequestModel = require("./purchaseRequest/purchaseRequest.model");
+const PurchaseRequestItemModel = require("./purchaseRequest/purchaseRequestItem.model");
+const PurchaseRequestVerificationProgressModel = require("./purchaseRequest/purchaseRequestVerificationProgress.model");
+const GaPurchaseOrderModel = require("./gaPurchaseOrder/gaPurchaseOrder.model");
+const GaPurchaseOrderItemModel = require("./gaPurchaseOrder/gaPurchaseOrderItem.model");
+const GaPurchaseOrderVerificationProgressModel = require("./gaPurchaseOrder/gaPurchaseOrderVerificationProgress.model");
+
 //vendor
 const VendorModel = require("./vendor/vendor.model");
 const VendorServiceModel = require("./vendor/vendorService.model");
@@ -235,6 +242,13 @@ const initializeModels = (sequelize) => {
     PaymentRequestVerificationProgress:
       PaymentRequestVerificationProgressModel(sequelize),
 
+    PurchaseRequest: PurchaseRequestModel(sequelize),
+    PurchaseRequestItem: PurchaseRequestItemModel(sequelize),
+    PurchaseRequestVerificationProgress: PurchaseRequestVerificationProgressModel(sequelize),
+    GaPurchaseOrder: GaPurchaseOrderModel(sequelize),
+    GaPurchaseOrderItem: GaPurchaseOrderItemModel(sequelize),
+    GaPurchaseOrderVerificationProgress: GaPurchaseOrderVerificationProgressModel(sequelize),
+
     //vendor
     Vendor: VendorModel(sequelize),
     VendorService: VendorServiceModel(sequelize),
@@ -338,10 +352,27 @@ const syncModel = async (
   }
 };
 
+/** Create procurement tables in foreign-key dependency order. Existing tables are left intact. */
+const syncProcurementModels = async () => {
+  const order = [
+    "PurchaseRequest",
+    "GaPurchaseOrder",
+    "PurchaseRequestItem",
+    "PurchaseRequestVerificationProgress",
+    "GaPurchaseOrderItem",
+    "GaPurchaseOrderVerificationProgress",
+  ];
+  for (const modelName of order) {
+    await models.db1[modelName].sync({ alter: false });
+    await models.db2[modelName].sync({ alter: false });
+  }
+};
+
 module.exports = {
   models,
   db1,
   db2,
   syncDatabases,
   syncModel,
+  syncProcurementModels,
 };

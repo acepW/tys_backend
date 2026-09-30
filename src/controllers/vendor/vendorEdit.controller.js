@@ -1,6 +1,7 @@
 const vendorEditService = require("../../services/vendor/vendorEdit.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const { isValidTransactionPurpose } = require("../../utils/vendorTransactionPurpose");
 
 class VendorEditController {
   /**
@@ -12,6 +13,7 @@ class VendorEditController {
         is_double_database = true,
         id_vendor,
         status,
+        transaction_purpose,
         search,
         page,
         limit,
@@ -24,6 +26,12 @@ class VendorEditController {
         where[Op.or] = [{ vendor_name: { [Op.like]: `%${search}%` } }];
       }
       if (status) where.status = status;
+      if (transaction_purpose) {
+        if (!isValidTransactionPurpose(transaction_purpose)) {
+          return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
+        }
+        where.transaction_purpose = transaction_purpose;
+      }
       if (id_vendor) where.id_vendor = id_vendor;
 
       const result = await vendorEditService.getAllWithRelations(
@@ -83,7 +91,7 @@ class VendorEditController {
    *   id_vendor,
    *   vendor_name, pic_name, npwp, nib, email, phone_number,
    *   type_of_service, bank_name, account_number, account_holder_name,
-   *   bank_branch, transaction_currency, file,
+   *   bank_branch, transaction_currency, transaction_purpose, file,
    *   vendor_service_edits: [
    *     { id_vendor_service, id_category, service_name, price_idr, price_rmb }
    *   ]
@@ -104,6 +112,9 @@ class VendorEditController {
       }
       if (!vendorEditData.vendor_name) {
         return errorResponse(res, "vendor_name is required", 400);
+      }
+      if (!isValidTransactionPurpose(vendorEditData.transaction_purpose)) {
+        return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
       }
 
       const result = await vendorEditService.createWithRelations(
