@@ -3,6 +3,7 @@ const DualDatabaseService = require("../dualDatabase.service");
 const { models, db1, db2 } = require("../../models");
 const fileService = require("../file.service");
 const { getNextDeviceUserId } = require("../../utils/deviceUserId");
+const { getNextEmployeeCode } = require("../../utils/employeeCode");
 const { syncChildRecords } = require("../../utils/transactionHelper");
 
 class EmployeeService extends DualDatabaseService {
@@ -95,6 +96,35 @@ class EmployeeService extends DualDatabaseService {
         employees.map((employee) => employee.device_user_id),
       ),
     };
+  }
+
+  async getNextEmployeeCodes() {
+    const [companies, employees] = await Promise.all([
+      models.db1.Company.findAll({
+        attributes: ["id", "company_name", "initial_company"],
+        raw: true,
+      }),
+      models.db1.Employee.findAll({
+        attributes: ["id_company", "employee_code"],
+        raw: true,
+      }),
+    ]);
+    const codesByCompany = new Map();
+    for (const employee of employees) {
+      const key = Number(employee.id_company);
+      if (!codesByCompany.has(key)) codesByCompany.set(key, []);
+      codesByCompany.get(key).push(employee.employee_code);
+    }
+
+    return companies.map((company) => {
+      const initial = String(company.initial_company || "-").trim().toUpperCase();
+      return {
+        id_company: company.id,
+        company_name: company.company_name,
+        initial_company: initial,
+        ...getNextEmployeeCode(initial, codesByCompany.get(Number(company.id)) || []),
+      };
+    });
   }
 
   async findDuplicate(employeeCode, deviceUserId, excludeId = null) {

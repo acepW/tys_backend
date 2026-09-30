@@ -209,6 +209,19 @@ class EmployeeController {
     }
   }
 
+  async getNextEmployeeCodes(req, res) {
+    try {
+      const result = await employeeService.getNextEmployeeCodes();
+      return successResponse(
+        res,
+        result,
+        "Next employee codes retrieved successfully",
+      );
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
   async create(req, res) {
     try {
       const { is_double_database = true } = req.body || {};

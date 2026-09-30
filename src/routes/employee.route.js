@@ -9,6 +9,11 @@ router.get(
   authenticate,
   controller.getNextDeviceUserId,
 );
+router.get(
+  "/next-employee-code",
+  authenticate,
+  controller.getNextEmployeeCodes,
+);
 router.get("/:id", authenticate, controller.getById);
 router.post("/", authenticate, controller.create);
 router.put("/:id", authenticate, controller.update);
