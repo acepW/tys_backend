@@ -15,6 +15,21 @@ const editableFields = [
   "phone",
   "ktp",
   "npwp",
+  "level",
+  "employee_status",
+  "contract_duration",
+  "payment_type",
+  "base_salary",
+  "bonus_salary",
+  "bank_name",
+  "bank_account_no",
+  "name_npwp",
+  "tax_status",
+  "bpjs_kesehatan_no",
+  "bpjs_ketenagakerjaan_no",
+  "sim_no",
+  "stnk_no",
+  "plate_number",
   "id_company",
   "id_division",
   "id_department",
@@ -29,9 +44,18 @@ const editableFields = [
 
 const relationFields = [
   "emergency_contacts",
+  "allowances",
+  "family_data",
+  "education_history",
   "contract_documents",
   "employee_photos",
+  "files_ktp",
+  "files_npwp",
 ];
+
+const isValidAmount = (value) =>
+  /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(String(value)) &&
+  Number(value) <= 9999999999999.99;
 
 const validateRelations = (body) => {
   for (const field of relationFields) {
@@ -47,6 +71,43 @@ const validateRelations = (body) => {
       !String(contact?.contact_number || "").trim()
     ) {
       return `emergency_contacts[${index}] requires name, address, and contact_number`;
+    }
+  }
+  for (const field of ["base_salary", "bonus_salary"]) {
+    if (body[field] != null && !isValidAmount(body[field])) {
+      return `${field} must be a non-negative amount with at most two decimal places`;
+    }
+  }
+  const listFields = {
+    allowances: ["allowance", "amount"],
+    family_data: ["name", "relationship", "contact_number", "address"],
+    education_history: ["level", "institution", "major", "from", "to"],
+  };
+  for (const field of ["allowances", "family_data", "education_history"]) {
+    if (body[field] === undefined) continue;
+    if (!Array.isArray(body[field])) return `${field} must be an array`;
+    for (const [index, item] of body[field].entries()) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        return `${field}[${index}] must be an object`;
+      }
+      for (const key of listFields[field]) {
+        if (item[key] == null || String(item[key]).trim() === "") {
+          return `${field}[${index}].${key} is required`;
+        }
+      }
+      if (field === "allowances" && !isValidAmount(item.amount)) {
+        return `${field}[${index}].amount must be a non-negative amount with at most two decimal places`;
+      }
+      if (field === "education_history") {
+        for (const key of ["from", "to"]) {
+          if (!/^\d{4}$/.test(String(item[key]))) {
+            return `${field}[${index}].${key} must be a four-digit year`;
+          }
+        }
+        if (Number(item.from) > Number(item.to)) {
+          return `${field}[${index}].to must be on or after from`;
+        }
+      }
     }
   }
   return null;

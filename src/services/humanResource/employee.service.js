@@ -3,6 +3,7 @@ const DualDatabaseService = require("../dualDatabase.service");
 const { models, db1, db2 } = require("../../models");
 const fileService = require("../file.service");
 const { getNextDeviceUserId } = require("../../utils/deviceUserId");
+const { syncChildRecords } = require("../../utils/transactionHelper");
 
 class EmployeeService extends DualDatabaseService {
   constructor() {
@@ -20,6 +21,9 @@ class EmployeeService extends DualDatabaseService {
         as: "emergency_contacts",
         required: false,
       },
+      { model: dbModels.EmployeeAllowance, as: "allowances", required: false },
+      { model: dbModels.EmployeeFamilyMember, as: "family_data", required: false },
+      { model: dbModels.EmployeeEducation, as: "education_history", required: false },
       {
         model: dbModels.File,
         as: "contract_documents",
@@ -32,6 +36,12 @@ class EmployeeService extends DualDatabaseService {
         required: false,
         where: { is_active: true },
       },
+      ...["files_ktp", "files_npwp"].map((as) => ({
+        model: dbModels.File,
+        as,
+        required: false,
+        where: { is_active: true },
+      })),
     ];
   }
 
@@ -98,74 +108,99 @@ class EmployeeService extends DualDatabaseService {
     return models.db1.Employee.findOne({ where });
   }
 
-  async _syncEmergencyContacts(
+  async _syncEmployeeList(
     employeeId,
-    contacts,
+    items,
+    modelName,
+    fields,
     transaction1,
     transaction2,
     isDoubleDatabase,
   ) {
-    const existing = await models.db1.EmployeeEmergencyContact.findAll({
+    const model1 = models.db1[modelName];
+    const model2 = models.db2[modelName];
+    const existing = await model1.findAll({
       where: { id_employee: employeeId },
       transaction: transaction1,
     });
     const existingIds = new Set(existing.map((item) => Number(item.id)));
-    const incomingIds = new Set(
-      contacts.filter((item) => item.id).map((item) => Number(item.id)),
-    );
-    const unknownId = [...incomingIds].find((id) => !existingIds.has(id));
-    if (unknownId) {
-      const error = new Error(
-        `Emergency contact ${unknownId} does not belong to employee ${employeeId}`,
-      );
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const deletedIds = [...existingIds].filter((id) => !incomingIds.has(id));
-    if (deletedIds.length > 0) {
-      await models.db1.EmployeeEmergencyContact.destroy({
-        where: { id: { [Op.in]: deletedIds }, id_employee: employeeId },
-        transaction: transaction1,
-      });
-      if (isDoubleDatabase) {
-        await models.db2.EmployeeEmergencyContact.destroy({
-          where: { id: { [Op.in]: deletedIds }, id_employee: employeeId },
-          transaction: transaction2,
-        });
-      }
-    }
-
-    for (const contact of contacts) {
-      const payload = {
-        id_employee: employeeId,
-        name: String(contact.name).trim(),
-        address: String(contact.address).trim(),
-        contact_number: String(contact.contact_number).trim(),
-      };
-      if (contact.id) {
-        await models.db1.EmployeeEmergencyContact.update(payload, {
-          where: { id: contact.id, id_employee: employeeId },
-          transaction: transaction1,
-        });
-        if (isDoubleDatabase) {
-          await models.db2.EmployeeEmergencyContact.update(payload, {
-            where: { id: contact.id, id_employee: employeeId },
-            transaction: transaction2,
-          });
-        }
-      } else {
-        const created = await models.db1.EmployeeEmergencyContact.create(
-          payload,
-          { transaction: transaction1 },
+    const incomingIds = new Set();
+    for (const item of items) {
+      if (item.id === undefined || item.id === null) continue;
+      const id = Number(item.id);
+      if (
+        !Number.isSafeInteger(id) ||
+        id <= 0 ||
+        !existingIds.has(id) ||
+        incomingIds.has(id)
+      ) {
+        const error = new Error(
+          `${modelName} item id ${item.id} does not belong to employee ${employeeId} or is duplicated`,
         );
-        if (isDoubleDatabase) {
-          await models.db2.EmployeeEmergencyContact.create(
-            { ...payload, id: created.id },
-            { transaction: transaction2 },
-          );
-        }
+        error.statusCode = 400;
+        throw error;
       }
+      incomingIds.add(id);
+    }
+
+    const newData = items.map((item) => {
+      const payload = {};
+      for (const field of fields) {
+        payload[field] = ["from", "to"].includes(field)
+          ? Number(item[field])
+          : String(item[field]).trim();
+      }
+      if (item.id !== undefined && item.id !== null) {
+        payload.id = Number(item.id);
+      }
+      return payload;
+    });
+
+    await syncChildRecords({
+      Model1: model1,
+      Model2: model2,
+      foreignKey: "id_employee",
+      parentId: employeeId,
+      newData,
+      transaction1,
+      transaction2,
+      isDoubleDatabase,
+    });
+  }
+
+  async _syncEmployeeLists(
+    employeeId,
+    relations,
+    transaction1,
+    transaction2,
+    isDoubleDatabase,
+  ) {
+    const lists = {
+      emergency_contacts: [
+        "EmployeeEmergencyContact",
+        ["name", "address", "contact_number"],
+      ],
+      allowances: ["EmployeeAllowance", ["allowance", "amount"]],
+      family_data: [
+        "EmployeeFamilyMember",
+        ["name", "relationship", "contact_number", "address"],
+      ],
+      education_history: [
+        "EmployeeEducation",
+        ["level", "institution", "major", "from", "to"],
+      ],
+    };
+    for (const [field, [modelName, fields]] of Object.entries(lists)) {
+      if (relations[field] === undefined) continue;
+      await this._syncEmployeeList(
+        employeeId,
+        relations[field],
+        modelName,
+        fields,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
     }
   }
 
@@ -177,7 +212,12 @@ class EmployeeService extends DualDatabaseService {
     transaction2,
     isDoubleDatabase,
   ) {
-    const categories = ["contract_documents", "employee_photos"];
+    const categories = [
+      "contract_documents",
+      "employee_photos",
+      "files_ktp",
+      "files_npwp",
+    ];
     for (const category of categories) {
       if (relations[category] === undefined) continue;
       await fileService.syncFiles(
@@ -218,9 +258,9 @@ class EmployeeService extends DualDatabaseService {
         );
       }
 
-      await this._syncEmergencyContacts(
+      await this._syncEmployeeLists(
         employee.id,
-        relations.emergency_contacts || [],
+        relations,
         transaction1,
         transaction2,
         isDoubleDatabase,
@@ -230,6 +270,8 @@ class EmployeeService extends DualDatabaseService {
         {
           contract_documents: relations.contract_documents || [],
           employee_photos: relations.employee_photos || [],
+          files_ktp: relations.files_ktp || [],
+          files_npwp: relations.files_npwp || [],
         },
         uploadedBy,
         transaction1,
@@ -271,15 +313,13 @@ class EmployeeService extends DualDatabaseService {
         });
       }
 
-      if (relations.emergency_contacts !== undefined) {
-        await this._syncEmergencyContacts(
-          id,
-          relations.emergency_contacts,
-          transaction1,
-          transaction2,
-          isDoubleDatabase,
-        );
-      }
+      await this._syncEmployeeLists(
+        id,
+        relations,
+        transaction1,
+        transaction2,
+        isDoubleDatabase,
+      );
       await this._syncFiles(
         id,
         relations,

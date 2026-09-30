@@ -29,6 +29,9 @@ const EmployeeModel = require("./humanResource/employee.model");
 const EmployeeEmergencyContactModel = require(
   "./humanResource/employeeEmergencyContact.model",
 );
+const EmployeeAllowanceModel = require("./humanResource/employeeAllowance.model");
+const EmployeeFamilyMemberModel = require("./humanResource/employeeFamilyMember.model");
+const EmployeeEducationModel = require("./humanResource/employeeEducation.model");
 const AttendanceLogModel = require("./humanResource/attendanceLog.model");
 const AttendanceModel = require("./humanResource/attendance.model");
 const HolidayModel = require("./humanResource/holiday.model");
@@ -171,6 +174,9 @@ const initializeModels = (sequelize) => {
     AttendanceDevice: AttendanceDeviceModel(sequelize),
     Employee: EmployeeModel(sequelize),
     EmployeeEmergencyContact: EmployeeEmergencyContactModel(sequelize),
+    EmployeeAllowance: EmployeeAllowanceModel(sequelize),
+    EmployeeFamilyMember: EmployeeFamilyMemberModel(sequelize),
+    EmployeeEducation: EmployeeEducationModel(sequelize),
     AttendanceLog: AttendanceLogModel(sequelize),
     Attendance: AttendanceModel(sequelize),
     Holiday: HolidayModel(sequelize),

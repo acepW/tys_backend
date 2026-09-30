@@ -8,6 +8,8 @@ const ALLOWED_FOLDERS = {
   customer: "customer",
   employee: "employee",
   payment_request: "payment_request",
+  purchase_request: "purchase_request",
+  ga_purchase_order: "ga_purchase_order",
 };
 
 const ALLOWED_MIME_TYPES = {

@@ -49,6 +49,24 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(50),
         allowNull: true,
       },
+      level: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+      },
+      employee_status: { type: DataTypes.STRING(100), allowNull: true },
+      contract_duration: { type: DataTypes.INTEGER, allowNull: true },
+      payment_type: { type: DataTypes.STRING(100), allowNull: true },
+      base_salary: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
+      bonus_salary: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
+      bank_name: { type: DataTypes.STRING(100), allowNull: true },
+      bank_account_no: { type: DataTypes.STRING(100), allowNull: true },
+      name_npwp: { type: DataTypes.STRING(200), allowNull: true },
+      tax_status: { type: DataTypes.STRING(100), allowNull: true },
+      bpjs_kesehatan_no: { type: DataTypes.STRING(100), allowNull: true },
+      bpjs_ketenagakerjaan_no: { type: DataTypes.STRING(100), allowNull: true },
+      sim_no: { type: DataTypes.STRING(100), allowNull: true },
+      stnk_no: { type: DataTypes.STRING(100), allowNull: true },
+      plate_number: { type: DataTypes.STRING(30), allowNull: true },
       id_company: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -161,6 +179,18 @@ module.exports = (sequelize) => {
       onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
+    for (const [model, as] of [
+      [models.EmployeeAllowance, "allowances"],
+      [models.EmployeeFamilyMember, "family_data"],
+      [models.EmployeeEducation, "education_history"],
+    ]) {
+      Employee.hasMany(model, {
+        foreignKey: "id_employee",
+        as,
+        onDelete: "CASCADE",
+        onUpdate: "CASCADE",
+      });
+    }
     Employee.hasMany(models.File, {
       foreignKey: "fileable_id",
       constraints: false,
@@ -172,6 +202,18 @@ module.exports = (sequelize) => {
       constraints: false,
       scope: { fileable_type: "employees", category: "employee_photos" },
       as: "employee_photos",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "files_ktp" },
+      as: "files_ktp",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "files_npwp" },
+      as: "files_npwp",
     });
   };
 

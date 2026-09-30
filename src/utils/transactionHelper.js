@@ -152,10 +152,10 @@ async function syncChildRecords({
         result.summary.totalUpdated = toUpdate.length;
       }
     } else {
-      // Single database (DB2 only)
-      const existingRecords = await Model2.findAll({
+      // Single database (DB1 only)
+      const existingRecords = await Model1.findAll({
         where: { [foreignKey]: parentId },
-        transaction: transaction2,
+        transaction: transaction1,
       });
 
       const existingIds = existingRecords.map((r) => r.id);
@@ -167,12 +167,12 @@ async function syncChildRecords({
 
       // DELETE
       if (idsToDelete.length > 0) {
-        await Model2.destroy({
+        await Model1.destroy({
           where: {
             id: idsToDelete,
             [foreignKey]: parentId,
           },
-          transaction: transaction2,
+          transaction: transaction1,
         });
 
         result.deleted = idsToDelete;
@@ -186,8 +186,8 @@ async function syncChildRecords({
           [foreignKey]: parentId,
         }));
 
-        const created = await Model2.bulkCreate(dataWithForeignKey, {
-          transaction: transaction2,
+        const created = await Model1.bulkCreate(dataWithForeignKey, {
+          transaction: transaction1,
           returning: true,
         });
 
@@ -203,13 +203,13 @@ async function syncChildRecords({
           const { id, ...updateData } = item;
           updateData[foreignKey] = parentId;
 
-          await Model2.update(updateData, {
+          await Model1.update(updateData, {
             where: { id, [foreignKey]: parentId },
-            transaction: transaction2,
+            transaction: transaction1,
           });
 
-          const updated = await Model2.findByPk(id, {
-            transaction: transaction2,
+          const updated = await Model1.findByPk(id, {
+            transaction: transaction1,
           });
 
           if (updated) {
@@ -221,7 +221,7 @@ async function syncChildRecords({
         result.summary.totalUpdated = toUpdate.length;
       }
 
-      console.log(`✅ Sync completed in DB2 only`);
+      console.log(`✅ Sync completed in DB1 only`);
     }
 
     return result;

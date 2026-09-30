@@ -239,7 +239,7 @@ class FileService extends DualDatabaseService {
 
         if (!isExternalTransaction) {
           await transaction1.commit();
-          console.log(`✅ File sync completed in DB2 only`);
+          console.log(`✅ File sync completed in DB1 only`);
         }
 
         return result;

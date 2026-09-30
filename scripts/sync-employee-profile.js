@@ -4,6 +4,9 @@ const run = async () => {
   try {
     await syncModel("Employee", "both", { alter: true });
     await syncModel("EmployeeEmergencyContact", "both", {});
+    await syncModel("EmployeeAllowance", "both", {});
+    await syncModel("EmployeeFamilyMember", "both", {});
+    await syncModel("EmployeeEducation", "both", {});
     console.log("Employee profile tables synchronized successfully");
   } finally {
     await Promise.allSettled([db1.close(), db2.close()]);
