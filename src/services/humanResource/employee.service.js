@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const DualDatabaseService = require("../dualDatabase.service");
 const { models, db1, db2 } = require("../../models");
 const fileService = require("../file.service");
+const { getNextDeviceUserId } = require("../../utils/deviceUserId");
 
 class EmployeeService extends DualDatabaseService {
   constructor() {
@@ -71,6 +72,19 @@ class EmployeeService extends DualDatabaseService {
       include: this._relations(models.db1),
     });
     return employee ? employee.toJSON() : null;
+  }
+
+  async getNextDeviceUserId() {
+    const employees = await models.db1.Employee.findAll({
+      attributes: ["device_user_id"],
+      raw: true,
+    });
+
+    return {
+      next_device_user_id: getNextDeviceUserId(
+        employees.map((employee) => employee.device_user_id),
+      ),
+    };
   }
 
   async findDuplicate(employeeCode, deviceUserId, excludeId = null) {

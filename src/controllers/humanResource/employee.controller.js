@@ -9,6 +9,7 @@ const editableFields = [
   "employee_code",
   "device_user_id",
   "full_name",
+  "gender",
   "address",
   "email",
   "phone",
@@ -129,6 +130,19 @@ class EmployeeController {
       const employee = await employeeService.getById(req.params.id);
       if (!employee) return errorResponse(res, "Employee not found", 404);
       return successResponse(res, employee, "Employee retrieved successfully");
+    } catch (error) {
+      return errorResponse(res, error.message);
+    }
+  }
+
+  async getNextDeviceUserId(req, res) {
+    try {
+      const result = await employeeService.getNextDeviceUserId();
+      return successResponse(
+        res,
+        result,
+        "Next device user ID retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
