@@ -306,6 +306,40 @@ class ContractService extends DualDatabaseService {
   async getById(id, options = {}, isDoubleDatabase = true) {
     const dbModels = isDoubleDatabase ? models.db1 : models.db2;
 
+    // Load collection associations separately so sibling lists do not multiply
+    // the rows returned by the main contract query.
+    const separateCollections = new Set([
+      "quotation_category",
+      "flow_process",
+      "pre_orders",
+      "derived_versions",
+      "services",
+      "products",
+      "tables",
+      "fields",
+      "invoice_services",
+      "contract_project_plan_points",
+      "contract_project_plan_costs",
+      "payment_requests",
+      "clause_header",
+      "clause_footer",
+      "clauses",
+      "clause_point_sub",
+      "clause_point_sub_child",
+      "verification_progress",
+      "contract_payment",
+      "contract_payment_list",
+      "contract_payment_services",
+      "invoices",
+    ]);
+
+    const separateHasMany = (includes) => {
+      for (const include of includes) {
+        if (separateCollections.has(include.as)) include.separate = true;
+        if (include.include) separateHasMany(include.include);
+      }
+    };
+
     const queryOptions = {
       ...options,
       include: [
@@ -570,6 +604,7 @@ class ContractService extends DualDatabaseService {
       ],
     };
 
+    separateHasMany(queryOptions.include);
     return await this.findById(id, queryOptions, isDoubleDatabase);
   }
 
