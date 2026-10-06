@@ -50,6 +50,31 @@ function validateExpenses(expenses) {
   return null;
 }
 
+function validateServices(services) {
+  if (services === undefined) return null;
+  if (!Array.isArray(services)) return "services must be an array";
+  for (let i = 0; i < services.length; i++) {
+    const item = services[i];
+    if (!item || typeof item !== "object" || Array.isArray(item)) return `services[${i}] must be an object`;
+    for (const field of ["id_vendor", "id_vendor_service", "id_category"]) {
+      if (item[field] !== undefined && item[field] !== null &&
+          (!Number.isInteger(Number(item[field])) || Number(item[field]) <= 0)) {
+        return `services[${i}].${field} must be a positive integer`;
+      }
+    }
+    if (!item.id_vendor_service && !String(item.service_name ?? "").trim()) {
+      return `services[${i}].service_name is required`;
+    }
+    for (const field of ["price_idr", "price_rmb"]) {
+      if (item[field] !== undefined && item[field] !== null &&
+          (item[field] === "" || !Number.isFinite(Number(item[field])) || Number(item[field]) < 0)) {
+        return `services[${i}].${field} must be a non-negative number`;
+      }
+    }
+  }
+  return null;
+}
+
 class PaymentRequestController {
   async getNoPaymentRequest(req, res) {
     try {
@@ -161,12 +186,15 @@ class PaymentRequestController {
       const {
         is_double_database,
         files = [],
+        services = [],
         ...paymentRequestData
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
       if (!Array.isArray(files)) {
         return errorResponse(res, "files must be an array", 400);
       }
+      const serviceError = validateServices(services);
+      if (serviceError) return errorResponse(res, serviceError, 400);
       if (!paymentRequestData.payment_request_no) {
         return errorResponse(res, "payment_request_no is required", 400);
       }
@@ -242,7 +270,9 @@ class PaymentRequestController {
         dataToCreate,
         files,
         req.user.id,
-        isDoubleDatabase
+        isDoubleDatabase,
+        [],
+        services,
       );
 
       return successResponse(
@@ -258,10 +288,12 @@ class PaymentRequestController {
 
   async createExpense(req, res) {
     try {
-      const { is_double_database, files = [], expenses, ...body } = req.body || {};
+      const { is_double_database, files = [], expenses, services = [], ...body } = req.body || {};
       if (!Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
       const expenseError = validateExpenses(expenses);
       if (expenseError) return errorResponse(res, expenseError, 400);
+      const serviceError = validateServices(services);
+      if (serviceError) return errorResponse(res, serviceError, 400);
       const data = editableData(body);
       data.total_payment_request = body.total_payment_request ?? body.total_payment;
       for (const field of [
@@ -292,7 +324,7 @@ class PaymentRequestController {
         invoice_no: null,
       });
       const result = await paymentRequestService.createWithRelations(
-        data, files, req.user.id, is_double_database !== false, expenses,
+        data, files, req.user.id, is_double_database !== false, expenses, services,
       );
       return successResponse(res, result, "Expense payment request created successfully", 201);
     } catch (error) {
@@ -310,9 +342,11 @@ class PaymentRequestController {
 
   async updateByFormat(req, res, format) {
     try {
-      const { is_double_database, files, expenses, ...body } = req.body || {};
+      const { is_double_database, files, expenses, services, ...body } = req.body || {};
       const isDoubleDatabase = is_double_database !== false;
       if (files !== undefined && !Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
+      const serviceError = validateServices(services);
+      if (serviceError) return errorResponse(res, serviceError, 400);
       if (format === "standard" && expenses !== undefined) return errorResponse(res, "expenses are only supported for expense payment requests", 400);
       if (format === "expense" && expenses !== undefined) {
         const expenseError = validateExpenses(expenses);
@@ -326,7 +360,7 @@ class PaymentRequestController {
       const amountError = validateAmounts(data);
       if (amountError) return errorResponse(res, amountError, 400);
       const result = await paymentRequestService.updateWithRelations(
-        req.params.id, data, files, expenses, req.user.id, isDoubleDatabase,
+        req.params.id, data, files, expenses, req.user.id, isDoubleDatabase, services,
       );
       return successResponse(res, result, "Payment request updated successfully");
     } catch (error) {

@@ -37,7 +37,14 @@ class EmployeeService extends DualDatabaseService {
         required: false,
         where: { is_active: true },
       },
-      ...["files_ktp", "files_npwp"].map((as) => ({
+      ...[
+        "files_ktp",
+        "files_npwp",
+        "files_bpjs_kesehatan",
+        "files_bpjs_ketenagakerjaan",
+        "files_sim",
+        "files_stnk",
+      ].map((as) => ({
         model: dbModels.File,
         as,
         required: false,
@@ -55,6 +62,7 @@ class EmployeeService extends DualDatabaseService {
         { device_user_id: { [Op.like]: pattern } },
         { full_name: { [Op.like]: pattern } },
         { email: { [Op.like]: pattern } },
+        { office_email: { [Op.like]: pattern } },
       ];
     }
 
@@ -210,7 +218,7 @@ class EmployeeService extends DualDatabaseService {
         "EmployeeEmergencyContact",
         ["name", "address", "contact_number"],
       ],
-      allowances: ["EmployeeAllowance", ["allowance", "amount"]],
+      allowances: ["EmployeeAllowance", ["allowance", "amount", "status"]],
       family_data: [
         "EmployeeFamilyMember",
         ["name", "relationship", "contact_number", "address"],
@@ -247,6 +255,10 @@ class EmployeeService extends DualDatabaseService {
       "employee_photos",
       "files_ktp",
       "files_npwp",
+      "files_bpjs_kesehatan",
+      "files_bpjs_ketenagakerjaan",
+      "files_sim",
+      "files_stnk",
     ];
     for (const category of categories) {
       if (relations[category] === undefined) continue;
@@ -302,6 +314,10 @@ class EmployeeService extends DualDatabaseService {
           employee_photos: relations.employee_photos || [],
           files_ktp: relations.files_ktp || [],
           files_npwp: relations.files_npwp || [],
+          files_bpjs_kesehatan: relations.files_bpjs_kesehatan || [],
+          files_bpjs_ketenagakerjaan: relations.files_bpjs_ketenagakerjaan || [],
+          files_sim: relations.files_sim || [],
+          files_stnk: relations.files_stnk || [],
         },
         uploadedBy,
         transaction1,

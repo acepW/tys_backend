@@ -10,6 +10,7 @@ const ALLOWED_FOLDERS = {
   payment_request: "payment_request",
   purchase_request: "purchase_request",
   ga_purchase_order: "ga_purchase_order",
+  invoice: "invoice",
 };
 
 const ALLOWED_MIME_TYPES = {

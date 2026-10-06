@@ -26,6 +26,7 @@ const employeeRoutes = require("./employee.route");
 const attendanceRoutes = require("./attendance.route");
 const holidayRoutes = require("./holiday.route");
 const workScheduleRoutes = require("./workSchedule.route");
+const evaluationRoutes = require("./evaluation.route");
 
 //service pricing
 const servicePricingRoutes = require("./servicePricing.route");
@@ -50,6 +51,7 @@ const debitNoteRoutes = require("./debitNote.route");
 const paymentRequestRoutes = require("./paymentRequest.route");
 const purchaseRequestRoutes = require("./purchaseRequest.route");
 const gaPurchaseOrderRoutes = require("./gaPurchaseOrder.route");
+const inventoryRoutes = require("./inventory.route");
 
 //report
 const reportInvoiceRoutes = require("./reportInvoice.route");
@@ -92,6 +94,7 @@ router.use("/employees", employeeRoutes);
 router.use("/attendances", attendanceRoutes);
 router.use("/holidays", holidayRoutes);
 router.use("/work-schedules", workScheduleRoutes);
+router.use("/evaluations", evaluationRoutes);
 
 //service pricing
 router.use("/service-pricing", servicePricingRoutes);
@@ -119,6 +122,7 @@ router.use("/debit-notes", debitNoteRoutes);
 router.use("/payment-requests", paymentRequestRoutes);
 router.use("/purchase-requests", purchaseRequestRoutes);
 router.use("/ga-purchase-orders", gaPurchaseOrderRoutes);
+router.use("/inventories", inventoryRoutes);
 
 //report
 router.use("/report-invoices", reportInvoiceRoutes);
@@ -163,6 +167,7 @@ router.get("/", (req, res) => {
       attendances: "/api/attendances",
       holidays: "/api/holidays",
       workSchedules: "/api/work-schedules",
+      evaluations: "/api/evaluations",
 
       //service pricing
       servicePricing: "/api/service-pricing",

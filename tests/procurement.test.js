@@ -2,13 +2,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const purchaseRequestService = require("../src/services/purchaseRequest/purchaseRequest.service");
 const gaOrderService = require("../src/services/gaPurchaseOrder/gaPurchaseOrder.service");
+const inventoryService = require("../src/services/inventory/inventory.service");
 const { models, db1, syncProcurementModels } = require("../src/models");
 const { Op } = require("sequelize");
 
 test("procurement tables sync in foreign-key dependency order", async (t) => {
   const order = ["PurchaseRequest", "GaPurchaseOrder", "PurchaseRequestItem",
     "PurchaseRequestVerificationProgress", "GaPurchaseOrderItem",
-    "GaPurchaseOrderVerificationProgress"];
+    "GaPurchaseOrderVerificationProgress", "Inventory", "InventoryHistory"];
   const original = [];
   const calls = [];
   for (const [database, dbModels] of [["db1", models.db1], ["db2", models.db2]]) {
@@ -138,8 +139,131 @@ test("GA Purchase Order rejects a source item that was already ordered", async (
   await assert.rejects(gaOrderService.sourceItem(11, 1, null, { LOCK: { UPDATE: "UPDATE" } }), /already been ordered/);
 });
 
-test("GA Purchase Order rejection requires a note", async () => {
-  await assert.rejects(gaOrderService.action(1, "reject_fat", 5, "", false), /note is required/);
+test("GA Purchase Order rejection and return require a note", async () => {
+  await assert.rejects(gaOrderService.action(1, "reject_fat", 5, { note: "" }, false), /note is required/);
+  await assert.rejects(gaOrderService.action(1, "return_goods", 5, {}, false), /note is required for return/);
+});
+
+function mockGaOrder(t, order, fileCounts = {}) {
+  const originals = {
+    transaction: db1.transaction,
+    findByPk: models.db1.GaPurchaseOrder.findByPk,
+    update: models.db1.GaPurchaseOrder.update,
+    progress: models.db1.GaPurchaseOrderVerificationProgress.create,
+    count: models.db1.File.count,
+    getById: gaOrderService.getById,
+  };
+  t.after(() => {
+    db1.transaction = originals.transaction;
+    models.db1.GaPurchaseOrder.findByPk = originals.findByPk;
+    models.db1.GaPurchaseOrder.update = originals.update;
+    models.db1.GaPurchaseOrderVerificationProgress.create = originals.progress;
+    models.db1.File.count = originals.count;
+    gaOrderService.getById = originals.getById;
+  });
+  const writes = [];
+  db1.transaction = async () => ({ LOCK: { UPDATE: "UPDATE" }, commit: async () => {}, rollback: async () => {} });
+  models.db1.GaPurchaseOrder.findByPk = async () => order;
+  models.db1.GaPurchaseOrder.update = async (data) => { writes.push(["order", data]); Object.assign(order, data); return [1]; };
+  models.db1.GaPurchaseOrderVerificationProgress.create = async (data) => { writes.push(["progress", data.status]); return { id: 1 }; };
+  models.db1.File.count = async ({ where }) => fileCounts[where.category] ?? 0;
+  gaOrderService.getById = async () => order;
+  return writes;
+}
+
+test("GA Purchase Order follows the approval chain up to receiving", async (t) => {
+  const order = { status: "request ga manager", return_count: 0 };
+  mockGaOrder(t, order, { files_payment: 1 });
+  for (const [action, status] of [["approve_ga_manager", "request director"], ["approve_director", "request ar ap"],
+    ["approve_ar_ap", "request fat"], ["approve_fat", "request cashier"]]) {
+    await gaOrderService.action(1, action, 5, {}, false);
+    assert.equal(order.status, status);
+  }
+  await assert.rejects(gaOrderService.action(1, "approve_cashier", 5, {}, false), /payment_amount/);
+  await gaOrderService.action(1, "approve_cashier", 5,
+    { payment_amount: 6660000, payment_date: "2026-10-06", payment_note: "Transfer" }, false);
+  assert.equal(order.status, "request receiving");
+  assert.equal(order.payment_amount, 6660000);
+  await assert.rejects(gaOrderService.action(1, "approve_fat", 5, {}, false), /not allowed/);
+});
+
+test("GA Purchase Order return cycle goes through GA manager, AR/AP and cashier", async (t) => {
+  const order = { status: "request receiving", return_count: 0 };
+  const writes = mockGaOrder(t, order);
+  await gaOrderService.action(1, "return_goods", 5, { note: "Barang rusak" }, false);
+  assert.equal(order.status, "return request ga manager");
+  assert.equal(order.return_count, 1);
+  await assert.rejects(gaOrderService.action(1, "approve_director", 5, {}, false), /not allowed/);
+  for (const action of ["approve_ga_manager", "approve_ar_ap", "approve_cashier"])
+    await gaOrderService.action(1, action, 5, {}, false);
+  assert.equal(order.status, "request receiving");
+  assert.deepEqual(writes.filter(([kind]) => kind === "progress").map(([, status]) => status),
+    ["return request ga manager", "return request ar ap", "return request cashier", "request receiving"]);
+});
+
+test("GA Purchase Order acceptance requires receipt data and files", async (t) => {
+  const order = { status: "request receiving", return_count: 0, received_date: null };
+  const counts = { files_purchase_proof: 1, files_goods_receipt: 0 };
+  mockGaOrder(t, order, counts);
+  const addInventory = inventoryService.addFromGaPurchaseOrder;
+  t.after(() => { inventoryService.addFromGaPurchaseOrder = addInventory; });
+  const inventoryCalls = [];
+  inventoryService.addFromGaPurchaseOrder = async (orderId) => { inventoryCalls.push(orderId); };
+  await assert.rejects(gaOrderService.action(1, "accept_goods", 5, {}, false), /received_date is required/);
+  await assert.rejects(gaOrderService.action(1, "accept_goods", 5, { received_date: "2026-10-06" }, false),
+    /files_goods_receipt is required/);
+  counts.files_goods_receipt = 1;
+  await gaOrderService.action(1, "accept_goods", 5, {}, false);
+  assert.equal(order.status, "finished");
+  assert.deepEqual(inventoryCalls, [1]);
+});
+
+test("Accepted goods add quantity to a matching inventory row or create a new one", async (t) => {
+  const originals = {
+    items: models.db1.GaPurchaseOrderItem.findAll,
+    findOne: models.db1.Inventory.findOne,
+    invUpdate: models.db1.Inventory.update,
+    invCreate: models.db1.Inventory.create,
+    history: models.db1.InventoryHistory.create,
+    files: models.db1.File.findAll,
+    fileCreate: models.db1.File.create,
+  };
+  t.after(() => {
+    models.db1.GaPurchaseOrderItem.findAll = originals.items;
+    models.db1.Inventory.findOne = originals.findOne;
+    models.db1.Inventory.update = originals.invUpdate;
+    models.db1.Inventory.create = originals.invCreate;
+    models.db1.InventoryHistory.create = originals.history;
+    models.db1.File.findAll = originals.files;
+    models.db1.File.create = originals.fileCreate;
+  });
+  const file = (stored_name) => ({ stored_name, original_name: stored_name, url: "/files/" + stored_name, mime_type: "image/png", size: 1 });
+  models.db1.GaPurchaseOrderItem.findAll = async () => [
+    { id: 21, item_name: "Printer", brand: "HP", serial_number: "M404dn", size: "", material: null, other: null,
+      quantity_unit: "unit", quantity: "2.00", purchase_request_category: "Office", files_product: [file("a.png"), file("b.png")] },
+    { id: 22, item_name: "Printer", brand: "Canon", serial_number: null, size: null, material: null, other: null,
+      quantity_unit: "unit", quantity: "1.00", purchase_request_category: "Office", files_product: [] },
+  ];
+  const wheres = [];
+  models.db1.Inventory.findOne = async ({ where }) => {
+    wheres.push(where);
+    return where[Op.and].some((cond) => cond.brand === "HP") ? { id: 7, quantity: "3.00" } : null;
+  };
+  const writes = [];
+  models.db1.Inventory.update = async (data, { where }) => { writes.push(["update", where.id, data.quantity]); return [1]; };
+  models.db1.Inventory.create = async (data) => { writes.push(["create", data.brand, data.quantity]); return { id: 8 }; };
+  models.db1.InventoryHistory.create = async (data) => { writes.push(["history", data.id_inventory, data.id_ga_purchase_order_item]); return {}; };
+  models.db1.File.findAll = async () => [{ stored_name: "a.png" }];
+  models.db1.File.create = async (data) => { writes.push(["file", data.fileable_id, data.stored_name]); return {}; };
+
+  await inventoryService.addFromGaPurchaseOrder(1, 5, { LOCK: { UPDATE: "UPDATE" } });
+
+  assert.deepEqual(wheres[0][Op.and].slice(0, 3), [{ item_name: "Printer" }, { brand: "HP" }, { serial_number: "M404dn" }]);
+  assert.deepEqual(wheres[0][Op.and][3], { [Op.or]: [{ size: null }, { size: "" }] });
+  assert.deepEqual(writes, [
+    ["update", 7, 5], ["history", 7, 21], ["file", 7, "b.png"],
+    ["create", "Canon", "1.00"], ["history", 8, 22],
+  ]);
 });
 
 test("GA order candidate query includes only GA-approved unprocessed items", async (t) => {

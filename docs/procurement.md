@@ -24,13 +24,15 @@ Semua endpoint memakai autentikasi yang sama dengan modul lain.
   "items": [
     {
       "item_name": "Printer",
-      "specification": "Laser, duplex",
+      "brand": "HP",
+      "serial_number": "M404dn",
+      "size": "A4",
+      "material": "Plastic",
+      "other": "Laser, duplex",
       "quantity_unit": "unit",
       "quantity": 2,
       "procurement_type": "Pengadaan Baru",
-      "average_usage": "100 pages/month",
       "remarks": "For operations",
-      "product_link": "https://example.com/printer",
       "files_product": []
     }
   ]
@@ -98,11 +100,52 @@ Jika `files_product` item tidak dikirim saat create, file produk dari Purchase R
 
 - `GET /api/ga-purchase-orders` dan `GET /api/ga-purchase-orders/:id` menampilkan item, file, dan verification progress. Daftar dapat difilter dengan `id_company` dan `status`.
 - `PUT /api/ga-purchase-orders/:id` hanya dapat dilakukan pembuat selama status `request ga manager`. `items` yang dikirim menggantikan daftar lama; item yang dihapus dari draft dilepas kembali agar dapat masuk order lain.
-- `PATCH /api/ga-purchase-orders/ga-manager/approve/:id`: `request ga manager` → `request fat`.
-- `PATCH /api/ga-purchase-orders/fat/approve/:id`: `request fat` → `request director`.
-- `PATCH /api/ga-purchase-orders/director/approve/:id`: `request director` → `approved`.
-- Untuk penolakan, gunakan endpoint `/ga-manager/reject/:id`, `/fat/reject/:id`, atau `/director/reject/:id`, selalu dengan body `{ "note": "Alasan" }`.
+### Alur approval GA Purchase Order
 
-Setiap create, update, submit, approve, dan reject membuat verification progress. Nilai `procurement_type` yang diterima: `Pengadaan Rutin`, `Pembaruan Stok`, `Pengadaan Baru`.
+| Tahap | Endpoint approve | Status awal → status berikutnya |
+|---|---|---|
+| 1. GA Staff | `POST /api/ga-purchase-orders` | → `request ga manager` |
+| 2. HRGA SPV/Manager | `PATCH /ga-manager/approve/:id` | `request ga manager` → `request director` |
+| 3. Direktur | `PATCH /director/approve/:id` | `request director` → `request ar ap` |
+| 4. AR/AP | `PATCH /ar-ap/approve/:id` | `request ar ap` → `request fat` |
+| 5. Internal FAT SPV/Manager | `PATCH /fat/approve/:id` | `request fat` → `request cashier` |
+| 6. Cashier | `PATCH /cashier/approve/:id` | `request cashier` → `request receiving` |
+| 7. GA Staff | `PATCH /ga-staff/accept/:id` atau `/ga-staff/return/:id` | `request receiving` → `finished` atau `return request ga manager` |
 
-Untuk setiap array file (`files_product`, `files_attachment`, `file_attachment`), item baru mengikuti format file proyek ini: `original_name`, `stored_name`, `url`, `mime_type`, dan `size`. Nama `indonesian_name` dan `mandarin_name` opsional; keduanya memakai `original_name` jika tidak diisi. Saat update, sertakan `id` file lama yang ingin dipertahankan.
+Semua endpoint di atas berawalan `/api/ga-purchase-orders`. Penolakan memakai `/ga-manager/reject/:id`, `/director/reject/:id`, `/ar-ap/reject/:id`, `/fat/reject/:id`, atau `/cashier/reject/:id` dengan body `{ "note": "Alasan" }`, dan mengubah status menjadi `rejected ga manager`, `rejected director`, `rejected ar ap`, `rejected fat`, atau `rejected cashier`.
+
+Pada tahap 6, kasir wajib mengirim data dan bukti pembayaran:
+
+```json
+{
+  "payment_amount": 6660000,
+  "payment_date": "2026-10-06",
+  "payment_note": "Transfer BCA",
+  "files_payment": []
+}
+```
+
+Pada tahap 7, GA Staff mengunggah bukti pembelian (`files_purchase_proof`) dan form penerimaan barang (`files_goods_receipt`) beserta datanya (`received_date`, `receipt_note`). Data ini bisa disimpan bertahap lewat `PUT /api/ga-purchase-orders/:id/receiving` selama status `request receiving`, atau dikirim langsung bersama tombol accept/return.
+
+- **Accepted** (`/ga-staff/accept/:id`): barang tidak bermasalah atau hanya perlu ditukar. `received_date`, minimal satu `files_purchase_proof`, dan minimal satu `files_goods_receipt` wajib ada; status menjadi `finished`.
+- **Returned** (`/ga-staff/return/:id`): barang bermasalah dan perlu dikembalikan/order ulang. Body wajib berisi `note`. `return_count` bertambah satu dan alur pengembalian hanya melewati GA SPV/Manager, AR/AP, dan kasir memakai endpoint approve yang sama:
+  `return request ga manager` → `return request ar ap` → `return request cashier` → `request receiving`.
+  Di tahap kasir pada alur ini tidak perlu data pembayaran. Penolakan pada alur pengembalian mengembalikan status ke `request receiving` agar GA Staff memilih lagi. Direktur dan FAT tidak perlu menyetujui; riwayatnya tercatat di verification progress.
+
+Setiap create, update, submit, approve, reject, accept, dan return membuat verification progress. Nilai `procurement_type` yang diterima: `Pengadaan Rutin`, `Pembaruan Stok`, `Pengadaan Baru`.
+
+Untuk setiap array file (`files_product`, `files_attachment`, `file_attachment`, `files_payment`, `files_purchase_proof`, `files_goods_receipt`), item baru mengikuti format file proyek ini: `original_name`, `stored_name`, `url`, `mime_type`, dan `size`. Nama `indonesian_name` dan `mandarin_name` opsional; keduanya memakai `original_name` jika tidak diisi. Saat update, sertakan `id` file lama yang ingin dipertahankan.
+
+## Inventory
+
+Saat GA Staff menekan **Accepted** (`PATCH /api/ga-purchase-orders/ga-staff/accept/:id`), setiap item GA Purchase Order otomatis masuk ke inventory dalam transaksi yang sama.
+
+- Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, dan `other` yang sama persis, `quantity` item ditambahkan ke inventory tersebut. Field kosong (`null` atau string kosong) dianggap sama.
+- Jika ada satu saja yang berbeda, dibuat data inventory baru.
+- `files_product` dari item GA PO disalin ke inventory. File dengan `stored_name` yang sudah ada di inventory tersebut tidak disalin ulang.
+- Setiap penambahan dicatat di `histories` (inventory, GA PO, item GA PO, user, quantity). Satu item GA PO hanya bisa menambah stok sekali.
+
+Endpoint:
+
+- `GET /api/inventories` dengan filter `search` (nama barang), `purchase_request_category`, `page`, dan `limit`. Response daftar hanya berisi `files_product`, tanpa `histories`.
+- `GET /api/inventories/:id` menampilkan inventory beserta `files_product` dan `histories`.

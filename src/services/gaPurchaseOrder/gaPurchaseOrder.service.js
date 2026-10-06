@@ -9,9 +9,66 @@ const {
   deactivateFiles,
   documentNumbers,
 } = require("../procurement/shared");
+const inventoryService = require("../inventory/inventory.service");
 
 const taxFlags = ["tax_ppn", "tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"];
 const taxAmounts = ["ppn", "pph", "pp_20", "pph_4_ayat_2"];
+const orderFileCategories = [
+  "file_attachment",
+  "files_payment",
+  "files_purchase_proof",
+  "files_goods_receipt",
+];
+
+// Approval flow: action -> { current status: next status }.
+// Statuses prefixed with "return" belong to the goods return cycle, which goes
+// through GA manager, AR/AP and cashier, then back to GA staff (request receiving).
+const transitions = {
+  approve_ga_manager: {
+    "request ga manager": "request director",
+    "return request ga manager": "return request ar ap",
+  },
+  reject_ga_manager: {
+    "request ga manager": "rejected ga manager",
+    "return request ga manager": "request receiving",
+  },
+  approve_director: { "request director": "request ar ap" },
+  reject_director: { "request director": "rejected director" },
+  approve_ar_ap: {
+    "request ar ap": "request fat",
+    "return request ar ap": "return request cashier",
+  },
+  reject_ar_ap: {
+    "request ar ap": "rejected ar ap",
+    "return request ar ap": "request receiving",
+  },
+  approve_fat: { "request fat": "request cashier" },
+  reject_fat: { "request fat": "rejected fat" },
+  approve_cashier: {
+    "request cashier": "request receiving",
+    "return request cashier": "request receiving",
+  },
+  reject_cashier: {
+    "request cashier": "rejected cashier",
+    "return request cashier": "request receiving",
+  },
+  return_goods: { "request receiving": "return request ga manager" },
+  accept_goods: { "request receiving": "finished" },
+};
+const noteRequired = (action) =>
+  action.startsWith("reject") || action === "return_goods";
+
+async function countFiles(id, category, t1) {
+  return models.db1.File.count({
+    where: {
+      fileable_type: "ga_purchase_orders",
+      fileable_id: id,
+      category,
+      is_active: true,
+    },
+    transaction: t1,
+  });
+}
 
 function buildItem(source, input, orderId) {
   const quantity = Number(source.quantity);
@@ -52,15 +109,19 @@ function buildItem(source, input, orderId) {
     id_purchase_request_item: source.id,
     id_vendor: input.id_vendor ?? null,
     item_name: source.item_name,
-    specification: source.specification,
+    brand: source.brand,
+    serial_number: source.serial_number,
+    size: source.size,
+    material: source.material,
+    other: source.other,
     purchase_request_category: source.purchase_request_category,
     quantity_unit: source.quantity_unit,
     quantity: source.quantity,
     id_requester: source.id_requester,
     procurement_type: source.procurement_type,
-    average_usage: source.average_usage,
+    average_usage: input.average_usage ?? null,
     remarks: input.remarks ?? source.remarks,
-    product_link: source.product_link,
+    product_link: input.product_link ?? null,
     estimated_unit_price: unitPrice,
     estimated_total_price: estimatedTotal,
     sub_total: subTotal,
@@ -93,12 +154,12 @@ class GaPurchaseOrderService {
         as: "user_request",
         attributes: ["id", "name", "email"],
       },
-      {
+      ...orderFileCategories.map((category) => ({
         model: db.File,
-        as: "file_attachment",
+        as: category,
         required: false,
         where: { is_active: true },
-      },
+      })),
       {
         model: db.GaPurchaseOrderItem,
         as: "items",
@@ -425,40 +486,104 @@ class GaPurchaseOrderService {
     return this.getById(id);
   }
 
-  async action(id, action, userId, note, isDoubleDatabase = true) {
-    const transitions = {
-      approve_ga_manager: ["request ga manager", "request fat"],
-      reject_ga_manager: ["request ga manager", "rejected ga manager"],
-      approve_fat: ["request fat", "request director"],
-      reject_fat: ["request fat", "rejected fat"],
-      approve_director: ["request director", "approved"],
-      reject_director: ["request director", "rejected director"],
-    };
-    const transition = transitions[action];
-    if (!transition) fail("Invalid action");
-    if (action.startsWith("reject") && !note?.trim())
-      fail("note is required for rejection");
-    await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      const order = await models.db1.GaPurchaseOrder.findByPk(id, {
-        transaction: t1,
-        lock: t1.LOCK.UPDATE,
-      });
-      if (!order) fail("GA purchase order not found", 404);
-      if (order.status !== transition[0])
-        fail(`Action ${action} is not allowed from ${order.status}`, 409);
-      await mirrorUpdate(
-        "GaPurchaseOrder",
+  async saveReceiving(id, data, userId, t1, t2) {
+    const updateData = {};
+    for (const key of ["received_date", "receipt_note"])
+      if (data[key] !== undefined) updateData[key] = data[key] || null;
+    if (Object.keys(updateData).length)
+      await mirrorUpdate("GaPurchaseOrder", id, updateData, t1, t2);
+    for (const category of ["files_purchase_proof", "files_goods_receipt"])
+      await syncFiles(
+        "ga_purchase_orders",
         id,
-        { status: transition[1] },
+        category,
+        data[category],
+        userId,
         t1,
         t2,
       );
+  }
+
+  async lockOrder(id, t1) {
+    const order = await models.db1.GaPurchaseOrder.findByPk(id, {
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+    if (!order) fail("GA purchase order not found", 404);
+    return order;
+  }
+
+  // GA staff saves purchase proof and goods receipt before choosing accept or return.
+  async updateReceiving(id, data, userId, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const order = await this.lockOrder(id, t1);
+      if (order.status !== "request receiving")
+        fail("Receiving data can only be edited while awaiting receiving", 409);
+      await this.saveReceiving(id, data, userId, t1, t2);
+    });
+    return this.getById(id);
+  }
+
+  async action(id, action, userId, data = {}, isDoubleDatabase = true) {
+    const flow = transitions[action];
+    if (!flow) fail("Invalid action");
+    const note = data.note;
+    if (noteRequired(action) && !note?.trim())
+      fail(`note is required for ${action === "return_goods" ? "return" : "rejection"}`);
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const order = await this.lockOrder(id, t1);
+      const nextStatus = flow[order.status];
+      if (!nextStatus)
+        fail(`Action ${action} is not allowed from ${order.status}`, 409);
+      const updateData = { status: nextStatus };
+
+      if (action === "approve_cashier" && order.status === "request cashier") {
+        const amount = Number(data.payment_amount);
+        if (data.payment_amount == null || !Number.isFinite(amount) || amount <= 0)
+          fail("payment_amount must be a positive number");
+        if (!data.payment_date) fail("payment_date is required");
+        Object.assign(updateData, {
+          payment_amount: amount,
+          payment_date: data.payment_date,
+          payment_note: data.payment_note || null,
+        });
+        await syncFiles(
+          "ga_purchase_orders",
+          id,
+          "files_payment",
+          data.files_payment,
+          userId,
+          t1,
+          t2,
+        );
+        if (!(await countFiles(id, "files_payment", t1)))
+          fail("files_payment is required");
+      }
+
+      if (action === "accept_goods" || action === "return_goods")
+        await this.saveReceiving(id, data, userId, t1, t2);
+
+      if (action === "accept_goods") {
+        const current = await models.db1.GaPurchaseOrder.findByPk(id, {
+          attributes: ["received_date"],
+          transaction: t1,
+        });
+        if (!current.received_date) fail("received_date is required");
+        for (const category of ["files_purchase_proof", "files_goods_receipt"])
+          if (!(await countFiles(id, category, t1)))
+            fail(`${category} is required`);
+        await inventoryService.addFromGaPurchaseOrder(id, userId, t1, t2);
+      }
+
+      if (action === "return_goods") updateData.return_count = order.return_count + 1;
+
+      await mirrorUpdate("GaPurchaseOrder", id, updateData, t1, t2);
       await mirrorCreate(
         "GaPurchaseOrderVerificationProgress",
         {
           id_ga_purchase_order: id,
           id_user: userId,
-          status: transition[1],
+          status: nextStatus,
           note: note || null,
         },
         t1,

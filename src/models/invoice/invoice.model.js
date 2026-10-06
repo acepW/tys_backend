@@ -197,6 +197,16 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "File for upload invoice",
       },
+      tax_invoice_no: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "Tax invoice number (no. faktur pajak)",
+      },
+      tax_invoice_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Tax invoice date (tanggal faktur pajak)",
+      },
       note_reject: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -413,6 +423,14 @@ module.exports = (sequelize) => {
     //   onDelete: "RESTRICT",
     //   onUpdate: "CASCADE",
     // });
+
+    // Invoice has many tax invoice attachments (faktur pajak)
+    Invoice.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "invoices", category: "tax_invoice_attachment" },
+      as: "tax_invoice_attachment",
+    });
 
     // Invoice belongs to Debit Note
     Invoice.belongsTo(models.DebitNote, {

@@ -65,11 +65,11 @@ test("employee allowance list updates, creates, and removes rows in both databas
   await employeeService._syncEmployeeList(
     7,
     [
-      { id: 11, allowance: " Transport ", amount: 150000 },
-      { allowance: "Meal", amount: 75000 },
+      { id: 11, allowance: " Transport ", amount: 150000, status: "fixed" },
+      { allowance: "Meal", amount: 75000, status: "non-fixed" },
     ],
     "EmployeeAllowance",
-    ["allowance", "amount"],
+    ["allowance", "amount", "status"],
     {},
     {},
     true,
@@ -78,10 +78,10 @@ test("employee allowance list updates, creates, and removes rows in both databas
   assert.deepEqual(calls, [
     ["db1 delete", 7],
     ["db2 delete", 7],
-    ["db1 create", [{ id_employee: 7, allowance: "Meal", amount: "75000" }]],
-    ["db2 create", [{ id_employee: 7, allowance: "Meal", amount: "75000", id: 13 }]],
-    ["db1 update", { id_employee: 7, allowance: "Transport", amount: "150000" }],
-    ["db2 update", { id_employee: 7, allowance: "Transport", amount: "150000" }],
+    ["db1 create", [{ id_employee: 7, allowance: "Meal", amount: "75000", status: "non-fixed" }]],
+    ["db2 create", [{ id_employee: 7, allowance: "Meal", amount: "75000", status: "non-fixed", id: 13 }]],
+    ["db1 update", { id_employee: 7, allowance: "Transport", amount: "150000", status: "fixed" }],
+    ["db2 update", { id_employee: 7, allowance: "Transport", amount: "150000", status: "fixed" }],
   ]);
 });
 

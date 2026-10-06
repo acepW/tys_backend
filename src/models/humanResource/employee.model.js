@@ -37,6 +37,12 @@ module.exports = (sequelize) => {
         allowNull: true,
         validate: { isEmail: true },
       },
+      office_email: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        validate: { isEmail: true },
+        comment: "Office email (email kantor)",
+      },
       phone: {
         type: DataTypes.STRING(30),
         allowNull: true,
@@ -214,6 +220,30 @@ module.exports = (sequelize) => {
       constraints: false,
       scope: { fileable_type: "employees", category: "files_npwp" },
       as: "files_npwp",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "files_bpjs_kesehatan" },
+      as: "files_bpjs_kesehatan",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "files_bpjs_ketenagakerjaan" },
+      as: "files_bpjs_ketenagakerjaan",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "files_sim" },
+      as: "files_sim",
+    });
+    Employee.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "employees", category: "files_stnk" },
+      as: "files_stnk",
     });
   };
 

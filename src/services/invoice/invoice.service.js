@@ -6,6 +6,7 @@ const { Op, fn, col, where } = require("sequelize");
 const debitNoteService = require("../debitNote/debitNote.service");
 const incomingInvoiceService = require("./incomingInvoice.service");
 const taxService = require("../masterTax/tax.service");
+const fileService = require("../file.service");
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
@@ -180,6 +181,12 @@ class InvoiceService extends DualDatabaseService {
           model: dbModels.DebitNote,
           as: "debit_note",
         },
+        {
+          model: dbModels.File,
+          as: "tax_invoice_attachment",
+          separate: true,
+          where: { is_active: true },
+        },
       ],
       order: [["createdAt", "DESC"]],
     };
@@ -294,6 +301,12 @@ class InvoiceService extends DualDatabaseService {
               ],
             },
           ],
+        },
+        {
+          model: dbModels.File,
+          as: "tax_invoice_attachment",
+          required: false,
+          where: { is_active: true },
         },
         {
           model: dbModels.DebitNote,
@@ -1422,6 +1435,81 @@ class InvoiceService extends DualDatabaseService {
       proof_of_payment,
       payment_for,
     );
+  }
+
+  /**
+   * Upload tax invoice (faktur pajak): number, date and attachment files
+   * @param {Number} id - Invoice ID
+   * @param {Object} data - { tax_invoice_no, tax_invoice_date, tax_invoice_attachment }
+   * @param {Number} idUser - User ID who uploads
+   * @param {Boolean} isDoubleDatabase
+   * @returns {Object} Updated invoice
+   */
+  async uploadTaxInvoice(id, data, idUser, isDoubleDatabase = true) {
+    let transaction1 = null;
+    let transaction2 = null;
+
+    try {
+      transaction1 = await db1.transaction();
+      if (isDoubleDatabase) transaction2 = await db2.transaction();
+
+      const existing = await models.db1.Invoice.findByPk(id, {
+        transaction: transaction1,
+        lock: transaction1.LOCK.UPDATE,
+      });
+      if (!existing) {
+        const error = new Error("Invoice not found");
+        error.statusCode = 404;
+        throw error;
+      }
+      if (existing.status !== "paid") {
+        const error = new Error(
+          "Tax invoice can only be uploaded when the invoice status is paid",
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const updateData = {
+        tax_invoice_no: data.tax_invoice_no,
+        tax_invoice_date: data.tax_invoice_date,
+      };
+      await models.db1.Invoice.update(updateData, {
+        where: { id },
+        transaction: transaction1,
+      });
+      if (transaction2) {
+        await models.db2.Invoice.update(updateData, {
+          where: { id },
+          transaction: transaction2,
+        });
+      }
+
+      if (data.tax_invoice_attachment !== undefined) {
+        await fileService.syncFiles(
+          "invoices",
+          id,
+          data.tax_invoice_attachment,
+          {
+            category: "tax_invoice_attachment",
+            uploadedBy: idUser,
+            isDoubleDatabase,
+            hardDelete: false,
+          },
+          transaction1,
+          transaction2,
+        );
+      }
+
+      await transaction1.commit();
+      if (transaction2) await transaction2.commit();
+
+      return this.getById(id, {}, true);
+    } catch (error) {
+      if (transaction1 && !transaction1.finished) await transaction1.rollback();
+      if (transaction2 && !transaction2.finished) await transaction2.rollback();
+      throw error;
+    }
   }
 
   /**

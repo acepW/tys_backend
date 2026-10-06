@@ -12,6 +12,12 @@ module.exports = (sequelize) => {
       },
       allowance: { type: DataTypes.STRING(200), allowNull: false },
       amount: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+      status: {
+        type: DataTypes.ENUM("fixed", "non-fixed"),
+        allowNull: false,
+        defaultValue: "fixed",
+        comment: "Allowance type: fixed (tunjangan tetap) or non-fixed (tunjangan tidak tetap)",
+      },
     },
     {
       tableName: "employee_allowances",

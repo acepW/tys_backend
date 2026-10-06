@@ -12,6 +12,7 @@ const editableFields = [
   "gender",
   "address",
   "email",
+  "office_email",
   "phone",
   "ktp",
   "npwp",
@@ -51,6 +52,10 @@ const relationFields = [
   "employee_photos",
   "files_ktp",
   "files_npwp",
+  "files_bpjs_kesehatan",
+  "files_bpjs_ketenagakerjaan",
+  "files_sim",
+  "files_stnk",
 ];
 
 const isValidAmount = (value) =>
@@ -79,7 +84,7 @@ const validateRelations = (body) => {
     }
   }
   const listFields = {
-    allowances: ["allowance", "amount"],
+    allowances: ["allowance", "amount", "status"],
     family_data: ["name", "relationship", "contact_number", "address"],
     education_history: ["level", "institution", "major", "from", "to"],
   };
@@ -97,6 +102,12 @@ const validateRelations = (body) => {
       }
       if (field === "allowances" && !isValidAmount(item.amount)) {
         return `${field}[${index}].amount must be a non-negative amount with at most two decimal places`;
+      }
+      if (
+        field === "allowances" &&
+        !["fixed", "non-fixed"].includes(String(item.status).trim())
+      ) {
+        return `${field}[${index}].status must be fixed or non-fixed`;
       }
       if (field === "education_history") {
         for (const key of ["from", "to"]) {

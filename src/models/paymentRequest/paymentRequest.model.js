@@ -408,6 +408,10 @@ module.exports = (sequelize) => {
       foreignKey: "id_payment_request",
       as: "expenses",
     });
+    PaymentRequest.hasMany(models.PaymentRequestService, {
+      foreignKey: "id_payment_request",
+      as: "services",
+    });
   };
 
   return PaymentRequest;

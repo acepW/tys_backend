@@ -492,6 +492,49 @@ class InvoiceController {
   }
 
   /**
+   * Upload tax invoice (faktur pajak)
+   * Body: tax_invoice_no, tax_invoice_date, tax_invoice_attachment (array of files)
+   */
+  async uploadTaxInvoice(req, res) {
+    try {
+      const {
+        is_double_database = true,
+        tax_invoice_no,
+        tax_invoice_date,
+        tax_invoice_attachment,
+      } = req.body || {};
+
+      if (!tax_invoice_no?.toString().trim()) {
+        return errorResponse(res, "tax_invoice_no is required", 400);
+      }
+      if (!tax_invoice_date) {
+        return errorResponse(res, "tax_invoice_date is required", 400);
+      }
+      if (
+        tax_invoice_attachment !== undefined &&
+        !Array.isArray(tax_invoice_attachment)
+      ) {
+        return errorResponse(res, "tax_invoice_attachment must be an array", 400);
+      }
+
+      const result = await invoiceService.uploadTaxInvoice(
+        req.params.id,
+        {
+          tax_invoice_no: tax_invoice_no.toString().trim(),
+          tax_invoice_date,
+          tax_invoice_attachment,
+        },
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Tax invoice uploaded successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
    * Delete invoice
    */
   async delete(req, res) {

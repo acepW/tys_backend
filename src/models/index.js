@@ -36,6 +36,7 @@ const AttendanceLogModel = require("./humanResource/attendanceLog.model");
 const AttendanceModel = require("./humanResource/attendance.model");
 const HolidayModel = require("./humanResource/holiday.model");
 const WorkScheduleModel = require("./humanResource/workSchedule.model");
+const EvaluationModel = require("./humanResource/evaluation.model");
 
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
@@ -98,6 +99,7 @@ const DebitNoteVerificationProgressModel = require("./debitNote/debitNoteVerific
 //payment request
 const PaymentRequestModel = require("./paymentRequest/paymentRequest.model");
 const PaymentRequestExpenseModel = require("./paymentRequest/paymentRequestExpense.model");
+const PaymentRequestServiceModel = require("./paymentRequest/paymentRequestService.model");
 const PaymentRequestVerificationProgressModel = require("./paymentRequest/paymentRequestVerificationProgress.model");
 
 const PurchaseRequestModel = require("./purchaseRequest/purchaseRequest.model");
@@ -106,6 +108,10 @@ const PurchaseRequestVerificationProgressModel = require("./purchaseRequest/purc
 const GaPurchaseOrderModel = require("./gaPurchaseOrder/gaPurchaseOrder.model");
 const GaPurchaseOrderItemModel = require("./gaPurchaseOrder/gaPurchaseOrderItem.model");
 const GaPurchaseOrderVerificationProgressModel = require("./gaPurchaseOrder/gaPurchaseOrderVerificationProgress.model");
+
+//inventory
+const InventoryModel = require("./inventory/inventory.model");
+const InventoryHistoryModel = require("./inventory/inventoryHistory.model");
 
 //vendor
 const VendorModel = require("./vendor/vendor.model");
@@ -181,6 +187,7 @@ const initializeModels = (sequelize) => {
     Attendance: AttendanceModel(sequelize),
     Holiday: HolidayModel(sequelize),
     WorkSchedule: WorkScheduleModel(sequelize),
+    Evaluation: EvaluationModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
@@ -245,6 +252,7 @@ const initializeModels = (sequelize) => {
     //payment request
     PaymentRequest: PaymentRequestModel(sequelize),
     PaymentRequestExpense: PaymentRequestExpenseModel(sequelize),
+    PaymentRequestService: PaymentRequestServiceModel(sequelize),
     PaymentRequestVerificationProgress:
       PaymentRequestVerificationProgressModel(sequelize),
 
@@ -254,6 +262,10 @@ const initializeModels = (sequelize) => {
     GaPurchaseOrder: GaPurchaseOrderModel(sequelize),
     GaPurchaseOrderItem: GaPurchaseOrderItemModel(sequelize),
     GaPurchaseOrderVerificationProgress: GaPurchaseOrderVerificationProgressModel(sequelize),
+
+    //inventory
+    Inventory: InventoryModel(sequelize),
+    InventoryHistory: InventoryHistoryModel(sequelize),
 
     //vendor
     Vendor: VendorModel(sequelize),
@@ -367,6 +379,8 @@ const syncProcurementModels = async () => {
     "PurchaseRequestVerificationProgress",
     "GaPurchaseOrderItem",
     "GaPurchaseOrderVerificationProgress",
+    "Inventory",
+    "InventoryHistory",
   ];
   for (const modelName of order) {
     await models.db1[modelName].sync({ alter: false });

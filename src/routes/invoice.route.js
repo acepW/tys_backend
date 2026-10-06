@@ -41,4 +41,7 @@ router.patch(
 //PATCH pay
 router.patch("/pay/:id", authenticate, InvoiceController.pay);
 
+//PATCH tax invoice (faktur pajak)
+router.patch("/tax-invoice/:id", authenticate, InvoiceController.uploadTaxInvoice);
+
 module.exports = router;

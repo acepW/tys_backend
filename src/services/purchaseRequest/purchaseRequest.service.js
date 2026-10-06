@@ -12,13 +12,15 @@ const {
 
 const itemFields = [
   "item_name",
-  "specification",
+  "brand",
+  "serial_number",
+  "size",
+  "material",
+  "other",
   "quantity_unit",
   "quantity",
   "procurement_type",
-  "average_usage",
   "remarks",
-  "product_link",
 ];
 
 function itemPayload(item, parent, userId) {

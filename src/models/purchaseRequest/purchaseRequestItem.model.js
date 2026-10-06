@@ -11,7 +11,31 @@ module.exports = (sequelize) => {
         references: { model: "purchase_requests", key: "id" },
       },
       item_name: { type: DataTypes.STRING(500), allowNull: false },
-      specification: { type: DataTypes.TEXT, allowNull: true },
+      brand: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Brand (merk) of the item",
+      },
+      serial_number: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Serial number (no seri) of the item",
+      },
+      size: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Size (ukuran) of the item",
+      },
+      material: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Material (bahan) of the item",
+      },
+      other: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Other specification (lainnya) of the item",
+      },
       purchase_request_category: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -31,9 +55,7 @@ module.exports = (sequelize) => {
         ),
         allowNull: false,
       },
-      average_usage: { type: DataTypes.STRING(255), allowNull: true },
       remarks: { type: DataTypes.TEXT, allowNull: true },
-      product_link: { type: DataTypes.STRING(1000), allowNull: true },
       ga_decision: {
         type: DataTypes.ENUM("pending", "approved", "rejected"),
         allowNull: false,

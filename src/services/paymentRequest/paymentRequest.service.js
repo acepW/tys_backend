@@ -140,6 +140,12 @@ class PaymentRequestService extends DualDatabaseService {
           as: "expenses",
           include: [{ model: dbModels.File, as: "files", required: false, where: { is_active: true } }],
         },
+        {
+          model: dbModels.PaymentRequestService,
+          as: "services",
+          separate: true,
+          order: [["id", "ASC"]],
+        },
       ],
       order: [["createdAt", "DESC"]],
     };
@@ -309,6 +315,12 @@ class PaymentRequestService extends DualDatabaseService {
           as: "expenses",
           include: [{ model: dbModels.File, as: "files", required: false, where: { is_active: true } }],
         },
+        {
+          model: dbModels.PaymentRequestService,
+          as: "services",
+          separate: true,
+          order: [["id", "ASC"]],
+        },
       ],
     };
 
@@ -328,6 +340,7 @@ class PaymentRequestService extends DualDatabaseService {
     id_user_create,
     isDoubleDatabase = true,
     expenses = [],
+    services = [],
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -398,6 +411,7 @@ class PaymentRequestService extends DualDatabaseService {
           transaction2,
         );
         await this.syncExpenses(paymentRequest1.id, expenses, id_user_create, true, transaction1, transaction2);
+        await this.syncServices(paymentRequest1.id, services, true, transaction1, transaction2);
 
         console.log(
           `✅ Created PaymentRequestVerificationProgress with status "requested"`
@@ -453,6 +467,10 @@ class PaymentRequestService extends DualDatabaseService {
             where: { id_payment_request: paymentRequest1.id },
             include: [{ model: models.db1.File, as: "files", required: false, where: { is_active: true } }],
           })).map((item) => item.toJSON()),
+          services: (await models.db1.PaymentRequestService.findAll({
+            where: { id_payment_request: paymentRequest1.id },
+            order: [["id", "ASC"]],
+          })).map((item) => item.toJSON()),
         };
       } else {
         // Single database (DB1 only)
@@ -489,6 +507,7 @@ class PaymentRequestService extends DualDatabaseService {
           null,
         );
         await this.syncExpenses(paymentRequest.id, expenses, id_user_create, false, transaction1, null);
+        await this.syncServices(paymentRequest.id, services, false, transaction1, null);
 
         if (paymentRequestData.id_contract_project_plan) {
           const contractProjectPlan =
@@ -527,6 +546,10 @@ class PaymentRequestService extends DualDatabaseService {
           expenses: (await models.db1.PaymentRequestExpense.findAll({
             where: { id_payment_request: paymentRequest.id },
             include: [{ model: models.db1.File, as: "files", required: false, where: { is_active: true } }],
+          })).map((item) => item.toJSON()),
+          services: (await models.db1.PaymentRequestService.findAll({
+            where: { id_payment_request: paymentRequest.id },
+            order: [["id", "ASC"]],
           })).map((item) => item.toJSON()),
         };
       }
@@ -600,7 +623,82 @@ class PaymentRequestService extends DualDatabaseService {
     }
   }
 
-  async updateWithRelations(id, data, files, expenses, idUser, isDoubleDatabase = true) {
+  /**
+   * Sync service list of a payment request.
+   * A service is "vendor" when id_vendor or id_vendor_service is filled, otherwise "manual".
+   * When id_vendor_service is filled, missing id_vendor, id_category, service_name and
+   * prices are taken from that vendor service.
+   */
+  async syncServices(id, services, isDoubleDatabase, transaction1, transaction2) {
+    const badRequest = (message) => {
+      const error = new Error(message);
+      error.statusCode = 400;
+      return error;
+    };
+    const existing = await models.db1.PaymentRequestService.findAll({
+      where: { id_payment_request: id }, transaction: transaction1,
+    });
+    const existingIds = new Set(existing.map((row) => row.id));
+    const retainedIds = new Set();
+    for (const [index, service] of services.entries()) {
+      const data = {
+        id_payment_request: id,
+        id_vendor: service.id_vendor ?? null,
+        id_vendor_service: service.id_vendor_service ?? null,
+        id_category: service.id_category ?? null,
+        service_name: service.service_name,
+        price_idr: service.price_idr,
+        price_rmb: service.price_rmb,
+        is_active: service.is_active ?? true,
+      };
+      if (data.id_vendor_service) {
+        const vendorService = await models.db1.VendorService.findByPk(data.id_vendor_service, {
+          transaction: transaction1,
+        });
+        if (!vendorService) throw badRequest(`services[${index}].id_vendor_service ${data.id_vendor_service} not found`);
+        if (data.id_vendor && Number(data.id_vendor) !== Number(vendorService.id_vendor)) {
+          throw badRequest(`services[${index}].id_vendor does not match the vendor service`);
+        }
+        data.id_vendor = data.id_vendor ?? vendorService.id_vendor;
+        data.id_category = data.id_category ?? vendorService.id_category;
+        data.service_name = data.service_name || vendorService.service_name;
+        data.price_idr = data.price_idr ?? vendorService.price_idr;
+        data.price_rmb = data.price_rmb ?? vendorService.price_rmb;
+      }
+      if (!String(data.service_name ?? "").trim()) throw badRequest(`services[${index}].service_name is required`);
+      data.service_name = String(data.service_name).trim();
+      data.price_idr = data.price_idr ?? 0;
+      data.price_rmb = data.price_rmb ?? 0;
+      data.type = data.id_vendor || data.id_vendor_service ? "vendor" : "manual";
+
+      const serviceId = service.id;
+      if (serviceId !== undefined && serviceId !== null) {
+        if (!existingIds.has(Number(serviceId)) || retainedIds.has(Number(serviceId))) {
+          throw badRequest(`Invalid service id ${serviceId}`);
+        }
+        retainedIds.add(Number(serviceId));
+        await models.db1.PaymentRequestService.update(data, { where: { id: serviceId }, transaction: transaction1 });
+        if (isDoubleDatabase) {
+          const [updated] = await models.db2.PaymentRequestService.update(data, { where: { id: serviceId }, transaction: transaction2 });
+          if (!updated) throw new Error(`Service ${serviceId} missing from second database`);
+        }
+      } else {
+        const created = await models.db1.PaymentRequestService.create(data, { transaction: transaction1 });
+        if (isDoubleDatabase) {
+          await models.db2.PaymentRequestService.create({ ...data, id: created.id }, { transaction: transaction2 });
+        }
+      }
+    }
+    for (const old of existing) {
+      if (retainedIds.has(old.id)) continue;
+      await models.db1.PaymentRequestService.destroy({ where: { id: old.id }, transaction: transaction1 });
+      if (isDoubleDatabase) {
+        await models.db2.PaymentRequestService.destroy({ where: { id: old.id }, transaction: transaction2 });
+      }
+    }
+  }
+
+  async updateWithRelations(id, data, files, expenses, idUser, isDoubleDatabase = true, services) {
     let transaction1 = null;
     let transaction2 = null;
     try {
@@ -624,6 +722,9 @@ class PaymentRequestService extends DualDatabaseService {
       }
       if (expenses !== undefined) {
         await this.syncExpenses(id, expenses, idUser, isDoubleDatabase, transaction1, transaction2);
+      }
+      if (services !== undefined) {
+        await this.syncServices(id, services, isDoubleDatabase, transaction1, transaction2);
       }
       await transaction1.commit();
       if (transaction2) await transaction2.commit();

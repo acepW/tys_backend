@@ -20,6 +20,12 @@ function validateItems(items) {
   return null;
 }
 
+function validateFileArrays(body) {
+  for (const key of ["files_payment", "files_purchase_proof", "files_goods_receipt"])
+    if (body[key] !== undefined && !Array.isArray(body[key])) return `${key} must be an array`;
+  return null;
+}
+
 class GaPurchaseOrderController {
   async getNo(req, res) {
     try { return successResponse(res, await service.getNo(req.query?.is_double_database !== "false")); }
@@ -68,11 +74,23 @@ class GaPurchaseOrderController {
     } catch (error) { return respondError(res, error); }
   }
 
+  async updateReceiving(req, res) {
+    try {
+      const body = req.body || {};
+      const invalid = validateFileArrays(body);
+      if (invalid) return errorResponse(res, invalid, 400);
+      return successResponse(res, await service.updateReceiving(req.params.id, body, req.user.id,
+        body.is_double_database !== false), "GA purchase order receiving updated");
+    } catch (error) { return respondError(res, error); }
+  }
+
   async action(req, res) {
     try {
       const body = req.body || {};
+      const invalid = validateFileArrays(body);
+      if (invalid) return errorResponse(res, invalid, 400);
       return successResponse(res, await service.action(req.params.id, req.params.action,
-        req.user.id, body.note, body.is_double_database !== false), "GA purchase order status updated");
+        req.user.id, body, body.is_double_database !== false), "GA purchase order status updated");
     } catch (error) { return respondError(res, error); }
   }
 }

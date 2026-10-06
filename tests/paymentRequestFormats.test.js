@@ -109,3 +109,43 @@ test("next payment request number is grouped by company and resets each year", a
   assert.equal(result[0].no_payment_request, `PRQ-TYSCG-${year}-00005`);
   assert.equal(result[1].no_payment_request, `PRQ-CB-${year}-00001`);
 });
+
+test("payment request services are typed vendor or manual and fill from vendor service", async (t) => {
+  const { models } = require("../src/models");
+  const service = require("../src/services/paymentRequest/paymentRequest.service");
+  const model = models.db1.PaymentRequestService;
+  const originals = {
+    findAll: model.findAll, create: model.create, destroy: model.destroy,
+    vendorService: models.db1.VendorService.findByPk,
+  };
+  t.after(() => {
+    model.findAll = originals.findAll;
+    model.create = originals.create;
+    model.destroy = originals.destroy;
+    models.db1.VendorService.findByPk = originals.vendorService;
+  });
+  const created = [];
+  const destroyed = [];
+  model.findAll = async () => [{ id: 9 }];
+  model.create = async (data) => { created.push(data); return { id: created.length }; };
+  model.destroy = async ({ where }) => { destroyed.push(where.id); };
+  models.db1.VendorService.findByPk = async () => ({
+    id_vendor: 4, id_category: 2, service_name: "Cleaning", price_idr: "500000", price_rmb: "0",
+  });
+
+  await service.syncServices(1, [
+    { id_vendor_service: 3 },
+    { id_vendor: 4, service_name: "Repair", price_idr: 100000 },
+    { service_name: " Parkir ", price_idr: 20000 },
+  ], false, {}, null);
+
+  assert.deepEqual(created.map(({ type, id_vendor, service_name, price_idr, price_rmb }) =>
+    ({ type, id_vendor, service_name, price_idr, price_rmb })), [
+    { type: "vendor", id_vendor: 4, service_name: "Cleaning", price_idr: "500000", price_rmb: "0" },
+    { type: "vendor", id_vendor: 4, service_name: "Repair", price_idr: 100000, price_rmb: 0 },
+    { type: "manual", id_vendor: null, service_name: "Parkir", price_idr: 20000, price_rmb: 0 },
+  ]);
+  assert.deepEqual(destroyed, [9]);
+  await assert.rejects(service.syncServices(1, [{ id_vendor_service: 3, id_vendor: 5 }], false, {}, null),
+    /does not match the vendor service/);
+});
