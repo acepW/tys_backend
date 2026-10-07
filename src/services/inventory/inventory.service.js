@@ -1,6 +1,7 @@
 const {
   models,
   Op,
+  withTransactions,
   mirrorCreate,
   mirrorUpdate,
 } = require("../procurement/shared");
@@ -91,6 +92,54 @@ class InventoryService {
     return (await models.db1.Inventory.findAll(options)).map((row) =>
       row.toJSON(),
     );
+  }
+
+  // Manual stock entry: adds to the matching inventory row or creates a new one.
+  async createManual(input, userId, isDoubleDatabase = true) {
+    const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      let inventory = await models.db1.Inventory.findOne({
+        where: matchWhere(input),
+        transaction: t1,
+        lock: t1.LOCK.UPDATE,
+      });
+      if (inventory) {
+        await mirrorUpdate(
+          "Inventory",
+          inventory.id,
+          { quantity: Number(inventory.quantity) + Number(input.quantity) },
+          t1,
+          t2,
+        );
+      } else {
+        inventory = await mirrorCreate(
+          "Inventory",
+          {
+            ...Object.fromEntries(
+              matchFields.map((field) => [field, normalize(input[field])]),
+            ),
+            purchase_request_category: input.purchase_request_category || null,
+            quantity_unit: input.quantity_unit,
+            quantity: input.quantity,
+          },
+          t1,
+          t2,
+        );
+      }
+      await mirrorCreate(
+        "InventoryHistory",
+        {
+          id_inventory: inventory.id,
+          id_user: userId,
+          quantity: input.quantity,
+          note: normalize(input.note) || "Manual entry",
+        },
+        t1,
+        t2,
+      );
+      await this.copyProductFiles(inventory.id, input.files_product, userId, t1, t2);
+      return inventory.id;
+    });
+    return this.getById(id);
   }
 
   // Called inside the GA purchase order transaction when the goods are accepted.
