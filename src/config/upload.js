@@ -11,6 +11,7 @@ const ALLOWED_FOLDERS = {
   purchase_request: "purchase_request",
   ga_purchase_order: "ga_purchase_order",
   invoice: "invoice",
+  inventory: "inventory",
 };
 
 const ALLOWED_MIME_TYPES = {
