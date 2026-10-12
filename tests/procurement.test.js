@@ -174,8 +174,8 @@ function mockGaOrder(t, order, fileCounts = {}) {
 test("GA Purchase Order follows the approval chain up to receiving", async (t) => {
   const order = { status: "request ga manager", return_count: 0 };
   mockGaOrder(t, order, { files_payment: 1 });
-  for (const [action, status] of [["approve_ga_manager", "request director"], ["approve_director", "request ar ap"],
-    ["approve_ar_ap", "request fat"], ["approve_fat", "request cashier"]]) {
+  for (const [action, status] of [["approve_ga_manager", "request director"], ["approve_director", "request fat"],
+    ["approve_fat", "request cashier"]]) {
     await gaOrderService.action(1, action, 5, {}, false);
     assert.equal(order.status, status);
   }
@@ -187,18 +187,19 @@ test("GA Purchase Order follows the approval chain up to receiving", async (t) =
   await assert.rejects(gaOrderService.action(1, "approve_fat", 5, {}, false), /not allowed/);
 });
 
-test("GA Purchase Order return cycle goes through GA manager, AR/AP and cashier", async (t) => {
+test("GA Purchase Order return cycle goes through GA manager and cashier", async (t) => {
   const order = { status: "request receiving", return_count: 0 };
   const writes = mockGaOrder(t, order);
   await gaOrderService.action(1, "return_goods", 5, { note: "Barang rusak" }, false);
   assert.equal(order.status, "return request ga manager");
   assert.equal(order.return_count, 1);
   await assert.rejects(gaOrderService.action(1, "approve_director", 5, {}, false), /not allowed/);
-  for (const action of ["approve_ga_manager", "approve_ar_ap", "approve_cashier"])
-    await gaOrderService.action(1, action, 5, {}, false);
+  await gaOrderService.action(1, "approve_ga_manager", 5, {}, false);
+  assert.equal(order.status, "return request cashier");
+  await gaOrderService.action(1, "approve_cashier", 5, {}, false);
   assert.equal(order.status, "request receiving");
   assert.deepEqual(writes.filter(([kind]) => kind === "progress").map(([, status]) => status),
-    ["return request ga manager", "return request ar ap", "return request cashier", "request receiving"]);
+    ["goods returned", "return approved ga manager", "return approved cashier"]);
 });
 
 test("GA Purchase Order acceptance requires receipt data and files", async (t) => {

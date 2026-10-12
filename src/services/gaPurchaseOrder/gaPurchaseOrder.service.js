@@ -22,26 +22,18 @@ const orderFileCategories = [
 
 // Approval flow: action -> { current status: next status }.
 // Statuses prefixed with "return" belong to the goods return cycle, which goes
-// through GA manager, AR/AP and cashier, then back to GA staff (request receiving).
+// through GA manager and cashier, then back to GA staff (request receiving).
 const transitions = {
   approve_ga_manager: {
     "request ga manager": "request director",
-    "return request ga manager": "return request ar ap",
+    "return request ga manager": "return request cashier",
   },
   reject_ga_manager: {
     "request ga manager": "rejected ga manager",
     "return request ga manager": "request receiving",
   },
-  approve_director: { "request director": "request ar ap" },
+  approve_director: { "request director": "request fat" },
   reject_director: { "request director": "rejected director" },
-  approve_ar_ap: {
-    "request ar ap": "request fat",
-    "return request ar ap": "return request cashier",
-  },
-  reject_ar_ap: {
-    "request ar ap": "rejected ar ap",
-    "return request ar ap": "request receiving",
-  },
   approve_fat: { "request fat": "request cashier" },
   reject_fat: { "request fat": "rejected fat" },
   approve_cashier: {
@@ -54,6 +46,19 @@ const transitions = {
   },
   return_goods: { "request receiving": "return request ga manager" },
   accept_goods: { "request receiving": "finished" },
+};
+// Verification progress records what the actor did, not the order's next status.
+const progressStatuses = {
+  approve_ga_manager: "approved ga manager",
+  reject_ga_manager: "rejected ga manager",
+  approve_director: "approved director",
+  reject_director: "rejected director",
+  approve_fat: "approved fat",
+  reject_fat: "rejected fat",
+  approve_cashier: "approved cashier",
+  reject_cashier: "rejected cashier",
+  return_goods: "goods returned",
+  accept_goods: "goods accepted",
 };
 const noteRequired = (action) =>
   action.startsWith("reject") || action === "return_goods";
@@ -535,6 +540,7 @@ class GaPurchaseOrderService {
       const nextStatus = flow[order.status];
       if (!nextStatus)
         fail(`Action ${action} is not allowed from ${order.status}`, 409);
+      const progressStatus = `${order.status.startsWith("return") ? "return " : ""}${progressStatuses[action]}`;
       const updateData = { status: nextStatus };
 
       if (action === "approve_cashier" && order.status === "request cashier") {
@@ -583,7 +589,7 @@ class GaPurchaseOrderService {
         {
           id_ga_purchase_order: id,
           id_user: userId,
-          status: nextStatus,
+          status: progressStatus,
           note: note || null,
         },
         t1,

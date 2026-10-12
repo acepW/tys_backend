@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const vendorController = require("../controllers/vendor/vendor.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
+const { requireApprover } = require("../middleware/approval.middleware");
 
 // GET routes
 router.get("/", authenticate, vendorController.getAll);
@@ -11,10 +12,10 @@ router.get("/:id", authenticate, vendorController.getById);
 router.post("/", authenticate, vendorController.create);
 
 // PATCH routes
-router.patch("/approve/:id", authenticate, vendorController.approve);
+router.patch("/approve/:id", authenticate, requireApprover("vendor", ["pending"]), vendorController.approve);
 
 // PATCH routes
-router.patch("/reject/:id", authenticate, vendorController.reject);
+router.patch("/reject/:id", authenticate, requireApprover("vendor", ["pending"]), vendorController.reject);
 
 // DELETE routes
 router.delete("/:id", authenticate, vendorController.delete);

@@ -2,6 +2,15 @@ const express = require("express");
 const router = express.Router();
 const PaymentRequestController = require("../controllers/paymentRequest/paymentRequest.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
+const { requireApprover } = require("../middleware/approval.middleware");
+
+const PAYMENT_REQUEST_APPROVAL_STATUSES = [
+  "pending",
+  "approve dept manager",
+  "approve fat",
+  "approve manager fat",
+  "approve director",
+];
 
 // GET routes
 router.get("/", authenticate, PaymentRequestController.getAll);
@@ -20,13 +29,13 @@ router.put("/:id/expenses", authenticate, PaymentRequestController.updateExpense
 router.put("/:id/files", authenticate, PaymentRequestController.updateFiles);
 
 // PATCH routes
-router.patch("/approve/:id", authenticate, PaymentRequestController.approve);
+router.patch("/approve/:id", authenticate, requireApprover("payment request", PAYMENT_REQUEST_APPROVAL_STATUSES), PaymentRequestController.approve);
 
 // PATCH routes
-router.patch("/reject/:id", authenticate, PaymentRequestController.reject);
+router.patch("/reject/:id", authenticate, requireApprover("payment request", PAYMENT_REQUEST_APPROVAL_STATUSES), PaymentRequestController.reject);
 
 // PATCH routes
-router.patch("/paid/:id", authenticate, PaymentRequestController.paid);
+router.patch("/paid/:id", authenticate, requireApprover("payment request", ["approve cashier"]), PaymentRequestController.paid);
 
 // DELETE routes
 router.delete("/:id", authenticate, PaymentRequestController.delete);

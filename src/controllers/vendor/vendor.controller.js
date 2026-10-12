@@ -2,6 +2,7 @@ const vendorService = require("../../services/vendor/vendor.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 const { isValidTransactionPurpose } = require("../../utils/vendorTransactionPurpose");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 class VendorController {
   /**
@@ -45,7 +46,11 @@ class VendorController {
         isDoubleDatabase
       );
 
-      return successResponse(res, vendors, "Vendors retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("vendor", vendors, req.user?.id),
+        "Vendors retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -66,7 +71,11 @@ class VendorController {
         return errorResponse(res, "Vendor not found", 404);
       }
 
-      return successResponse(res, vendor, "Vendor retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("vendor", vendor, req.user?.id),
+        "Vendor retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }

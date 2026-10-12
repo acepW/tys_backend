@@ -1,6 +1,7 @@
 const contractService = require("../../services/contract/contract.service");
 const contractPaymentService = require("../../services/contract/contractPayment.service");
 const { successResponse, errorResponse } = require("../../utils/response");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 class ContractController {
   constructor() {
@@ -186,7 +187,11 @@ class ContractController {
         includeHistory,
       );
 
-      return successResponse(res, result, "Contracts retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("contract", result, req.user?.id),
+        "Contracts retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -207,7 +212,11 @@ class ContractController {
         return errorResponse(res, "Contract not found", 404);
       }
 
-      return successResponse(res, contract, "Contract retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("contract", contract, req.user?.id),
+        "Contract retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }

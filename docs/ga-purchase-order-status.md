@@ -8,17 +8,14 @@ Semua endpoint berawalan `/api/ga-purchase-orders`. Setiap aksi memakai `PATCH` 
 | --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | `request ga manager`        | Menunggu approval HRGA SPV/Manager. Order masih bisa diedit oleh pembuatnya (`PUT /:id`). | Approve / Reject (GA Manager)                         |
 | `request director`          | Menunggu approval Direktur                                                                | Approve / Reject (Direktur)                           |
-| `request ar ap`             | Menunggu approval AR/AP                                                                   | Approve / Reject (AR/AP)                              |
 | `request fat`               | Menunggu approval Internal FAT SPV/Manager                                                | Approve / Reject (FAT)                                |
 | `request cashier`           | Menunggu kasir melakukan pembayaran                                                       | Approve + form pembayaran / Reject (Kasir)            |
 | `request receiving`         | Menunggu GA Staff mengunggah bukti pembelian dan penerimaan barang                        | Simpan data penerimaan, Accepted, Returned (GA Staff) |
 | `return request ga manager` | Alur return: menunggu approval HRGA SPV/Manager                                           | Approve / Reject (GA Manager)                         |
-| `return request ar ap`      | Alur return: menunggu approval AR/AP                                                      | Approve / Reject (AR/AP)                              |
 | `return request cashier`    | Alur return: menunggu approval kasir                                                      | Approve / Reject (Kasir)                              |
 | `finished`                  | Selesai, barang diterima                                                                  | Tidak ada                                             |
 | `rejected ga manager`       | Ditolak HRGA SPV/Manager                                                                  | Tidak ada                                             |
 | `rejected director`         | Ditolak Direktur                                                                          | Tidak ada                                             |
-| `rejected ar ap`            | Ditolak AR/AP                                                                             | Tidak ada                                             |
 | `rejected fat`              | Ditolak FAT                                                                               | Tidak ada                                             |
 | `rejected cashier`          | Ditolak kasir                                                                             | Tidak ada                                             |
 
@@ -27,15 +24,15 @@ Status `rejected ...` dan `finished` adalah status akhir. Alur ini tidak lagi me
 ## Alur utama
 
 ```
-request ga manager → request director → request ar ap → request fat
-  → request cashier → request receiving → finished
+request ga manager → request director → request fat → request cashier
+  → request receiving → finished
 ```
 
 ## Alur return (setelah GA Staff menekan Returned)
 
 ```
-request receiving → return request ga manager → return request ar ap
-  → return request cashier → request receiving
+request receiving → return request ga manager → return request cashier
+  → request receiving
 ```
 
 Setelah alur return selesai, GA Staff kembali ke `request receiving` dan memilih Accepted atau Returned lagi. Direktur dan FAT tidak ikut di alur return. Kalau ada yang reject saat alur return, status kembali ke `request receiving`, bukan `rejected`.
@@ -46,7 +43,6 @@ Setelah alur return selesai, GA Staff kembali ke `request receiving` dan memilih
 | ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
 | GA Manager approve / reject                 | `PATCH /ga-manager/approve/:id`, `PATCH /ga-manager/reject/:id` | `request ga manager`, `return request ga manager` |
 | Direktur approve / reject                   | `PATCH /director/approve/:id`, `PATCH /director/reject/:id`     | `request director`                                |
-| AR/AP approve / reject                      | `PATCH /ar-ap/approve/:id`, `PATCH /ar-ap/reject/:id`           | `request ar ap`, `return request ar ap`           |
 | FAT approve / reject                        | `PATCH /fat/approve/:id`, `PATCH /fat/reject/:id`               | `request fat`                                     |
 | Kasir approve / reject                      | `PATCH /cashier/approve/:id`, `PATCH /cashier/reject/:id`       | `request cashier`, `return request cashier`       |
 | Simpan data penerimaan (tanpa ganti status) | `PUT /:id/receiving`                                            | `request receiving`                               |

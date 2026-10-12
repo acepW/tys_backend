@@ -3,17 +3,14 @@ const { DataTypes } = require("sequelize");
 const statuses = [
   "request ga manager",
   "request director",
-  "request ar ap",
   "request fat",
   "request cashier",
   "request receiving",
   "return request ga manager",
-  "return request ar ap",
   "return request cashier",
   "finished",
   "rejected ga manager",
   "rejected director",
-  "rejected ar ap",
   "rejected fat",
   "rejected cashier",
 ];

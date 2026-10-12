@@ -1,6 +1,7 @@
 const servicePricingService = require("../../services/servicePricing/servicePricing.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 /**
  * Validate government_cost payload structure (3-level: government_cost -> tables -> fields)
@@ -81,7 +82,7 @@ class ServicePricingController {
 
       return successResponse(
         res,
-        servicePricing,
+        await approvalAccess.attachActionFlags("service pricing", servicePricing, req.user?.id),
         "Service pricing retrieved successfully",
       );
     } catch (error) {
@@ -110,7 +111,7 @@ class ServicePricingController {
 
       return successResponse(
         res,
-        servicePricing,
+        await approvalAccess.attachActionFlags("service pricing", servicePricing, req.user?.id),
         "Service pricing retrieved successfully",
       );
     } catch (error) {

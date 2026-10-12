@@ -3,6 +3,7 @@ const router = express.Router();
 const ServicePriceController = require("../controllers/servicePricing/servicePricing.controller");
 const ServicePriceGovernmentCostController = require("../controllers/servicePricing/servicePricingGovernmentCost.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
+const { requireApprover } = require("../middleware/approval.middleware");
 
 // GET routes
 router.get("/", authenticate, ServicePriceController.getAll);
@@ -30,9 +31,9 @@ router.put("/:id", authenticate, ServicePriceController.update);
 router.delete("/:id", authenticate, ServicePriceController.delete);
 
 //PATCH approve
-router.patch("/approve/:id", authenticate, ServicePriceController.approve);
+router.patch("/approve/:id", authenticate, requireApprover("service pricing", ["pending"]), ServicePriceController.approve);
 
 //PATCH reject
-router.patch("/reject/:id", authenticate, ServicePriceController.reject);
+router.patch("/reject/:id", authenticate, requireApprover("service pricing", ["pending"]), ServicePriceController.reject);
 
 module.exports = router;

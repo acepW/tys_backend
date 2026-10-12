@@ -30,6 +30,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Approval Flow rule type",
       },
+      scope: {
+        type: DataTypes.ENUM("all", "department", "division"),
+        allowNull: false,
+        defaultValue: "all",
+        comment: "Which documents approvers may act on: all, or only their own department/division",
+      },
       index: {
         type: DataTypes.INTEGER,
         allowNull: true,

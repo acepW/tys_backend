@@ -1563,7 +1563,7 @@ class InvoiceService extends DualDatabaseService {
           updateData.id_user_reject = id_user;
         }
 
-        if (invoiceStatus == "signing for payment") {
+        if (invoiceStatus == "waiting for payment") {
           updateData.file_invoice = file_invoice;
         }
 

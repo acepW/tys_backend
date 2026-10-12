@@ -106,15 +106,14 @@ Jika `files_product` item tidak dikirim saat create, file produk dari Purchase R
 |---|---|---|
 | 1. GA Staff | `POST /api/ga-purchase-orders` | → `request ga manager` |
 | 2. HRGA SPV/Manager | `PATCH /ga-manager/approve/:id` | `request ga manager` → `request director` |
-| 3. Direktur | `PATCH /director/approve/:id` | `request director` → `request ar ap` |
-| 4. AR/AP | `PATCH /ar-ap/approve/:id` | `request ar ap` → `request fat` |
-| 5. Internal FAT SPV/Manager | `PATCH /fat/approve/:id` | `request fat` → `request cashier` |
-| 6. Cashier | `PATCH /cashier/approve/:id` | `request cashier` → `request receiving` |
-| 7. GA Staff | `PATCH /ga-staff/accept/:id` atau `/ga-staff/return/:id` | `request receiving` → `finished` atau `return request ga manager` |
+| 3. Direktur | `PATCH /director/approve/:id` | `request director` → `request fat` |
+| 4. Internal FAT SPV/Manager | `PATCH /fat/approve/:id` | `request fat` → `request cashier` |
+| 5. Cashier | `PATCH /cashier/approve/:id` | `request cashier` → `request receiving` |
+| 6. GA Staff | `PATCH /ga-staff/accept/:id` atau `/ga-staff/return/:id` | `request receiving` → `finished` atau `return request ga manager` |
 
-Semua endpoint di atas berawalan `/api/ga-purchase-orders`. Penolakan memakai `/ga-manager/reject/:id`, `/director/reject/:id`, `/ar-ap/reject/:id`, `/fat/reject/:id`, atau `/cashier/reject/:id` dengan body `{ "note": "Alasan" }`, dan mengubah status menjadi `rejected ga manager`, `rejected director`, `rejected ar ap`, `rejected fat`, atau `rejected cashier`.
+Semua endpoint di atas berawalan `/api/ga-purchase-orders`. Penolakan memakai `/ga-manager/reject/:id`, `/director/reject/:id`, `/fat/reject/:id`, atau `/cashier/reject/:id` dengan body `{ "note": "Alasan" }`, dan mengubah status menjadi `rejected ga manager`, `rejected director`, `rejected fat`, atau `rejected cashier`.
 
-Pada tahap 6, kasir wajib mengirim data dan bukti pembayaran:
+Pada tahap 5, kasir wajib mengirim data dan bukti pembayaran:
 
 ```json
 {
@@ -125,11 +124,11 @@ Pada tahap 6, kasir wajib mengirim data dan bukti pembayaran:
 }
 ```
 
-Pada tahap 7, GA Staff mengunggah bukti pembelian (`files_purchase_proof`) dan form penerimaan barang (`files_goods_receipt`) beserta datanya (`received_date`, `receipt_note`). Data ini bisa disimpan bertahap lewat `PUT /api/ga-purchase-orders/:id/receiving` selama status `request receiving`, atau dikirim langsung bersama tombol accept/return.
+Pada tahap 6, GA Staff mengunggah bukti pembelian (`files_purchase_proof`) dan form penerimaan barang (`files_goods_receipt`) beserta datanya (`received_date`, `receipt_note`). Data ini bisa disimpan bertahap lewat `PUT /api/ga-purchase-orders/:id/receiving` selama status `request receiving`, atau dikirim langsung bersama tombol accept/return.
 
 - **Accepted** (`/ga-staff/accept/:id`): barang tidak bermasalah atau hanya perlu ditukar. `received_date`, minimal satu `files_purchase_proof`, dan minimal satu `files_goods_receipt` wajib ada; status menjadi `finished`.
-- **Returned** (`/ga-staff/return/:id`): barang bermasalah dan perlu dikembalikan/order ulang. Body wajib berisi `note`. `return_count` bertambah satu dan alur pengembalian hanya melewati GA SPV/Manager, AR/AP, dan kasir memakai endpoint approve yang sama:
-  `return request ga manager` → `return request ar ap` → `return request cashier` → `request receiving`.
+- **Returned** (`/ga-staff/return/:id`): barang bermasalah dan perlu dikembalikan/order ulang. Body wajib berisi `note`. `return_count` bertambah satu dan alur pengembalian hanya melewati GA SPV/Manager dan kasir memakai endpoint approve yang sama:
+  `return request ga manager` → `return request cashier` → `request receiving`.
   Di tahap kasir pada alur ini tidak perlu data pembayaran. Penolakan pada alur pengembalian mengembalikan status ke `request receiving` agar GA Staff memilih lagi. Direktur dan FAT tidak perlu menyetujui; riwayatnya tercatat di verification progress.
 
 Setiap create, update, submit, approve, reject, accept, dan return membuat verification progress. Nilai `procurement_type` yang diterima: `Pengadaan Rutin`, `Pembaruan Stok`, `Pengadaan Baru`.

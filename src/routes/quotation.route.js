@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const QuotationController = require("../controllers/quotation/quotation.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
+const { requireApprover } = require("../middleware/approval.middleware");
 
 // GET routes
 router.get("/", authenticate, QuotationController.getAll);
@@ -24,9 +25,9 @@ router.put("/revision/:id", authenticate, QuotationController.revision);
 router.delete("/:id", authenticate, QuotationController.delete);
 
 //PATCH approve
-router.patch("/approve/:id", authenticate, QuotationController.approve);
+router.patch("/approve/:id", authenticate, requireApprover("quotation", ["pending"]), QuotationController.approve);
 
 //PATCH reject
-router.patch("/reject/:id", authenticate, QuotationController.reject);
+router.patch("/reject/:id", authenticate, requireApprover("quotation", ["pending"]), QuotationController.reject);
 
 module.exports = router;

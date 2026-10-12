@@ -1,6 +1,7 @@
 const quotationService = require("../../services/quotation/quotation.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 /**
  * Validate services_supporting array for a category (shared by create/update/revision)
@@ -273,7 +274,7 @@ class QuotationController {
 
       return successResponse(
         res,
-        quotations,
+        await approvalAccess.attachActionFlags("quotation", quotations, req.user?.id),
         "Quotations retrieved successfully",
       );
     } catch (error) {
@@ -302,7 +303,7 @@ class QuotationController {
 
       return successResponse(
         res,
-        quotation,
+        await approvalAccess.attachActionFlags("quotation", quotation, req.user?.id),
         "Quotation retrieved successfully",
       );
     } catch (error) {

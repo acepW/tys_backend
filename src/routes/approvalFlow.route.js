@@ -5,6 +5,7 @@ const { authenticate, authorize } = require("../middleware/auth.middleware");
 
 // GET routes
 router.get("/", authenticate, approvalFlowController.getAll);
+router.get("/targets", authenticate, approvalFlowController.getTargets);
 router.get("/:id", authenticate, approvalFlowController.getById);
 
 // POST routes

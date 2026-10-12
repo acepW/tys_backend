@@ -58,6 +58,7 @@ const reportInvoiceRoutes = require("./reportInvoice.route");
 
 //approval flow
 const approvalFlowRoutes = require("./approvalFlow.route");
+const myTaskRoutes = require("./myTask.route");
 
 //vendor
 const vendorRoutes = require("./vendor.route");
@@ -129,6 +130,7 @@ router.use("/report-invoices", reportInvoiceRoutes);
 
 //approval flow
 router.use("/approval-flows", approvalFlowRoutes);
+router.use("/my-tasks", myTaskRoutes);
 
 //vendor
 router.use("/vendors", vendorRoutes);
@@ -195,6 +197,7 @@ router.get("/", (req, res) => {
 
       //approval flow
       approvalFlow: "/api/approval-flows",
+      myTask: "/api/my-tasks",
 
       //vendor
       vendors: "/api/vendors",

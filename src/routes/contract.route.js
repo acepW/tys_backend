@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const contractController = require("../controllers/contract/contarct.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
+const { requireApprover } = require("../middleware/approval.middleware");
 
 // GET routes
 router.get("/", authenticate, contractController.getAll);
@@ -15,18 +16,19 @@ router.post("/", authenticate, contractController.create);
 router.put("/:id", authenticate, contractController.update);
 
 // PATCH routes
-router.patch("/submit/:id", authenticate, contractController.submit);
+router.patch("/submit/:id", authenticate, requireApprover("contract", ["pending"]), contractController.submit);
 
 // PATCH routes
-router.patch("/approve/:id", authenticate, contractController.approve);
+router.patch("/approve/:id", authenticate, requireApprover("contract", ["on verification"]), contractController.approve);
 
 // PATCH routes
-router.patch("/reject/:id", authenticate, contractController.reject);
+router.patch("/reject/:id", authenticate, requireApprover("contract", ["on verification"]), contractController.reject);
 
 // PATCH routes
 router.patch(
   "/send-to-customer/:id",
   authenticate,
+  requireApprover("contract", ["approved"]),
   contractController.sendToCustomer,
 );
 
@@ -34,6 +36,7 @@ router.patch(
 router.patch(
   "/approve-customer/:id",
   authenticate,
+  requireApprover("contract", ["sending to customer"]),
   contractController.approveByCustomer,
 );
 
@@ -41,6 +44,7 @@ router.patch(
 router.patch(
   "/reject-customer/:id",
   authenticate,
+  requireApprover("contract", ["sending to customer"]),
   contractController.rejectByCustomer,
 );
 

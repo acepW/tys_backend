@@ -2,6 +2,7 @@ const debitNoteService = require("../../services/debitNote/debitNote.service");
 const incomingDebitNoteService = require("../../services/debitNote/incomingDebitNote.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 class DebitNoteController {
   /**
@@ -83,7 +84,7 @@ class DebitNoteController {
 
       return successResponse(
         res,
-        debitNotes,
+        await approvalAccess.attachActionFlags("debit note", debitNotes, req.user?.id),
         "Debit notes retrieved successfully"
       );
     } catch (error) {
@@ -112,7 +113,7 @@ class DebitNoteController {
 
       return successResponse(
         res,
-        debitNote,
+        await approvalAccess.attachActionFlags("debit note", debitNote, req.user?.id),
         "Debit note retrieved successfully"
       );
     } catch (error) {

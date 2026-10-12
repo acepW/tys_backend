@@ -234,12 +234,13 @@ class PurchaseRequestService {
   }
 
   async action(id, action, userId, note, decisions, isDoubleDatabase = true) {
+    // [from status, to status, verification progress status]
     const transitions = {
-      request_manager: ["pending", "request manager"],
-      approve_manager: ["request manager", "request ga"],
-      reject_manager: ["request manager", "rejected manager"],
-      approve_ga: ["request ga", "approved ga"],
-      reject_ga: ["request ga", "rejected ga"],
+      request_manager: ["pending", "request manager", "request manager"],
+      approve_manager: ["request manager", "request ga", "approved manager"],
+      reject_manager: ["request manager", "rejected manager", "rejected manager"],
+      approve_ga: ["request ga", "approved ga", "approved ga"],
+      reject_ga: ["request ga", "rejected ga", "rejected ga"],
     };
     const transition = transitions[action];
     if (!transition) fail("Invalid action");
@@ -313,7 +314,7 @@ class PurchaseRequestService {
         {
           id_purchase_request: id,
           id_user: userId,
-          status: transition[1],
+          status: transition[2],
           note: note || null,
         },
         t1,

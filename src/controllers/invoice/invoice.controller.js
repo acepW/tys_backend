@@ -1,6 +1,7 @@
 const invoiceService = require("../../services/invoice/invoice.service");
 const incomingInvoiceService = require("../../services/invoice/incomingInvoice.service");
 const { successResponse, errorResponse } = require("../../utils/response");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 class InvoiceController {
   /**
@@ -72,7 +73,11 @@ class InvoiceController {
         search,
       );
 
-      return successResponse(res, invoices, "Invoices retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("invoice", invoices, req.user?.id),
+        "Invoices retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }
@@ -93,7 +98,11 @@ class InvoiceController {
         return errorResponse(res, "Invoice not found", 404);
       }
 
-      return successResponse(res, invoice, "Invoice retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("invoice", invoice, req.user?.id),
+        "Invoice retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }

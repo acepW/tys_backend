@@ -3,6 +3,7 @@ const preOrderService = require("../../services/preOrder/preOrder.service");
 const preOrderPaymentService = require("../../services/preOrder/preOrderPayment.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 class PreOrderController {
   /**
@@ -63,7 +64,7 @@ class PreOrderController {
 
       return successResponse(
         res,
-        preOrders,
+        await approvalAccess.attachActionFlags("purchase order", preOrders, req.user?.id),
         "PreOrders retrieved successfully",
       );
     } catch (error) {
@@ -86,7 +87,11 @@ class PreOrderController {
         return errorResponse(res, "PreOrder not found", 404);
       }
 
-      return successResponse(res, preOrder, "PreOrder retrieved successfully");
+      return successResponse(
+        res,
+        await approvalAccess.attachActionFlags("purchase order", preOrder, req.user?.id),
+        "PreOrder retrieved successfully",
+      );
     } catch (error) {
       return errorResponse(res, error.message);
     }

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const DebitNoteController = require("../controllers/debitNote/debitNote.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
+const { requireApprover } = require("../middleware/approval.middleware");
 
 // GET routes
 router.get("/incoming", authenticate, DebitNoteController.getIncoming);
@@ -24,15 +25,15 @@ router.put("/:id", authenticate, DebitNoteController.update);
 router.delete("/:id", authenticate, DebitNoteController.delete);
 
 //PATCH submit
-router.patch("/submit/:id", authenticate, DebitNoteController.submit);
+router.patch("/submit/:id", authenticate, requireApprover("debit note", ["pending"]), DebitNoteController.submit);
 
 //PATCH approve
-router.patch("/approve/:id", authenticate, DebitNoteController.approve);
+router.patch("/approve/:id", authenticate, requireApprover("debit note", ["on verification"]), DebitNoteController.approve);
 
 //PATCH reject
-router.patch("/reject/:id", authenticate, DebitNoteController.reject);
+router.patch("/reject/:id", authenticate, requireApprover("debit note", ["on verification"]), DebitNoteController.reject);
 
 //PATCH paid
-router.patch("/paid/:id", authenticate, DebitNoteController.paid);
+router.patch("/paid/:id", authenticate, requireApprover("debit note", ["approved"]), DebitNoteController.paid);
 
 module.exports = router;

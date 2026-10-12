@@ -2,6 +2,7 @@ const DualDatabaseService = require("../dualDatabase.service");
 const { models, db1, db2 } = require("../../models");
 const { Op, fn, col, where } = require("sequelize");
 const approvalFlowService = require("../approvalFlow/approvalFlow.service");
+const approvalAccess = require("../approvalFlow/approvalAccess.service");
 const companyService = require("../company.service");
 const fileService = require("../file.service");
 
@@ -150,53 +151,21 @@ class PaymentRequestService extends DualDatabaseService {
       order: [["createdAt", "DESC"]],
     };
 
-    const userIdPosition = userData ? userData.id_position : null;
+    const actor = userData ? await approvalAccess.getActor(userData.id) : null;
+    const userIdPosition = actor ? actor.id_position : null;
 
     const dataApprovalFlow = await approvalFlowService.getAllWithRelations({
       where: { approval_for: "payment request", is_active: true },
     });
 
-    /**
-     * Fungsi untuk mengecek apakah user bisa approve/reject
-     * berdasarkan status payment request dan position user
-     * @param {String} paymentStatus - Status dari payment request
-     * @param {Number} userPositionId - ID position dari user yang login
-     * @returns {Boolean}
-     */
-    const checkCanApproveReject = (paymentStatus, userPositionId) => {
-      if (!userPositionId) return false;
-
-      // Cari approval flow yang statusnya cocok dengan status payment request
-      const matchedFlow = dataApprovalFlow.find(
-        (flow) => flow.status === paymentStatus && flow.is_active
-      );
-
-      if (!matchedFlow) return false;
-
-      // Cek apakah position user ada di approval_flow_positions flow tersebut
-      const positionMatch = matchedFlow.approval_flow_positions.some(
-        (afp) => afp.id_position === userPositionId && afp.is_active
-      );
-
-      return positionMatch;
-    };
+    // Same rule the approve/reject routes enforce, including the flow's scope.
+    const withActionFlags = (rows) =>
+      approvalAccess.attachActionFlags("payment request", rows, userData?.id);
 
     if (!page || !limit) {
       const rows = await this.findAll(queryOptions, isDoubleDatabase);
 
-      // Map dan tambahkan is_can_approve_reject untuk setiap record
-      const mappedRows = rows.map((item) => {
-        const plain = item.toJSON ? item.toJSON() : { ...item };
-        return {
-          ...plain,
-          is_can_approve_reject: checkCanApproveReject(
-            plain.status,
-            userIdPosition
-          ),
-        };
-      });
-
-      return mappedRows;
+      return withActionFlags(rows);
     }
 
     const offset = (page - 1) * limit;
@@ -205,17 +174,7 @@ class PaymentRequestService extends DualDatabaseService {
       isDoubleDatabase
     );
 
-    // Map dan tambahkan is_can_approve_reject untuk setiap record
-    const mappedRows = rows.map((item) => {
-      const plain = item.toJSON ? item.toJSON() : { ...item };
-      return {
-        ...plain,
-        is_can_approve_reject: checkCanApproveReject(
-          plain.status,
-          userIdPosition
-        ),
-      };
-    });
+    const mappedRows = await withActionFlags(rows);
 
     return {
       user_id_position: userIdPosition,

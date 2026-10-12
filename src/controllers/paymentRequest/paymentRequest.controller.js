@@ -1,6 +1,7 @@
 const paymentRequestService = require("../../services/paymentRequest/paymentRequest.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 const EDITABLE_FIELDS = [
   "payment_request_no", "payment_type", "priority", "cost_bearer", "id_company",
@@ -168,7 +169,7 @@ class PaymentRequestController {
 
       return successResponse(
         res,
-        paymentRequest,
+        await approvalAccess.attachActionFlags("payment request", paymentRequest, req.user?.id),
         "Payment request retrieved successfully"
       );
     } catch (error) {

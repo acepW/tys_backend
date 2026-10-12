@@ -2,6 +2,7 @@ const vendorEditService = require("../../services/vendor/vendorEdit.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 const { isValidTransactionPurpose } = require("../../utils/vendorTransactionPurpose");
+const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
 class VendorEditController {
   /**
@@ -43,7 +44,7 @@ class VendorEditController {
 
       return successResponse(
         res,
-        result,
+        await approvalAccess.attachActionFlags("vendor revision", result, req.user?.id),
         "Vendor edits retrieved successfully"
       );
     } catch (error) {
@@ -72,7 +73,7 @@ class VendorEditController {
 
       return successResponse(
         res,
-        vendorEdit,
+        await approvalAccess.attachActionFlags("vendor revision", vendorEdit, req.user?.id),
         "Vendor edit retrieved successfully"
       );
     } catch (error) {
