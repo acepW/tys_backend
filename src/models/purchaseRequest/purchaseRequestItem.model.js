@@ -55,6 +55,17 @@ module.exports = (sequelize) => {
         ),
         allowNull: false,
       },
+      item_category: {
+        type: DataTypes.ENUM("item", "services"),
+        allowNull: false,
+        defaultValue: "item",
+        comment: "Item category, set by requester on create",
+      },
+      asset_category: {
+        type: DataTypes.ENUM("asset", "non asset"),
+        allowNull: true,
+        comment: "Asset category, set by GA on approval",
+      },
       remarks: { type: DataTypes.TEXT, allowNull: true },
       ga_decision: {
         type: DataTypes.ENUM("pending", "approved", "rejected"),

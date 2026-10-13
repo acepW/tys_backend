@@ -168,6 +168,13 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    Vendor.hasMany(models.VendorItem, {
+      foreignKey: "id_vendor",
+      as: "vendor_items",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     //Vendor has many Vendor edit
     Vendor.hasMany(models.VendorEdit, {
       foreignKey: "id_vendor",

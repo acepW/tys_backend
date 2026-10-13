@@ -2,54 +2,54 @@
 
 Semua endpoint berawalan `/api/ga-purchase-orders`. Setiap aksi memakai `PATCH` dan mengembalikan detail order terbaru.
 
-## Daftar status
+## Daftar status order
 
-| Status                      | Arti / menunggu siapa                                                                     | Tombol yang tampil                                    |
-| --------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `request ga manager`        | Menunggu approval HRGA SPV/Manager. Order masih bisa diedit oleh pembuatnya (`PUT /:id`). | Approve / Reject (GA Manager)                         |
-| `request director`          | Menunggu approval Direktur                                                                | Approve / Reject (Direktur)                           |
-| `request fat`               | Menunggu approval Internal FAT SPV/Manager                                                | Approve / Reject (FAT)                                |
-| `request cashier`           | Menunggu kasir melakukan pembayaran                                                       | Approve + form pembayaran / Reject (Kasir)            |
-| `request receiving`         | Menunggu GA Staff mengunggah bukti pembelian dan penerimaan barang                        | Simpan data penerimaan, Accepted, Returned (GA Staff) |
-| `return request ga manager` | Alur return: menunggu approval HRGA SPV/Manager                                           | Approve / Reject (GA Manager)                         |
-| `return request cashier`    | Alur return: menunggu approval kasir                                                      | Approve / Reject (Kasir)                              |
-| `finished`                  | Selesai, barang diterima                                                                  | Tidak ada                                             |
-| `rejected ga manager`       | Ditolak HRGA SPV/Manager                                                                  | Tidak ada                                             |
-| `rejected director`         | Ditolak Direktur                                                                          | Tidak ada                                             |
-| `rejected fat`              | Ditolak FAT                                                                               | Tidak ada                                             |
-| `rejected cashier`          | Ditolak kasir                                                                             | Tidak ada                                             |
+| Status                      | Arti / menunggu siapa                                                                     | Tombol yang tampil                                       |
+| --------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `request ga manager`        | Menunggu approval HRGA SPV/Manager. Order masih bisa diedit oleh pembuatnya (`PUT /:id`). | Approve / Reject (GA Manager)                            |
+| `request director`          | Menunggu approval Direktur                                                                | Approve / Reject (Direktur)                              |
+| `request spv/manager fat`               | Menunggu approval Internal FAT SPV/Manager                                                | Approve / Reject (FAT)                                   |
+| `request cashier`           | Menunggu kasir melakukan pembayaran                                                       | Approve + form pembayaran / Reject (Kasir)               |
+| `request receiving`         | Menunggu GA Staff menerima setiap item                                                    | Accepted / Returned per item yang belum accepted (GA Staff) |
+| `finished`                  | Selesai, semua item sudah accepted                                                        | Tidak ada                                                |
+| `rejected ga manager`       | Ditolak HRGA SPV/Manager                                                                  | Tidak ada                                                |
+| `rejected director`         | Ditolak Direktur                                                                          | Tidak ada                                                |
+| `rejected spv/manager fat`              | Ditolak FAT                                                                               | Tidak ada                                                |
+| `rejected cashier`          | Ditolak kasir                                                                             | Tidak ada                                                |
+| `return request ga manager` | Alur return lama (hanya order lama): menunggu approval HRGA SPV/Manager                   | Approve / Reject (GA Manager)                            |
+| `return request cashier`    | Alur return lama (hanya order lama): menunggu approval kasir                              | Approve / Reject (Kasir)                                 |
 
-Status `rejected ...` dan `finished` adalah status akhir. Alur ini tidak lagi memakai status `approved`.
+Status `rejected ...` dan `finished` adalah status akhir. Status `return request ...` tidak lagi dibuat; keduanya hanya untuk order lama yang sudah terlanjur masuk alur return lama, dan akan kembali ke `request receiving`.
 
 ## Alur utama
 
 ```
-request ga manager → request director → request fat → request cashier
-  → request receiving → finished
+request ga manager → request director → request spv/manager fat → request cashier
+  → request receiving → finished (otomatis setelah semua item accepted)
 ```
 
-## Alur return (setelah GA Staff menekan Returned)
+## Status penerimaan per item (`receiving_status`)
 
-```
-request receiving → return request ga manager → return request cashier
-  → request receiving
-```
+| Status     | Arti                                                       |
+| ---------- | ---------------------------------------------------------- |
+| `pending`  | Belum diproses GA Staff                                    |
+| `returned` | Di-return, menunggu di-accept lagi                         |
+| `accepted` | Diterima. Status akhir item; tidak bisa di-accept/return lagi |
 
-Setelah alur return selesai, GA Staff kembali ke `request receiving` dan memilih Accepted atau Returned lagi. Direktur dan FAT tidak ikut di alur return. Kalau ada yang reject saat alur return, status kembali ke `request receiving`, bukan `rejected`.
+Return item tidak mengubah status order. Order tetap `request receiving` sampai semua item `accepted`.
 
 ## Endpoint per aksi
 
-| Aksi                                        | Endpoint                                                        | Status awal yang diizinkan                        |
-| ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| GA Manager approve / reject                 | `PATCH /ga-manager/approve/:id`, `PATCH /ga-manager/reject/:id` | `request ga manager`, `return request ga manager` |
-| Direktur approve / reject                   | `PATCH /director/approve/:id`, `PATCH /director/reject/:id`     | `request director`                                |
-| FAT approve / reject                        | `PATCH /fat/approve/:id`, `PATCH /fat/reject/:id`               | `request fat`                                     |
-| Kasir approve / reject                      | `PATCH /cashier/approve/:id`, `PATCH /cashier/reject/:id`       | `request cashier`, `return request cashier`       |
-| Simpan data penerimaan (tanpa ganti status) | `PUT /:id/receiving`                                            | `request receiving`                               |
-| GA Staff Accepted                           | `PATCH /ga-staff/accept/:id`                                    | `request receiving`                               |
-| GA Staff Returned                           | `PATCH /ga-staff/return/:id`                                    | `request receiving`                               |
+| Aksi                        | Endpoint                                                        | Status order yang diizinkan                       |
+| --------------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
+| GA Manager approve / reject | `PATCH /ga-manager/approve/:id`, `PATCH /ga-manager/reject/:id` | `request ga manager`, `return request ga manager` |
+| Direktur approve / reject   | `PATCH /director/approve/:id`, `PATCH /director/reject/:id`     | `request director`                                |
+| FAT approve / reject        | `PATCH /fat/approve/:id`, `PATCH /fat/reject/:id`               | `request spv/manager fat`                                     |
+| Kasir approve / reject      | `PATCH /cashier/approve/:id`, `PATCH /cashier/reject/:id`       | `request cashier`, `return request cashier`       |
+| GA Staff Accepted per item  | `PATCH /ga-staff/accept/:id/items/:itemId`                      | `request receiving`                               |
+| GA Staff Returned per item  | `PATCH /ga-staff/return/:id/items/:itemId`                      | `request receiving`                               |
 
-Kalau aksi dipanggil dari status yang tidak sesuai, API mengembalikan error 409.
+`:itemId` adalah `id` item GA Purchase Order (`items[].id`). Kalau aksi dipanggil dari status yang tidak sesuai, atau item sudah accepted, API mengembalikan error 409.
 
 ## Body request
 
@@ -65,46 +65,81 @@ Kalau aksi dipanggil dari status yang tidak sesuai, API mengembalikan error 409.
 { "note": "Alasan penolakan" }
 ```
 
-**Kasir approve saat `request cashier`**: `payment_amount`, `payment_date`, dan minimal satu file di `files_payment` wajib diisi. Saat `return request cashier`, cukup `note` (opsional).
+**Kasir approve saat `request cashier`**: `payment_amount`, `payment_date`, `payment_method`, dan minimal satu file di `files_payment` wajib diisi.
+
+- `payment_method`: `petty cash` atau `bank`.
+- `petty_cash_method`: `cash` atau `transfer`. Wajib jika `payment_method` = `petty cash`. Untuk `bank`, nilainya disimpan `null`.
 
 ```json
 {
   "payment_amount": 6660000,
   "payment_date": "2026-10-06",
-  "payment_note": "Transfer BCA",
+  "payment_method": "petty cash",
+  "petty_cash_method": "cash",
+  "payment_note": "Catatan",
   "files_payment": []
 }
 ```
 
-**Simpan data penerimaan / Accepted / Returned**: semua field opsional di body. Kirim hanya field yang ingin disimpan atau diubah.
+**GA Staff Accepted per item**: semua field wajib kecuali `note`. Setiap kategori file wajib berisi minimal satu file.
 
 ```json
 {
-  "received_date": "2026-10-06",
-  "receipt_note": "Barang diterima lengkap",
+  "purchase_realization_date": "2026-10-10",
+  "purchase_realization_amount": 3330000,
+  "goods_in_date": "2026-10-12",
+  "goods_status": "Good Without Exception",
+  "note": "Catatan (opsional)",
   "files_purchase_proof": [],
+  "files_invoice": [],
+  "files_goods_in": [],
   "files_goods_receipt": []
 }
 ```
 
-- **Accepted** baru berhasil kalau `received_date`, minimal satu `files_purchase_proof`, dan minimal satu `files_goods_receipt` sudah tersimpan. Data ini bisa dikirim sebelumnya lewat `PUT /:id/receiving` atau bersama tombol Accepted.
-- **Returned** wajib mengisi `note` berisi alasan return.
+| Field                         | Isi                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `files_purchase_proof`        | Bukti pembelian                                                                               |
+| `files_invoice`               | Invoice                                                                                       |
+| `purchase_realization_date`   | Tanggal realisasi pembelian                                                                   |
+| `purchase_realization_amount` | Nilai realisasi pembelian                                                                     |
+| `goods_in_date`               | Tanggal barang masuk                                                                          |
+| `files_goods_in`              | File barang masuk                                                                             |
+| `files_goods_receipt`         | File penerimaan barang                                                                        |
+| `goods_status`                | `Good Without Exception`, `Good With Notes`, `Not Good Refund`, atau `Not Good Returned`      |
 
-## Field baru di response `GET /:id`
+Setelah accepted, item dengan `item_category` = `item` otomatis masuk inventory. Item `services` tidak masuk inventory.
 
-| Field                                            | Isi                                                                                |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `payment_amount`, `payment_date`, `payment_note` | Data pembayaran dari kasir                                                         |
-| `received_date`, `receipt_note`                  | Data penerimaan barang dari GA Staff                                               |
-| `return_count`                                   | Berapa kali barang sudah di-return                                                 |
-| `files_payment`                                  | Bukti bayar dari kasir                                                             |
-| `files_purchase_proof`                           | Bukti pembelian dari GA Staff                                                      |
-| `files_goods_receipt`                            | Form penerimaan barang dari GA Staff                                               |
-| `verification_progress`                          | Riwayat semua aksi (status, user, note, waktu). Bisa ditampilkan sebagai timeline. |
+**GA Staff Returned per item**: hanya `note`, wajib.
+
+```json
+{ "note": "Barang rusak, minta tukar" }
+```
+
+## Field di response `GET /:id`
+
+Order:
+
+| Field                                                                                        | Isi                                                                                |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `payment_amount`, `payment_date`, `payment_method`, `petty_cash_method`, `payment_note`      | Data pembayaran dari kasir                                                         |
+| `files_payment`                                                                              | Bukti bayar dari kasir                                                             |
+| `verification_progress`                                                                      | Riwayat semua aksi (status, user, note, waktu). Aksi per item berisi `id_ga_purchase_order_item` dan `ga_purchase_order_item.item_name`. |
+
+Setiap item (`items[]`):
+
+| Field                                                                                       | Isi                                         |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `receiving_status`                                                                          | `pending`, `returned`, atau `accepted`      |
+| `purchase_realization_date`, `purchase_realization_amount`, `goods_in_date`, `goods_status` | Data penerimaan dari GA Staff               |
+| `receiving_note`                                                                            | Note accept/return terakhir                 |
+| `return_count`                                                                              | Berapa kali item sudah di-return            |
+| `files_purchase_proof`, `files_invoice`, `files_goods_in`, `files_goods_receipt`            | File penerimaan item                        |
 
 Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`, `mime_type`, `size`. `indonesian_name` dan `mandarin_name` opsional. Saat update, sertakan `id` file lama yang ingin dipertahankan. File yang tidak dikirim akan dihapus.
 
 ## Catatan untuk frontend
 
 - API belum membatasi role. Frontend yang perlu menampilkan tombol sesuai role user.
-- Belum ada notifikasi otomatis. Untuk menampilkan riwayat, termasuk ke Direktur dan FAT saat ada return, gunakan `verification_progress`.
+- Tampilkan tombol Accepted / Returned per item selama `receiving_status` bukan `accepted` dan order berstatus `request receiving`.
+- Belum ada notifikasi otomatis. Untuk menampilkan riwayat gunakan `verification_progress`.

@@ -15,6 +15,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "users", key: "id" },
       },
+      id_ga_purchase_order_item: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Set for per-item receiving actions (accept/return)",
+      },
       status: { type: DataTypes.STRING(50), allowNull: false },
       note: { type: DataTypes.TEXT, allowNull: true },
     },
@@ -31,6 +36,11 @@ module.exports = (sequelize) => {
       as: "ga_purchase_order",
     });
     Progress.belongsTo(models.User, { foreignKey: "id_user", as: "user" });
+    Progress.belongsTo(models.GaPurchaseOrderItem, {
+      foreignKey: "id_ga_purchase_order_item",
+      constraints: false,
+      as: "ga_purchase_order_item",
+    });
   };
   return Progress;
 };

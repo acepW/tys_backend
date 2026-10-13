@@ -97,12 +97,32 @@ module.exports = (sequelize) => {
         comment: "Payment request number",
       },
       request_format: {
-        type: DataTypes.ENUM("standard", "expense"),
+        type: DataTypes.ENUM("standard", "expense", "pjt"),
         allowNull: false,
         defaultValue: "standard",
       },
+      pjt_type: {
+        type: DataTypes.ENUM("internal", "external"),
+        allowNull: true,
+        comment: "PJT type, filled only for request_format pjt",
+      },
+      id_employee: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: "employees",
+          key: "id",
+        },
+        comment: "Employee for a PJT payment request",
+      },
+      employee_name: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        comment:
+          "Employee name for a PJT payment request (defaults to the employee's full_name)",
+      },
       payment_type: {
-        type: DataTypes.ENUM("vendor", "pnbp spb", "others"),
+        type: DataTypes.ENUM("vendor", "pnbp spb", "others", "pjt"),
         allowNull: false,
         comment: "Payment type",
       },
@@ -362,6 +382,14 @@ module.exports = (sequelize) => {
     PaymentRequest.belongsTo(models.Vendor, {
       foreignKey: "id_vendor",
       as: "vendor",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Payment Request (PJT) belongs to Employee
+    PaymentRequest.belongsTo(models.Employee, {
+      foreignKey: "id_employee",
+      as: "employee",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

@@ -7,6 +7,8 @@ const {
   MAX_YEAR,
 } = require("../../utils/holidayCalendar");
 
+const CATEGORIES = ["holiday", "event"];
+
 const isUniqueConstraintError = (error) =>
   error?.name === "SequelizeUniqueConstraintError" ||
   error?.message?.includes("Validation error") ||
@@ -38,6 +40,13 @@ class HolidayController {
         }
       }
 
+      if (req.query.category !== undefined) {
+        if (!CATEGORIES.includes(req.query.category)) {
+          return errorResponse(res, "category must be holiday or event", 400);
+        }
+        filters.category = req.query.category;
+      }
+
       const holidays = await holidayService.getAll(filters);
       return successResponse(res, holidays, "Holidays retrieved successfully");
     } catch (error) {
@@ -49,6 +58,7 @@ class HolidayController {
     try {
       const holidayDate = req.body?.holiday_date ?? req.body?.date;
       const title = String(req.body?.title || "").trim();
+      const category = req.body?.category ?? "holiday";
 
       if (!isValidDateOnly(holidayDate)) {
         return errorResponse(res, "holiday_date must use YYYY-MM-DD format", 400);
@@ -56,6 +66,9 @@ class HolidayController {
       if (!title) return errorResponse(res, "title is required", 400);
       if (title.length > 255) {
         return errorResponse(res, "title must not exceed 255 characters", 400);
+      }
+      if (!CATEGORIES.includes(category)) {
+        return errorResponse(res, "category must be holiday or event", 400);
       }
 
       const existing = await holidayService.findOne({
@@ -66,7 +79,7 @@ class HolidayController {
       }
 
       const holiday = await holidayService.createHoliday(
-        { holiday_date: holidayDate, title },
+        { holiday_date: holidayDate, title, category },
         req.body?.is_double_database !== false,
       );
       return successResponse(res, holiday, "Holiday created successfully", 201);

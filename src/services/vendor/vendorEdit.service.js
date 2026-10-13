@@ -29,6 +29,11 @@ class VendorEditService extends DualDatabaseService {
           separate: true,
           include: [{ model: dbModels.Category, as: "category" }],
         },
+        {
+          model: dbModels.VendorItemEdit,
+          as: "vendor_item_edits",
+          separate: true,
+        },
       ],
       order: [["createdAt", "DESC"]],
     };
@@ -72,6 +77,11 @@ class VendorEditService extends DualDatabaseService {
           separate: true,
           include: [{ model: dbModels.Category, as: "category" }],
         },
+        {
+          model: dbModels.VendorItemEdit,
+          as: "vendor_item_edits",
+          separate: true,
+        },
       ],
     };
 
@@ -84,9 +94,11 @@ class VendorEditService extends DualDatabaseService {
   // Status vendor      : request revision
   // Progress vendor    : request revision
   // ─────────────────────────────────────────────
+  // vendorEditItems undefined: the revision does not touch vendor items.
   async createWithRelations(
     vendorEditData,
     vendorEditServices = [],
+    vendorEditItems = undefined,
     id_user_create,
     isDoubleDatabase = true,
   ) {
@@ -97,6 +109,7 @@ class VendorEditService extends DualDatabaseService {
       const dataToCreate = {
         ...vendorEditData,
         status: "pending",
+        has_item_edits: vendorEditItems !== undefined,
         is_active: false,
       };
 
@@ -151,6 +164,13 @@ class VendorEditService extends DualDatabaseService {
           t2,
           true,
         );
+        const createdItems = await this._createVendorEditItems(
+          vendorEdit1.id,
+          vendorEditItems || [],
+          t1,
+          t2,
+          true,
+        );
 
         await t1.commit();
         await t2.commit();
@@ -159,6 +179,7 @@ class VendorEditService extends DualDatabaseService {
           vendor_edit: vendorEdit1.toJSON(),
           verification_progress: progress1.toJSON(),
           vendor_service_editss: createdServices,
+          vendor_item_edits: createdItems,
         };
       } else {
         t1 = await db1.transaction();
@@ -191,6 +212,13 @@ class VendorEditService extends DualDatabaseService {
           null,
           false,
         );
+        const createdItems = await this._createVendorEditItems(
+          vendorEdit.id,
+          vendorEditItems || [],
+          t1,
+          null,
+          false,
+        );
 
         await t1.commit();
 
@@ -198,6 +226,7 @@ class VendorEditService extends DualDatabaseService {
           vendor_edit: vendorEdit.toJSON(),
           verification_progress: progress.toJSON(),
           vendor_service_editss: createdServices,
+          vendor_item_edits: createdItems,
         };
       }
     } catch (error) {
@@ -231,6 +260,12 @@ class VendorEditService extends DualDatabaseService {
                 ? models.db1.VendorServiceEdit
                 : models.db2.VendorServiceEdit,
               as: "vendor_service_edits",
+            },
+            {
+              model: isDoubleDatabase
+                ? models.db1.VendorItemEdit
+                : models.db2.VendorItemEdit,
+              as: "vendor_item_edits",
             },
           ],
         },
@@ -325,6 +360,17 @@ class VendorEditService extends DualDatabaseService {
           true,
         );
 
+        // 5. Sync VendorItem berdasarkan VendorItemEdit (hanya jika revisi menyertakan item)
+        if (vendorEdit.has_item_edits) {
+          await this._syncVendorItemsOnApprove(
+            idVendor,
+            vendorEdit.vendor_item_edits || [],
+            t1,
+            t2,
+            true,
+          );
+        }
+
         await t1.commit();
         await t2.commit();
         console.log(`✅ VendorEdit approved successfully`);
@@ -360,6 +406,16 @@ class VendorEditService extends DualDatabaseService {
           null,
           false,
         );
+
+        if (vendorEdit.has_item_edits) {
+          await this._syncVendorItemsOnApprove(
+            idVendor,
+            vendorEdit.vendor_item_edits || [],
+            t1,
+            null,
+            false,
+          );
+        }
 
         await t1.commit();
         console.log(`✅ VendorEdit approved (DB1 only)`);
@@ -601,6 +657,106 @@ class VendorEditService extends DualDatabaseService {
         `✅ Deactivated ${toDeactivate.length} VendorService(s): [${toDeactivate.join(", ")}]`,
       );
     }
+  }
+
+  // ─────────────────────────────────────────────
+  // PRIVATE: Buat VendorItemEdit saat create
+  // ─────────────────────────────────────────────
+  async _createVendorEditItems(idVendorEdit, items, t1, t2, isDoubleDatabase) {
+    const created = [];
+    for (const item of items) {
+      const { id, ...fields } = item;
+      const itemData = { ...fields, id_vendor_edit: idVendorEdit };
+      const row1 = await models.db1.VendorItemEdit.create(itemData, {
+        transaction: t1,
+      });
+      if (isDoubleDatabase && t2) {
+        await models.db2.VendorItemEdit.create(
+          { ...itemData, id: row1.id },
+          { transaction: t2 },
+        );
+      }
+      created.push(row1.toJSON());
+    }
+    console.log(`✅ Created ${created.length} VendorItemEdit records`);
+    return created;
+  }
+
+  // ─────────────────────────────────────────────
+  // PRIVATE: Sync VendorItem saat approve
+  //
+  // Aturan (sama seperti VendorService):
+  // - Ada id_vendor_item  → UPDATE item tersebut (harus milik vendor ini)
+  // - Tidak ada           → INSERT baru ke vendor_items
+  // - VendorItem yang tidak ada di VendorItemEdit → is_active = false
+  // ─────────────────────────────────────────────
+  async _syncVendorItemsOnApprove(idVendor, itemEdits, t1, t2, isDoubleDatabase) {
+    const existingIds = (
+      await models.db1.VendorItem.findAll({
+        attributes: ["id"],
+        where: { id_vendor: idVendor },
+        transaction: t1,
+      })
+    ).map((item) => item.id);
+    const mentionedIds = [];
+
+    for (const edit of itemEdits) {
+      const itemFields = {
+        id_vendor: idVendor,
+        category: edit.category,
+        item_name: edit.item_name,
+        price_idr: edit.price_idr,
+        price_rmb: edit.price_rmb,
+        tax_ppn: edit.tax_ppn,
+        tax_pph_23: edit.tax_pph_23,
+        tax_pp_20: edit.tax_pp_20,
+        tax_pph_4_ayat_2: edit.tax_pph_4_ayat_2,
+        is_active: true,
+      };
+
+      if (edit.id_vendor_item) {
+        const itemId = Number(edit.id_vendor_item);
+        if (!existingIds.includes(itemId)) {
+          throw new Error(`Vendor item ID ${itemId} does not belong to vendor ${idVendor}`);
+        }
+        mentionedIds.push(itemId);
+        await models.db1.VendorItem.update(itemFields, {
+          where: { id: itemId },
+          transaction: t1,
+        });
+        if (isDoubleDatabase && t2) {
+          await models.db2.VendorItem.update(itemFields, {
+            where: { id: itemId },
+            transaction: t2,
+          });
+        }
+      } else {
+        const created = await models.db1.VendorItem.create(itemFields, {
+          transaction: t1,
+        });
+        if (isDoubleDatabase && t2) {
+          await models.db2.VendorItem.create(
+            { ...itemFields, id: created.id },
+            { transaction: t2 },
+          );
+        }
+      }
+    }
+
+    const toDeactivate = existingIds.filter((id) => !mentionedIds.includes(id));
+    if (toDeactivate.length > 0) {
+      await models.db1.VendorItem.update(
+        { is_active: false },
+        { where: { id: toDeactivate }, transaction: t1 },
+      );
+      if (isDoubleDatabase && t2) {
+        await models.db2.VendorItem.update(
+          { is_active: false },
+          { where: { id: toDeactivate }, transaction: t2 },
+        );
+      }
+    }
+    console.log(`✅ Synced VendorItems, deactivated ${toDeactivate.length}`);
   }
 }
 

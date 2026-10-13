@@ -13,16 +13,27 @@ const inventoryService = require("../inventory/inventory.service");
 
 const taxFlags = ["tax_ppn", "tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"];
 const taxAmounts = ["ppn", "pph", "pp_20", "pph_4_ayat_2"];
-const orderFileCategories = [
-  "file_attachment",
-  "files_payment",
+const orderFileCategories = ["file_attachment", "files_payment"];
+// Files GA staff must attach to each item when accepting it.
+const receivingFileCategories = [
   "files_purchase_proof",
+  "files_invoice",
+  "files_goods_in",
   "files_goods_receipt",
 ];
+const goodsStatuses = [
+  "Good Without Exception",
+  "Good With Notes",
+  "Not Good Refund",
+  "Not Good Returned",
+];
+const paymentMethods = ["petty cash", "bank"];
+const pettyCashMethods = ["cash", "transfer"];
 
 // Approval flow: action -> { current status: next status }.
-// Statuses prefixed with "return" belong to the goods return cycle, which goes
-// through GA manager and cashier, then back to GA staff (request receiving).
+// Goods receiving is per item (acceptItem / returnItem); the order finishes once
+// every item is accepted. Statuses prefixed with "return" belong to the old
+// order-level return cycle and are kept only so orders already in it can finish.
 const transitions = {
   approve_ga_manager: {
     "request ga manager": "request director",
@@ -32,10 +43,10 @@ const transitions = {
     "request ga manager": "rejected ga manager",
     "return request ga manager": "request receiving",
   },
-  approve_director: { "request director": "request fat" },
+  approve_director: { "request director": "request spv/manager fat" },
   reject_director: { "request director": "rejected director" },
-  approve_fat: { "request fat": "request cashier" },
-  reject_fat: { "request fat": "rejected fat" },
+  approve_fat: { "request spv/manager fat": "request cashier" },
+  reject_fat: { "request spv/manager fat": "rejected spv/manager fat" },
   approve_cashier: {
     "request cashier": "request receiving",
     "return request cashier": "request receiving",
@@ -44,8 +55,6 @@ const transitions = {
     "request cashier": "rejected cashier",
     "return request cashier": "request receiving",
   },
-  return_goods: { "request receiving": "return request ga manager" },
-  accept_goods: { "request receiving": "finished" },
 };
 // Verification progress records what the actor did, not the order's next status.
 const progressStatuses = {
@@ -53,20 +62,16 @@ const progressStatuses = {
   reject_ga_manager: "rejected ga manager",
   approve_director: "approved director",
   reject_director: "rejected director",
-  approve_fat: "approved fat",
-  reject_fat: "rejected fat",
+  approve_fat: "approved spv/manager fat",
+  reject_fat: "rejected spv/manager fat",
   approve_cashier: "approved cashier",
   reject_cashier: "rejected cashier",
-  return_goods: "goods returned",
-  accept_goods: "goods accepted",
 };
-const noteRequired = (action) =>
-  action.startsWith("reject") || action === "return_goods";
 
-async function countFiles(id, category, t1) {
+async function countFiles(type, id, category, t1) {
   return models.db1.File.count({
     where: {
-      fileable_type: "ga_purchase_orders",
+      fileable_type: type,
       fileable_id: id,
       category,
       is_active: true,
@@ -124,6 +129,8 @@ function buildItem(source, input, orderId) {
     quantity: source.quantity,
     id_requester: source.id_requester,
     procurement_type: source.procurement_type,
+    item_category: source.item_category,
+    asset_category: source.asset_category,
     average_usage: input.average_usage ?? null,
     remarks: input.remarks ?? source.remarks,
     product_link: input.product_link ?? null,
@@ -139,7 +146,9 @@ function buildItem(source, input, orderId) {
 class GaPurchaseOrderService {
   async getNo(isDoubleDatabase = true) {
     return (
-      await documentNumbers("GaPurchaseOrder", "GAPO", isDoubleDatabase)
+      await documentNumbers("GaPurchaseOrder", "GAPO", isDoubleDatabase, {
+        withMonth: true,
+      })
     ).map((row) => ({
       ...row,
       no_ga_purchase_order: row.document_no,
@@ -182,18 +191,16 @@ class GaPurchaseOrderService {
             as: "requester",
             attributes: ["id", "name", "email"],
           },
-          {
+          ...[
+            "files_product",
+            "files_attachment",
+            ...receivingFileCategories,
+          ].map((category) => ({
             model: db.File,
-            as: "files_product",
+            as: category,
             required: false,
             where: { is_active: true },
-          },
-          {
-            model: db.File,
-            as: "files_attachment",
-            required: false,
-            where: { is_active: true },
-          },
+          })),
         ],
       },
       {
@@ -201,7 +208,14 @@ class GaPurchaseOrderService {
         as: "verification_progress",
         separate: true,
         order: [["createdAt", "ASC"]],
-        include: [{ model: db.User, as: "user", attributes: ["id", "name"] }],
+        include: [
+          { model: db.User, as: "user", attributes: ["id", "name"] },
+          {
+            model: db.GaPurchaseOrderItem,
+            as: "ga_purchase_order_item",
+            attributes: ["id", "item_name"],
+          },
+        ],
       },
     ];
   }
@@ -491,24 +505,6 @@ class GaPurchaseOrderService {
     return this.getById(id);
   }
 
-  async saveReceiving(id, data, userId, t1, t2) {
-    const updateData = {};
-    for (const key of ["received_date", "receipt_note"])
-      if (data[key] !== undefined) updateData[key] = data[key] || null;
-    if (Object.keys(updateData).length)
-      await mirrorUpdate("GaPurchaseOrder", id, updateData, t1, t2);
-    for (const category of ["files_purchase_proof", "files_goods_receipt"])
-      await syncFiles(
-        "ga_purchase_orders",
-        id,
-        category,
-        data[category],
-        userId,
-        t1,
-        t2,
-      );
-  }
-
   async lockOrder(id, t1) {
     const order = await models.db1.GaPurchaseOrder.findByPk(id, {
       transaction: t1,
@@ -518,23 +514,27 @@ class GaPurchaseOrderService {
     return order;
   }
 
-  // GA staff saves purchase proof and goods receipt before choosing accept or return.
-  async updateReceiving(id, data, userId, isDoubleDatabase = true) {
-    await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      const order = await this.lockOrder(id, t1);
-      if (order.status !== "request receiving")
-        fail("Receiving data can only be edited while awaiting receiving", 409);
-      await this.saveReceiving(id, data, userId, t1, t2);
-    });
-    return this.getById(id);
+  async addProgress(id, userId, status, note, itemId, t1, t2) {
+    await mirrorCreate(
+      "GaPurchaseOrderVerificationProgress",
+      {
+        id_ga_purchase_order: id,
+        id_ga_purchase_order_item: itemId ?? null,
+        id_user: userId,
+        status,
+        note: note || null,
+      },
+      t1,
+      t2,
+    );
   }
 
   async action(id, action, userId, data = {}, isDoubleDatabase = true) {
     const flow = transitions[action];
     if (!flow) fail("Invalid action");
     const note = data.note;
-    if (noteRequired(action) && !note?.trim())
-      fail(`note is required for ${action === "return_goods" ? "return" : "rejection"}`);
+    if (action.startsWith("reject") && !note?.trim())
+      fail("note is required for rejection");
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const order = await this.lockOrder(id, t1);
       const nextStatus = flow[order.status];
@@ -548,9 +548,16 @@ class GaPurchaseOrderService {
         if (data.payment_amount == null || !Number.isFinite(amount) || amount <= 0)
           fail("payment_amount must be a positive number");
         if (!data.payment_date) fail("payment_date is required");
+        if (!paymentMethods.includes(data.payment_method))
+          fail("payment_method must be petty cash or bank");
+        const isPettyCash = data.payment_method === "petty cash";
+        if (isPettyCash && !pettyCashMethods.includes(data.petty_cash_method))
+          fail("petty_cash_method must be cash or transfer");
         Object.assign(updateData, {
           payment_amount: amount,
           payment_date: data.payment_date,
+          payment_method: data.payment_method,
+          petty_cash_method: isPettyCash ? data.petty_cash_method : null,
           payment_note: data.payment_note || null,
         });
         await syncFiles(
@@ -562,39 +569,117 @@ class GaPurchaseOrderService {
           t1,
           t2,
         );
-        if (!(await countFiles(id, "files_payment", t1)))
+        if (!(await countFiles("ga_purchase_orders", id, "files_payment", t1)))
           fail("files_payment is required");
       }
 
-      if (action === "accept_goods" || action === "return_goods")
-        await this.saveReceiving(id, data, userId, t1, t2);
-
-      if (action === "accept_goods") {
-        const current = await models.db1.GaPurchaseOrder.findByPk(id, {
-          attributes: ["received_date"],
-          transaction: t1,
-        });
-        if (!current.received_date) fail("received_date is required");
-        for (const category of ["files_purchase_proof", "files_goods_receipt"])
-          if (!(await countFiles(id, category, t1)))
-            fail(`${category} is required`);
-        await inventoryService.addFromGaPurchaseOrder(id, userId, t1, t2);
-      }
-
-      if (action === "return_goods") updateData.return_count = order.return_count + 1;
-
       await mirrorUpdate("GaPurchaseOrder", id, updateData, t1, t2);
-      await mirrorCreate(
-        "GaPurchaseOrderVerificationProgress",
+      await this.addProgress(id, userId, progressStatus, note, null, t1, t2);
+    });
+    return this.getById(id);
+  }
+
+  // Locks the order and loads one of its items that GA staff can still accept or return.
+  async receivingItem(id, itemId, t1) {
+    const order = await this.lockOrder(id, t1);
+    if (order.status !== "request receiving")
+      fail("Items can only be received while the order awaits receiving", 409);
+    const item = await models.db1.GaPurchaseOrderItem.findOne({
+      where: { id: itemId, id_ga_purchase_order: id },
+      transaction: t1,
+    });
+    if (!item) fail("GA purchase order item not found", 404);
+    if (item.receiving_status === "accepted")
+      fail("Item has already been accepted", 409);
+    return item;
+  }
+
+  // GA staff accepts one item; goods (item_category "item") go into inventory.
+  // The order becomes finished once every item is accepted.
+  async acceptItem(id, itemId, userId, data = {}, isDoubleDatabase = true) {
+    if (!data.purchase_realization_date)
+      fail("purchase_realization_date is required");
+    const amount = Number(data.purchase_realization_amount);
+    if (
+      data.purchase_realization_amount == null ||
+      data.purchase_realization_amount === "" ||
+      !Number.isFinite(amount) ||
+      amount < 0
+    )
+      fail("purchase_realization_amount must be a non-negative number");
+    if (!data.goods_in_date) fail("goods_in_date is required");
+    if (!goodsStatuses.includes(data.goods_status))
+      fail(`goods_status must be one of: ${goodsStatuses.join(", ")}`);
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const item = await this.receivingItem(id, itemId, t1);
+      for (const category of receivingFileCategories) {
+        await syncFiles(
+          "ga_purchase_order_items",
+          item.id,
+          category,
+          data[category],
+          userId,
+          t1,
+          t2,
+        );
+        if (!(await countFiles("ga_purchase_order_items", item.id, category, t1)))
+          fail(`${category} is required`);
+      }
+      await mirrorUpdate(
+        "GaPurchaseOrderItem",
+        item.id,
         {
-          id_ga_purchase_order: id,
-          id_user: userId,
-          status: progressStatus,
-          note: note || null,
+          receiving_status: "accepted",
+          purchase_realization_date: data.purchase_realization_date,
+          purchase_realization_amount: amount,
+          goods_in_date: data.goods_in_date,
+          goods_status: data.goods_status,
+          receiving_note: data.note || null,
         },
         t1,
         t2,
       );
+      if (item.item_category === "item")
+        await inventoryService.addFromGaPurchaseOrderItem(
+          id,
+          item.id,
+          userId,
+          t1,
+          t2,
+        );
+      await this.addProgress(id, userId, "goods accepted", data.note, item.id, t1, t2);
+      const remaining = await models.db1.GaPurchaseOrderItem.count({
+        where: {
+          id_ga_purchase_order: id,
+          receiving_status: ["pending", "returned"],
+        },
+        transaction: t1,
+      });
+      if (!remaining) {
+        await mirrorUpdate("GaPurchaseOrder", id, { status: "finished" }, t1, t2);
+        await this.addProgress(id, userId, "finished", "All items accepted", null, t1, t2);
+      }
+    });
+    return this.getById(id);
+  }
+
+  // GA staff returns one item; it waits to be accepted again and the order status is unchanged.
+  async returnItem(id, itemId, userId, data = {}, isDoubleDatabase = true) {
+    if (!data.note?.trim()) fail("note is required for return");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const item = await this.receivingItem(id, itemId, t1);
+      await mirrorUpdate(
+        "GaPurchaseOrderItem",
+        item.id,
+        {
+          receiving_status: "returned",
+          receiving_note: data.note,
+          return_count: item.return_count + 1,
+        },
+        t1,
+        t2,
+      );
+      await this.addProgress(id, userId, "goods returned", data.note, item.id, t1, t2);
     });
     return this.getById(id);
   }

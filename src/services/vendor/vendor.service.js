@@ -59,6 +59,12 @@ class VendorService extends DualDatabaseService {
           separate: true,
           include: [{ model: dbModels.Category, as: "category" }],
         },
+        {
+          model: dbModels.VendorItem,
+          as: "vendor_items",
+          where: { is_active: true },
+          separate: true,
+        },
       ],
       order: [["createdAt", "DESC"]],
     };
@@ -129,6 +135,12 @@ class VendorService extends DualDatabaseService {
           separate: true,
           include: [{ model: dbModels.Category, as: "category" }],
         },
+        {
+          model: dbModels.VendorItem,
+          as: "vendor_items",
+          where: { is_active: true },
+          separate: true,
+        },
       ],
     };
 
@@ -139,6 +151,7 @@ class VendorService extends DualDatabaseService {
    * Create vendor with initial verification progress and vendor services
    * @param {Object} vendorData - Vendor data
    * @param {Array} vendorServices - Array of vendor service items
+   * @param {Array} vendorItems - Array of vendor items (goods)
    * @param {Number} id_user_create - User ID who creates
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Created vendor with relations
@@ -146,6 +159,7 @@ class VendorService extends DualDatabaseService {
   async createWithRelations(
     vendorData,
     vendorServices = [],
+    vendorItems = [],
     id_user_create,
     isDoubleDatabase = true
   ) {
@@ -222,6 +236,17 @@ class VendorService extends DualDatabaseService {
           `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`
         );
 
+        const itemsResult = await syncChildRecords({
+          Model1: models.db1.VendorItem,
+          Model2: models.db2.VendorItem,
+          foreignKey: "id_vendor",
+          parentId: vendor1.id,
+          newData: vendorItems.map((item) => ({ ...item, id_vendor: vendor1.id })),
+          transaction1,
+          transaction2,
+          isDoubleDatabase,
+        });
+
         await transaction1.commit();
         await transaction2.commit();
         console.log(`✅ Vendor with relations successfully created`);
@@ -230,6 +255,7 @@ class VendorService extends DualDatabaseService {
           vendor: vendor1.toJSON(),
           verification_progress: progress1.toJSON(),
           vendor_services: servicesResult,
+          vendor_items: itemsResult,
         };
       } else {
         // Single database (DB1 only)
@@ -272,6 +298,17 @@ class VendorService extends DualDatabaseService {
           `✅ Synced ${servicesResult.created?.length || 0} Vendor Services`
         );
 
+        const itemsResult = await syncChildRecords({
+          Model1: models.db1.VendorItem,
+          Model2: null,
+          foreignKey: "id_vendor",
+          parentId: vendor.id,
+          newData: vendorItems.map((item) => ({ ...item, id_vendor: vendor.id })),
+          transaction1,
+          transaction2: null,
+          isDoubleDatabase: false,
+        });
+
         await transaction1.commit();
         console.log(`✅ Vendor created in DB1 only`);
 
@@ -279,6 +316,7 @@ class VendorService extends DualDatabaseService {
           vendor: vendor.toJSON(),
           verification_progress: progress.toJSON(),
           vendor_services: servicesResult,
+          vendor_items: itemsResult,
         };
       }
     } catch (error) {
@@ -294,6 +332,7 @@ class VendorService extends DualDatabaseService {
    * @param {Number} id - Vendor ID
    * @param {Object} vendorData - Vendor data to update
    * @param {Array} vendorServices - Vendor services array
+   * @param {Array|undefined} vendorItems - Vendor items array; undefined keeps the current items
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated vendor with all relations
    */
@@ -301,6 +340,7 @@ class VendorService extends DualDatabaseService {
     id,
     vendorData,
     vendorServices = [],
+    vendorItems = undefined,
     isDoubleDatabase = true
   ) {
     let transaction1 = null;
@@ -349,6 +389,19 @@ class VendorService extends DualDatabaseService {
 
         console.log(`✅ Synced Vendor Services`);
 
+        if (vendorItems !== undefined) {
+          await syncChildRecords({
+            Model1: models.db1.VendorItem,
+            Model2: models.db2.VendorItem,
+            foreignKey: "id_vendor",
+            parentId: id,
+            newData: vendorItems.map((item) => ({ ...item, id_vendor: id })),
+            transaction1,
+            transaction2,
+            isDoubleDatabase,
+          });
+        }
+
         await transaction1.commit();
         await transaction2.commit();
         console.log(`✅ Vendor with all relations successfully updated`);
@@ -382,6 +435,19 @@ class VendorService extends DualDatabaseService {
           transaction2: null,
           isDoubleDatabase: false,
         });
+
+        if (vendorItems !== undefined) {
+          await syncChildRecords({
+            Model1: models.db1.VendorItem,
+            Model2: null,
+            foreignKey: "id_vendor",
+            parentId: id,
+            newData: vendorItems.map((item) => ({ ...item, id_vendor: id })),
+            transaction1,
+            transaction2: null,
+            isDoubleDatabase: false,
+          });
+        }
 
         await transaction1.commit();
         console.log(`✅ Vendor updated in DB1 only`);

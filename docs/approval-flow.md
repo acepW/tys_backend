@@ -30,6 +30,7 @@ Transisi status (dari → ke) tetap diatur di kode masing-masing fitur. Tabel in
 | `vendor revision` | `pending`         | Approve / reject revisi vendor       | `PATCH /vendor-edits/approve/:id`, `/reject/:id`              |
 | `payment request` | `pending`, `approve dept manager`, `approve fat`, `approve manager fat`, `approve director` | Approve / reject | `PATCH /payment-requests/approve/:id`, `/reject/:id` |
 | `payment request` | `approve cashier` | Catat pembayaran                     | `PATCH /payment-requests/paid/:id`                            |
+| `inventory request` | `pending`       | Approve / reject                     | `PATCH /inventory-requests/approve/:id`, `/reject/:id`        |
 
 Scope yang didukung: `division` untuk service pricing, `department` untuk payment request, vendor, dan vendor revision. Fitur lain selalu `all`.
 
@@ -70,7 +71,7 @@ Pengecekan ini hanya memblokir kalau env `APPROVAL_ENFORCE=true`. Selain itu, pe
 
 ### Flag di GET biasa
 
-`GET` list dan detail semua fitur di atas (`/service-pricing`, `/quotations`, `/pre-orders`, `/contracts`, `/invoices`, `/debit-notes`, `/vendors`, `/vendor-edits`, `/payment-requests`) menambahkan dua field di setiap dokumen:
+`GET` list dan detail semua fitur di atas (`/service-pricing`, `/quotations`, `/pre-orders`, `/contracts`, `/invoices`, `/debit-notes`, `/vendors`, `/vendor-edits`, `/payment-requests`, `/inventory-requests`) menambahkan dua field di setiap dokumen:
 
 | Field                   | Isi                                                                                                                         |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |

@@ -35,6 +35,10 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(255),
         allowNull: true,
       },
+      asset_category: {
+        type: DataTypes.ENUM("asset", "non asset"),
+        allowNull: true,
+      },
       quantity_unit: { type: DataTypes.STRING(100), allowNull: false },
       quantity: {
         type: DataTypes.DECIMAL(15, 2),

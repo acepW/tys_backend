@@ -2,6 +2,7 @@ const paymentRequestService = require("../../services/paymentRequest/paymentRequ
 const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
+const { models } = require("../../models");
 
 const EDITABLE_FIELDS = [
   "payment_request_no", "payment_type", "priority", "cost_bearer", "id_company",
@@ -13,12 +14,41 @@ const EDITABLE_FIELDS = [
   "tax_pp_20", "tax_pph_4_ayat_2", "ppn", "pph", "pp_20", "pph_4_ayat_2",
 ];
 
+const PJT_TYPES = ["internal", "external"];
+
 function editableData(body) {
   const data = {};
   for (const field of EDITABLE_FIELDS) {
     if (body[field] !== undefined) data[field] = body[field];
   }
   return data;
+}
+
+// PJT-only fields. partial: only validate the fields that were sent (update).
+// id_employee is optional (null/empty clears it); employee_name defaults to the
+// employee's full_name when id_employee is set without it.
+async function pjtData(body, partial = false) {
+  const data = {};
+  if (!partial || body.pjt_type !== undefined) {
+    if (!PJT_TYPES.includes(body.pjt_type)) return { error: "pjt_type must be internal or external" };
+    data.pjt_type = body.pjt_type;
+  }
+  if (body.employee_name !== undefined && body.employee_name !== null) {
+    const name = String(body.employee_name).trim();
+    if (name.length > 500) return { error: "employee_name must not exceed 500 characters" };
+    data.employee_name = name || null;
+  }
+  if (body.id_employee === null || body.id_employee === "") {
+    data.id_employee = null;
+  } else if (body.id_employee !== undefined) {
+    const idEmployee = Number(body.id_employee);
+    if (!Number.isInteger(idEmployee) || idEmployee <= 0) return { error: "id_employee must be a positive integer" };
+    const employee = await models.db1.Employee.findByPk(idEmployee, { attributes: ["id", "full_name"] });
+    if (!employee) return { error: `Employee ${idEmployee} not found` };
+    data.id_employee = idEmployee;
+    if (!data.employee_name) data.employee_name = employee.full_name;
+  }
+  return { data };
 }
 
 function validateAmounts(body) {
@@ -57,13 +87,16 @@ function validateServices(services) {
   for (let i = 0; i < services.length; i++) {
     const item = services[i];
     if (!item || typeof item !== "object" || Array.isArray(item)) return `services[${i}] must be an object`;
-    for (const field of ["id_vendor", "id_vendor_service", "id_category"]) {
+    for (const field of ["id_vendor", "id_vendor_service", "id_vendor_item", "id_category"]) {
       if (item[field] !== undefined && item[field] !== null &&
           (!Number.isInteger(Number(item[field])) || Number(item[field]) <= 0)) {
         return `services[${i}].${field} must be a positive integer`;
       }
     }
-    if (!item.id_vendor_service && !String(item.service_name ?? "").trim()) {
+    if (item.id_vendor_service && item.id_vendor_item) {
+      return `services[${i}] cannot have both id_vendor_service and id_vendor_item`;
+    }
+    if (!item.id_vendor_service && !item.id_vendor_item && !String(item.service_name ?? "").trim()) {
       return `services[${i}].service_name is required`;
     }
     for (const field of ["price_idr", "price_rmb"]) {
@@ -101,6 +134,8 @@ class PaymentRequestController {
         cost_bearer,
         payment_purpose,
         top_up_petty_cash,
+        request_format,
+        pjt_type,
         search,
         page,
         limit,
@@ -128,6 +163,8 @@ class PaymentRequestController {
       if (top_up_petty_cash !== undefined) {
         obj.top_up_petty_cash = top_up_petty_cash;
       }
+      if (request_format) obj.request_format = request_format;
+      if (pjt_type) obj.pjt_type = pjt_type;
       obj.is_active = true;
 
       const paymentRequests = await paymentRequestService.getAllWithRelations(
@@ -183,6 +220,19 @@ class PaymentRequestController {
    * Fields yang tidak diisi saat create: total_payment, file_proof_payment
    */
   async create(req, res) {
+    return PaymentRequestController.prototype.createByFormat(req, res, "standard");
+  }
+
+  /**
+   * Create PJT payment request: same body and rules as create, plus
+   * pjt_type (internal/external), optional id_employee and employee_name
+   * (defaults to the employee's full_name).
+   */
+  async createPjt(req, res) {
+    return PaymentRequestController.prototype.createByFormat(req, res, "pjt");
+  }
+
+  async createByFormat(req, res, format) {
     try {
       const {
         is_double_database,
@@ -220,7 +270,8 @@ class PaymentRequestController {
         return errorResponse(res, "vendor_name is required", 400);
       }
 
-      if (!paymentRequestData.invoice_no) {
+      // PJT may not have an invoice yet.
+      if (format !== "pjt" && !paymentRequestData.invoice_no) {
         return errorResponse(res, "invoice_no is required", 400);
       }
 
@@ -240,11 +291,18 @@ class PaymentRequestController {
       }
       const amountError = validateAmounts(paymentRequestData);
       if (amountError) return errorResponse(res, amountError, 400);
+      let pjtFields = {};
+      if (format === "pjt") {
+        const pjt = await pjtData(paymentRequestData);
+        if (pjt.error) return errorResponse(res, pjt.error, 400);
+        pjtFields = pjt.data;
+      }
 
       // Build data to create — exclude fields that should not be set on create
       const dataToCreate = {
         ...editableData(paymentRequestData),
-        request_format: "standard",
+        ...pjtFields,
+        request_format: format,
         id_user_request: req.user.id,
         id_department_request: req.user.id_department,
         status: "pending",
@@ -279,7 +337,7 @@ class PaymentRequestController {
       return successResponse(
         res,
         result,
-        "Payment request created successfully",
+        format === "pjt" ? "PJT payment request created successfully" : "Payment request created successfully",
         201
       );
     } catch (error) {
@@ -341,6 +399,10 @@ class PaymentRequestController {
     return PaymentRequestController.prototype.updateByFormat(req, res, "expense");
   }
 
+  async updatePjt(req, res) {
+    return PaymentRequestController.prototype.updateByFormat(req, res, "pjt");
+  }
+
   async updateByFormat(req, res, format) {
     try {
       const { is_double_database, files, expenses, services, ...body } = req.body || {};
@@ -348,7 +410,7 @@ class PaymentRequestController {
       if (files !== undefined && !Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
       const serviceError = validateServices(services);
       if (serviceError) return errorResponse(res, serviceError, 400);
-      if (format === "standard" && expenses !== undefined) return errorResponse(res, "expenses are only supported for expense payment requests", 400);
+      if (format !== "expense" && expenses !== undefined) return errorResponse(res, "expenses are only supported for expense payment requests", 400);
       if (format === "expense" && expenses !== undefined) {
         const expenseError = validateExpenses(expenses);
         if (expenseError) return errorResponse(res, expenseError, 400);
@@ -358,6 +420,11 @@ class PaymentRequestController {
       if (existing.request_format !== format) return errorResponse(res, "Payment request format does not match endpoint", 400);
       const data = editableData(body);
       if (format === "expense" && body.total_payment !== undefined) data.total_payment_request = body.total_payment;
+      if (format === "pjt") {
+        const pjt = await pjtData(body, true);
+        if (pjt.error) return errorResponse(res, pjt.error, 400);
+        Object.assign(data, pjt.data);
+      }
       const amountError = validateAmounts(data);
       if (amountError) return errorResponse(res, amountError, 400);
       const result = await paymentRequestService.updateWithRelations(

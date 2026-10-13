@@ -88,10 +88,21 @@ async function deactivateFiles(type, id, t1, t2) {
     );
 }
 
-async function documentNumbers(modelName, prefix, isDoubleDatabase = true) {
+// Numbering counts per company per year. withMonth inserts the current month
+// (MM) before the year; digits sets the zero-padded sequence length.
+async function documentNumbers(
+  modelName,
+  prefix,
+  isDoubleDatabase = true,
+  { withMonth = false, digits = 4 } = {},
+) {
   // Single-database writes also target DB1, so numbering always reads DB1.
   const dbModels = models.db1;
-  const year = new Date().getFullYear();
+  const now = new Date();
+  const year = now.getFullYear();
+  const period = withMonth
+    ? `${String(now.getMonth() + 1).padStart(2, "0")}-${year}`
+    : String(year);
   const totals = await dbModels[modelName].findAll({
     attributes: ["id_company", [fn("COUNT", col("id")), "total"]],
     where: {
@@ -112,7 +123,7 @@ async function documentNumbers(modelName, prefix, isDoubleDatabase = true) {
       totals.find((row) => Number(row.id_company) === Number(company.id))
         ?.total || 0,
     );
-    const nextNumber = String(total + 1).padStart(5, "0");
+    const nextNumber = String(total + 1).padStart(digits, "0");
     const code = company.initial_company?.toUpperCase() || "-";
     return {
       id_company: company.id,
@@ -120,7 +131,7 @@ async function documentNumbers(modelName, prefix, isDoubleDatabase = true) {
       initial_company: code,
       total,
       next_number: nextNumber,
-      document_no: `${prefix}-${code}-${year}-${nextNumber}`,
+      document_no: `${prefix}-${code}-${period}-${nextNumber}`,
     };
   });
 }

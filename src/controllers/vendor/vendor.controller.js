@@ -3,6 +3,7 @@ const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 const { isValidTransactionPurpose } = require("../../utils/vendorTransactionPurpose");
 const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
+const { validateVendorItems } = require("../../utils/vendorItems");
 
 class VendorController {
   /**
@@ -90,6 +91,7 @@ class VendorController {
       const {
         is_double_database,
         vendor_services = [],
+        vendor_items = [],
         ...vendorData
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
@@ -100,6 +102,8 @@ class VendorController {
       if (!isValidTransactionPurpose(vendorData.transaction_purpose)) {
         return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
       }
+      const invalidItems = validateVendorItems(vendor_items);
+      if (invalidItems) return errorResponse(res, invalidItems, 400);
 
       const result = await vendorService.createWithRelations(
         {
@@ -108,6 +112,7 @@ class VendorController {
           id_department_request: req.user.id_department,
         },
         vendor_services,
+        vendor_items,
         req.user.id,
         isDoubleDatabase
       );
@@ -119,8 +124,9 @@ class VendorController {
   }
 
   /**
-   * Update vendor with vendor services
+   * Update vendor with vendor services and vendor items
    * vendor_services: [] — kosong = hapus semua, isi id = update, tanpa id = tambah baru
+   * vendor_items: sama seperti vendor_services; jika tidak dikirim, item lama tidak berubah
    */
   async update(req, res) {
     try {
@@ -128,12 +134,17 @@ class VendorController {
       const {
         is_double_database,
         vendor_services = [],
+        vendor_items,
         ...vendorData
       } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       if (!isValidTransactionPurpose(vendorData.transaction_purpose)) {
         return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
+      }
+      if (vendor_items !== undefined) {
+        const invalidItems = validateVendorItems(vendor_items);
+        if (invalidItems) return errorResponse(res, invalidItems, 400);
       }
 
       const existing = await vendorService.findById(id, {}, isDoubleDatabase);
@@ -145,6 +156,7 @@ class VendorController {
         id,
         vendorData,
         vendor_services,
+        vendor_items,
         isDoubleDatabase
       );
 

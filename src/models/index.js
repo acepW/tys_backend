@@ -37,6 +37,8 @@ const AttendanceModel = require("./humanResource/attendance.model");
 const HolidayModel = require("./humanResource/holiday.model");
 const WorkScheduleModel = require("./humanResource/workSchedule.model");
 const EvaluationModel = require("./humanResource/evaluation.model");
+const LeaveRequestModel = require("./humanResource/leaveRequest.model");
+const LeaveRequestVerificationProgressModel = require("./humanResource/leaveRequestVerificationProgress.model");
 
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
@@ -112,10 +114,14 @@ const GaPurchaseOrderVerificationProgressModel = require("./gaPurchaseOrder/gaPu
 //inventory
 const InventoryModel = require("./inventory/inventory.model");
 const InventoryHistoryModel = require("./inventory/inventoryHistory.model");
+const InventoryRequestModel = require("./inventory/inventoryRequest.model");
+const InventoryRequestVerificationProgressModel = require("./inventory/inventoryRequestVerificationProgress.model");
 
 //vendor
 const VendorModel = require("./vendor/vendor.model");
 const VendorServiceModel = require("./vendor/vendorService.model");
+const VendorItemModel = require("./vendor/vendorItem.model");
+const VendorItemEditModel = require("./vendor/vendorItemEdit.model");
 const VendorEditModel = require("./vendor/vendorEdit.model");
 const VendorServiceEditModel = require("./vendor/vendorServiceEdit.model");
 const VendorVerificationProgressModel = require("./vendor/vendorVerificationProgress.model");
@@ -188,6 +194,8 @@ const initializeModels = (sequelize) => {
     Holiday: HolidayModel(sequelize),
     WorkSchedule: WorkScheduleModel(sequelize),
     Evaluation: EvaluationModel(sequelize),
+    LeaveRequest: LeaveRequestModel(sequelize),
+    LeaveRequestVerificationProgress: LeaveRequestVerificationProgressModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),
@@ -266,10 +274,14 @@ const initializeModels = (sequelize) => {
     //inventory
     Inventory: InventoryModel(sequelize),
     InventoryHistory: InventoryHistoryModel(sequelize),
+    InventoryRequest: InventoryRequestModel(sequelize),
+    InventoryRequestVerificationProgress: InventoryRequestVerificationProgressModel(sequelize),
 
     //vendor
     Vendor: VendorModel(sequelize),
     VendorService: VendorServiceModel(sequelize),
+    VendorItem: VendorItemModel(sequelize),
+    VendorItemEdit: VendorItemEditModel(sequelize),
     VendorVerificationProgress: VendorVerificationProgressModel(sequelize),
     VendorEdit: VendorEditModel(sequelize),
     VendorServiceEdit: VendorServiceEditModel(sequelize),
@@ -380,6 +392,8 @@ const syncProcurementModels = async () => {
     "GaPurchaseOrderItem",
     "GaPurchaseOrderVerificationProgress",
     "Inventory",
+    "InventoryRequest",
+    "InventoryRequestVerificationProgress",
     "InventoryHistory",
   ];
   for (const modelName of order) {

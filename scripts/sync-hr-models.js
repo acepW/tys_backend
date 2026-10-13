@@ -1,6 +1,12 @@
 const { syncModel, db1, db2 } = require("../src/models");
 
-const hrModels = ["Holiday", "WorkSchedule", "Evaluation"];
+const hrModels = [
+  "Holiday",
+  "WorkSchedule",
+  "Evaluation",
+  "LeaveRequest",
+  "LeaveRequestVerificationProgress",
+];
 
 const run = async () => {
   try {

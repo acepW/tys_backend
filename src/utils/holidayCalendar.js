@@ -44,9 +44,9 @@ const generateWeekendHolidays = (year) => {
   while (date.getUTCFullYear() === normalizedYear) {
     const day = date.getUTCDay();
     if (day === 6) {
-      holidays.push({ holiday_date: formatDateOnly(date), title: "Libur Sabtu" });
+      holidays.push({ holiday_date: formatDateOnly(date), title: "Libur Sabtu", category: "holiday" });
     } else if (day === 0) {
-      holidays.push({ holiday_date: formatDateOnly(date), title: "Libur Minggu" });
+      holidays.push({ holiday_date: formatDateOnly(date), title: "Libur Minggu", category: "holiday" });
     }
     date.setUTCDate(date.getUTCDate() + 1);
   }

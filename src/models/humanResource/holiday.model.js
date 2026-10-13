@@ -17,6 +17,11 @@ module.exports = (sequelize) =>
         type: DataTypes.STRING(255),
         allowNull: false,
       },
+      category: {
+        type: DataTypes.ENUM("holiday", "event"),
+        allowNull: false,
+        defaultValue: "holiday",
+      },
     },
     {
       tableName: "holidays",

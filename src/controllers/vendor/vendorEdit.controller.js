@@ -3,6 +3,7 @@ const { successResponse, errorResponse } = require("../../utils/response");
 const { Op } = require("sequelize");
 const { isValidTransactionPurpose } = require("../../utils/vendorTransactionPurpose");
 const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
+const { validateVendorItems } = require("../../utils/vendorItems");
 
 class VendorEditController {
   /**
@@ -95,7 +96,11 @@ class VendorEditController {
    *   bank_branch, transaction_currency, transaction_purpose, file,
    *   vendor_service_edits: [
    *     { id_vendor_service, id_category, service_name, price_idr, price_rmb }
-   *   ]
+   *   ],
+   *   vendor_item_edits: [
+   *     { id_vendor_item, category, item_name, price_idr, price_rmb,
+   *       tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 }
+   *   ]  // opsional; jika tidak dikirim, item vendor tidak berubah saat approve
    * }
    */
   async create(req, res) {
@@ -103,6 +108,7 @@ class VendorEditController {
       const {
         is_double_database = true,
         vendor_service_edits = [],
+        vendor_item_edits,
         ...vendorEditData
       } = req.body || {};
 
@@ -117,6 +123,10 @@ class VendorEditController {
       if (!isValidTransactionPurpose(vendorEditData.transaction_purpose)) {
         return errorResponse(res, "transaction_purpose must be Company Services or Internal General Affairs", 400);
       }
+      if (vendor_item_edits !== undefined) {
+        const invalidItems = validateVendorItems(vendor_item_edits, "vendor_item_edits");
+        if (invalidItems) return errorResponse(res, invalidItems, 400);
+      }
 
       const result = await vendorEditService.createWithRelations(
         {
@@ -125,6 +135,7 @@ class VendorEditController {
           id_department_request: req.user.id_department,
         },
         vendor_service_edits,
+        vendor_item_edits,
         req.user.id,
         isDoubleDatabase
       );

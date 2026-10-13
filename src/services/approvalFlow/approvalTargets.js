@@ -89,4 +89,11 @@ module.exports = {
     },
     scopes: { department: "id_department_request" },
   },
+  // Manual inventory entries have no document number; tasks show the item name.
+  "inventory request": {
+    model: "InventoryRequest",
+    label: "Inventory Request",
+    numberField: "item_name",
+    statuses: { pending: "Approve / Reject Inventory Request" },
+  },
 };

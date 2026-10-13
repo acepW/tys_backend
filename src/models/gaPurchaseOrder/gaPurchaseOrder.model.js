@@ -3,7 +3,7 @@ const { DataTypes } = require("sequelize");
 const statuses = [
   "request ga manager",
   "request director",
-  "request fat",
+  "request spv/manager fat",
   "request cashier",
   "request receiving",
   "return request ga manager",
@@ -11,7 +11,7 @@ const statuses = [
   "finished",
   "rejected ga manager",
   "rejected director",
-  "rejected fat",
+  "rejected spv/manager fat",
   "rejected cashier",
 ];
 const fileCategories = [
@@ -57,6 +57,16 @@ module.exports = (sequelize) => {
         type: DataTypes.DATE,
         allowNull: true,
         comment: "Payment date recorded by cashier",
+      },
+      payment_method: {
+        type: DataTypes.ENUM("petty cash", "bank"),
+        allowNull: true,
+        comment: "Payment method recorded by cashier",
+      },
+      petty_cash_method: {
+        type: DataTypes.ENUM("cash", "transfer"),
+        allowNull: true,
+        comment: "Petty cash method, filled only when payment_method is petty cash",
       },
       payment_note: {
         type: DataTypes.TEXT,

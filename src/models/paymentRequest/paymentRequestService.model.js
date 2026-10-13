@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: "manual",
         comment:
-          "vendor when taken from a vendor (id_vendor or id_vendor_service filled), manual otherwise",
+          "vendor when taken from a vendor (id_vendor, id_vendor_service or id_vendor_item filled), manual otherwise",
       },
       id_vendor: {
         type: DataTypes.INTEGER,
@@ -29,6 +29,12 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "vendor_services", key: "id" },
         comment: "Foreign key to vendor_services table",
+      },
+      id_vendor_item: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "vendor_items", key: "id" },
+        comment: "Foreign key to vendor_items table (alternative to id_vendor_service)",
       },
       id_category: {
         type: DataTypes.INTEGER,
@@ -84,6 +90,10 @@ module.exports = (sequelize) => {
     PaymentRequestService.belongsTo(models.VendorService, {
       foreignKey: "id_vendor_service",
       as: "vendor_service",
+    });
+    PaymentRequestService.belongsTo(models.VendorItem, {
+      foreignKey: "id_vendor_item",
+      as: "vendor_item",
     });
     PaymentRequestService.belongsTo(models.Category, {
       foreignKey: "id_category",

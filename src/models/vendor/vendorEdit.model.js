@@ -118,6 +118,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: " VendorEdit name",
       },
+      has_item_edits: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: "Revision includes vendor_item_edits; when false, approval leaves vendor items unchanged",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
@@ -175,6 +181,13 @@ module.exports = (sequelize) => {
       foreignKey: "id_vendor_edit",
       as: "vendor_service_edits",
       onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    VendorEdit.hasMany(models.VendorItemEdit, {
+      foreignKey: "id_vendor_edit",
+      as: "vendor_item_edits",
+      onDelete: "CASCADE",
       onUpdate: "CASCADE",
     });
   };

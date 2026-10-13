@@ -20,8 +20,10 @@ const itemFields = [
   "quantity_unit",
   "quantity",
   "procurement_type",
+  "item_category",
   "remarks",
 ];
+const assetCategories = ["asset", "non asset"];
 
 function itemPayload(item, parent, userId) {
   const data = {
@@ -277,12 +279,17 @@ class PurchaseRequestService {
           ) {
             fail("item_decisions contains an invalid item or decision");
           }
+          if (!assetCategories.includes(decision.asset_category))
+            fail("item_decisions asset_category must be asset or non asset");
           seen.add(itemId);
           if (decision.decision === "approved") approved++;
           await mirrorUpdate(
             "PurchaseRequestItem",
             itemId,
-            { ga_decision: decision.decision },
+            {
+              ga_decision: decision.decision,
+              asset_category: decision.asset_category,
+            },
             t1,
             t2,
           );

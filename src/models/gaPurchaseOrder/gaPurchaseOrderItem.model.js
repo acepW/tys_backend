@@ -71,6 +71,17 @@ module.exports = (sequelize) => {
         ),
         allowNull: false,
       },
+      item_category: {
+        type: DataTypes.ENUM("item", "services"),
+        allowNull: false,
+        defaultValue: "item",
+        comment: "Copied from purchase request item",
+      },
+      asset_category: {
+        type: DataTypes.ENUM("asset", "non asset"),
+        allowNull: true,
+        comment: "Copied from purchase request item (set by GA on approval)",
+      },
       average_usage: { type: DataTypes.STRING(255), allowNull: true },
       remarks: { type: DataTypes.TEXT, allowNull: true },
       product_link: { type: DataTypes.STRING(1000), allowNull: true },
@@ -134,6 +145,41 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 0,
       },
+      receiving_status: {
+        type: DataTypes.ENUM("pending", "returned", "accepted"),
+        allowNull: false,
+        defaultValue: "pending",
+        comment: "Per-item goods receiving status set by GA staff",
+      },
+      purchase_realization_date: { type: DataTypes.DATE, allowNull: true },
+      purchase_realization_amount: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+      goods_in_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Date the goods came in (tanggal barang masuk)",
+      },
+      goods_status: {
+        type: DataTypes.ENUM(
+          "Good Without Exception",
+          "Good With Notes",
+          "Not Good Refund",
+          "Not Good Returned",
+        ),
+        allowNull: true,
+      },
+      receiving_note: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Latest accept/return note from GA staff",
+      },
+      return_count: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
     },
     {
       tableName: "ga_purchase_order_items",
@@ -166,7 +212,14 @@ module.exports = (sequelize) => {
       foreignKey: "id_requester",
       as: "requester",
     });
-    for (const category of ["files_product", "files_attachment"]) {
+    for (const category of [
+      "files_product",
+      "files_attachment",
+      "files_purchase_proof",
+      "files_invoice",
+      "files_goods_in",
+      "files_goods_receipt",
+    ]) {
       GaPurchaseOrderItem.hasMany(models.File, {
         foreignKey: "fileable_id",
         constraints: false,

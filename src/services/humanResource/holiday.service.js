@@ -19,6 +19,7 @@ class HolidayService extends DualDatabaseService {
       if (filters.date_from) where.holiday_date[Op.gte] = filters.date_from;
       if (filters.date_to) where.holiday_date[Op.lte] = filters.date_to;
     }
+    if (filters.category) where.category = filters.category;
 
     return this.findAll({ where, order: [["holiday_date", "ASC"]] });
   }

@@ -20,10 +20,12 @@ router.get("/:id", authenticate, PaymentRequestController.getById);
 // POST routes
 router.post("/", authenticate, PaymentRequestController.create);
 router.post("/expenses", authenticate, PaymentRequestController.createExpense);
+router.post("/pjt", authenticate, PaymentRequestController.createPjt);
 
 // Update each form through its own endpoint.
 router.put("/:id", authenticate, PaymentRequestController.update);
 router.put("/:id/expenses", authenticate, PaymentRequestController.updateExpense);
+router.put("/:id/pjt", authenticate, PaymentRequestController.updatePjt);
 
 // PUT file list
 router.put("/:id/files", authenticate, PaymentRequestController.updateFiles);

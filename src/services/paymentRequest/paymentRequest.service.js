@@ -109,6 +109,11 @@ class PaymentRequestService extends DualDatabaseService {
           as: "department_request",
         },
         {
+          model: dbModels.Employee,
+          as: "employee",
+          attributes: ["id", "employee_code", "full_name"],
+        },
+        {
           model: dbModels.PaymentRequestVerificationProgress,
           as: "verification_progress",
           separate: true,
@@ -241,6 +246,11 @@ class PaymentRequestService extends DualDatabaseService {
         {
           model: dbModels.Department,
           as: "department_request",
+        },
+        {
+          model: dbModels.Employee,
+          as: "employee",
+          attributes: ["id", "employee_code", "full_name"],
         },
         {
           model: dbModels.PaymentRequestVerificationProgress,
@@ -584,9 +594,11 @@ class PaymentRequestService extends DualDatabaseService {
 
   /**
    * Sync service list of a payment request.
-   * A service is "vendor" when id_vendor or id_vendor_service is filled, otherwise "manual".
-   * When id_vendor_service is filled, missing id_vendor, id_category, service_name and
-   * prices are taken from that vendor service.
+   * A service is "vendor" when id_vendor, id_vendor_service or id_vendor_item is filled,
+   * otherwise "manual". When id_vendor_service is filled, missing id_vendor, id_category,
+   * service_name and prices are taken from that vendor service; when id_vendor_item is
+   * filled, missing id_vendor, service_name (item_name) and prices come from that vendor item.
+   * A row links to a vendor service or a vendor item, not both.
    */
   async syncServices(id, services, isDoubleDatabase, transaction1, transaction2) {
     const badRequest = (message) => {
@@ -604,12 +616,16 @@ class PaymentRequestService extends DualDatabaseService {
         id_payment_request: id,
         id_vendor: service.id_vendor ?? null,
         id_vendor_service: service.id_vendor_service ?? null,
+        id_vendor_item: service.id_vendor_item ?? null,
         id_category: service.id_category ?? null,
         service_name: service.service_name,
         price_idr: service.price_idr,
         price_rmb: service.price_rmb,
         is_active: service.is_active ?? true,
       };
+      if (data.id_vendor_service && data.id_vendor_item) {
+        throw badRequest(`services[${index}] cannot have both id_vendor_service and id_vendor_item`);
+      }
       if (data.id_vendor_service) {
         const vendorService = await models.db1.VendorService.findByPk(data.id_vendor_service, {
           transaction: transaction1,
@@ -624,11 +640,24 @@ class PaymentRequestService extends DualDatabaseService {
         data.price_idr = data.price_idr ?? vendorService.price_idr;
         data.price_rmb = data.price_rmb ?? vendorService.price_rmb;
       }
+      if (data.id_vendor_item) {
+        const vendorItem = await models.db1.VendorItem.findByPk(data.id_vendor_item, {
+          transaction: transaction1,
+        });
+        if (!vendorItem) throw badRequest(`services[${index}].id_vendor_item ${data.id_vendor_item} not found`);
+        if (data.id_vendor && Number(data.id_vendor) !== Number(vendorItem.id_vendor)) {
+          throw badRequest(`services[${index}].id_vendor does not match the vendor item`);
+        }
+        data.id_vendor = data.id_vendor ?? vendorItem.id_vendor;
+        data.service_name = data.service_name || vendorItem.item_name;
+        data.price_idr = data.price_idr ?? vendorItem.price_idr;
+        data.price_rmb = data.price_rmb ?? vendorItem.price_rmb;
+      }
       if (!String(data.service_name ?? "").trim()) throw badRequest(`services[${index}].service_name is required`);
       data.service_name = String(data.service_name).trim();
       data.price_idr = data.price_idr ?? 0;
       data.price_rmb = data.price_rmb ?? 0;
-      data.type = data.id_vendor || data.id_vendor_service ? "vendor" : "manual";
+      data.type = data.id_vendor || data.id_vendor_service || data.id_vendor_item ? "vendor" : "manual";
 
       const serviceId = service.id;
       if (serviceId !== undefined && serviceId !== null) {

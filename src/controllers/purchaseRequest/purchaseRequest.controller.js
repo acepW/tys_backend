@@ -6,6 +6,7 @@ const procurementTypes = [
   "Pembaruan Stok",
   "Pengadaan Baru",
 ];
+const itemCategories = ["item", "services"];
 const editable = [
   "purchase_request_no",
   "id_company",
@@ -37,6 +38,8 @@ function validateItems(items) {
       return `items[${i}].quantity must be positive`;
     if (!procurementTypes.includes(item.procurement_type))
       return `items[${i}].procurement_type is invalid`;
+    if (!itemCategories.includes(item.item_category))
+      return `items[${i}].item_category must be item or services`;
     if (item.files_product !== undefined && !Array.isArray(item.files_product))
       return `items[${i}].files_product must be an array`;
   }

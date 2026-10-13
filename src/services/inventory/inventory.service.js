@@ -1,7 +1,6 @@
 const {
   models,
   Op,
-  withTransactions,
   mirrorCreate,
   mirrorUpdate,
 } = require("../procurement/shared");
@@ -94,58 +93,75 @@ class InventoryService {
     );
   }
 
-  // Manual stock entry: adds to the matching inventory row or creates a new one.
-  async createManual(input, userId, isDoubleDatabase = true) {
-    const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      let inventory = await models.db1.Inventory.findOne({
-        where: matchWhere(input),
-        transaction: t1,
-        lock: t1.LOCK.UPDATE,
-      });
-      if (inventory) {
-        await mirrorUpdate(
-          "Inventory",
-          inventory.id,
-          { quantity: Number(inventory.quantity) + Number(input.quantity) },
-          t1,
-          t2,
-        );
-      } else {
-        inventory = await mirrorCreate(
-          "Inventory",
-          {
-            ...Object.fromEntries(
-              matchFields.map((field) => [field, normalize(input[field])]),
-            ),
-            purchase_request_category: input.purchase_request_category || null,
-            quantity_unit: input.quantity_unit,
-            quantity: input.quantity,
-          },
-          t1,
-          t2,
-        );
-      }
-      await mirrorCreate(
-        "InventoryHistory",
+  // Stock of the inventory row matching every matchFields value; 0 when none matches.
+  async checkStock(input) {
+    const row = await models.db1.Inventory.findOne({
+      attributes: ["id", "quantity", "quantity_unit"],
+      where: matchWhere(input),
+    });
+    return {
+      id_inventory: row?.id ?? null,
+      quantity: row ? Number(row.quantity) : 0,
+      quantity_unit: row?.quantity_unit ?? null,
+    };
+  }
+
+  // Adds source.quantity to the inventory row matching every matchFields value, or
+  // creates a new row, then records the history and copies the product files.
+  // history holds the history row's source references and note.
+  async addStock(source, history, userId, t1, t2) {
+    let inventory = await models.db1.Inventory.findOne({
+      where: matchWhere(source),
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+    if (inventory) {
+      await mirrorUpdate(
+        "Inventory",
+        inventory.id,
         {
-          id_inventory: inventory.id,
-          id_user: userId,
-          quantity: input.quantity,
-          note: normalize(input.note) || "Manual entry",
+          quantity: Number(inventory.quantity) + Number(source.quantity),
+          ...(inventory.asset_category || !source.asset_category
+            ? {}
+            : { asset_category: source.asset_category }),
         },
         t1,
         t2,
       );
-      await this.copyProductFiles(inventory.id, input.files_product, userId, t1, t2);
-      return inventory.id;
-    });
-    return this.getById(id);
+    } else {
+      inventory = await mirrorCreate(
+        "Inventory",
+        {
+          ...Object.fromEntries(
+            matchFields.map((field) => [field, normalize(source[field])]),
+          ),
+          purchase_request_category: source.purchase_request_category || null,
+          asset_category: source.asset_category || null,
+          quantity_unit: source.quantity_unit,
+          quantity: source.quantity,
+        },
+        t1,
+        t2,
+      );
+    }
+    await mirrorCreate(
+      "InventoryHistory",
+      {
+        ...history,
+        id_inventory: inventory.id,
+        id_user: userId,
+        quantity: source.quantity,
+      },
+      t1,
+      t2,
+    );
+    await this.copyProductFiles(inventory.id, source.files_product, userId, t1, t2);
+    return inventory.id;
   }
 
-  // Called inside the GA purchase order transaction when the goods are accepted.
-  async addFromGaPurchaseOrder(orderId, userId, t1, t2) {
-    const items = await models.db1.GaPurchaseOrderItem.findAll({
-      where: { id_ga_purchase_order: orderId },
+  // Called inside the inventory request transaction when the request is approved.
+  async addFromInventoryRequest(requestId, userId, t1, t2) {
+    const request = await models.db1.InventoryRequest.findByPk(requestId, {
       include: [
         {
           model: models.db1.File,
@@ -154,53 +170,45 @@ class InventoryService {
           where: { is_active: true },
         },
       ],
-      order: [["id", "ASC"]],
       transaction: t1,
     });
-    for (const item of items) {
-      let inventory = await models.db1.Inventory.findOne({
-        where: matchWhere(item),
-        transaction: t1,
-        lock: t1.LOCK.UPDATE,
-      });
-      if (inventory) {
-        await mirrorUpdate(
-          "Inventory",
-          inventory.id,
-          { quantity: Number(inventory.quantity) + Number(item.quantity) },
-          t1,
-          t2,
-        );
-      } else {
-        inventory = await mirrorCreate(
-          "Inventory",
-          {
-            ...Object.fromEntries(
-              matchFields.map((field) => [field, normalize(item[field])]),
-            ),
-            purchase_request_category: item.purchase_request_category,
-            quantity_unit: item.quantity_unit,
-            quantity: item.quantity,
-          },
-          t1,
-          t2,
-        );
-      }
-      await mirrorCreate(
-        "InventoryHistory",
+    return this.addStock(
+      request,
+      {
+        id_inventory_request: request.id,
+        note: normalize(request.note) || "Manual entry approved",
+      },
+      userId,
+      t1,
+      t2,
+    );
+  }
+
+  // Called inside the GA purchase order transaction when GA staff accepts an item.
+  async addFromGaPurchaseOrderItem(orderId, itemId, userId, t1, t2) {
+    const item = await models.db1.GaPurchaseOrderItem.findOne({
+      where: { id: itemId, id_ga_purchase_order: orderId },
+      include: [
         {
-          id_inventory: inventory.id,
-          id_ga_purchase_order: orderId,
-          id_ga_purchase_order_item: item.id,
-          id_user: userId,
-          quantity: item.quantity,
-          note: "Goods accepted from GA purchase order",
+          model: models.db1.File,
+          as: "files_product",
+          required: false,
+          where: { is_active: true },
         },
-        t1,
-        t2,
-      );
-      await this.copyProductFiles(inventory.id, item.files_product, userId, t1, t2);
-    }
+      ],
+      transaction: t1,
+    });
+    return this.addStock(
+      item,
+      {
+        id_ga_purchase_order: orderId,
+        id_ga_purchase_order_item: item.id,
+        note: "Goods accepted from GA purchase order",
+      },
+      userId,
+      t1,
+      t2,
+    );
   }
 
   // Copies the item's product files, skipping files the inventory already has.

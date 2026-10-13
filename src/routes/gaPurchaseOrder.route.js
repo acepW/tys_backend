@@ -11,16 +11,15 @@ router.get("/", authenticate, controller.getAll);
 router.get("/:id", authenticate, controller.getById);
 router.post("/", authenticate, controller.create);
 router.put("/:id", authenticate, controller.update);
-router.put("/:id/receiving", authenticate, controller.updateReceiving);
 
-// Approval flow: GA manager -> director -> FAT -> cashier -> GA staff (accept/return).
-// The return cycle reuses the GA manager and cashier endpoints.
+// Approval flow: GA manager -> director -> FAT -> cashier -> GA staff (accept/return per item).
+// The GA manager and cashier endpoints also drain orders left in the old return cycle.
 for (const [path, role] of [["ga-manager", "ga_manager"], ["director", "director"],
   ["fat", "fat"], ["cashier", "cashier"]]) {
   router.patch(`/${path}/approve/:id`, authenticate, action(`approve_${role}`));
   router.patch(`/${path}/reject/:id`, authenticate, action(`reject_${role}`));
 }
-router.patch("/ga-staff/accept/:id", authenticate, action("accept_goods"));
-router.patch("/ga-staff/return/:id", authenticate, action("return_goods"));
+router.patch("/ga-staff/accept/:id/items/:itemId", authenticate, controller.acceptItem);
+router.patch("/ga-staff/return/:id/items/:itemId", authenticate, controller.returnItem);
 
 module.exports = router;

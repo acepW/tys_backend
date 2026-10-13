@@ -23,6 +23,12 @@ module.exports = (sequelize) => {
         references: { model: "ga_purchase_order_items", key: "id" },
         comment: "GA purchase order item that added the stock",
       },
+      id_inventory_request: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "inventory_requests", key: "id" },
+        comment: "Approved inventory request that added the stock",
+      },
       id_user: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -54,6 +60,10 @@ module.exports = (sequelize) => {
     InventoryHistory.belongsTo(models.GaPurchaseOrderItem, {
       foreignKey: "id_ga_purchase_order_item",
       as: "ga_purchase_order_item",
+    });
+    InventoryHistory.belongsTo(models.InventoryRequest, {
+      foreignKey: "id_inventory_request",
+      as: "inventory_request",
     });
     InventoryHistory.belongsTo(models.User, {
       foreignKey: "id_user",

@@ -13,14 +13,17 @@ test("generates every Saturday and Sunday for a selected year", () => {
   assert.deepEqual(holidays[0], {
     holiday_date: "2026-01-03",
     title: "Libur Sabtu",
+    category: "holiday",
   });
   assert.deepEqual(holidays[1], {
     holiday_date: "2026-01-04",
     title: "Libur Minggu",
+    category: "holiday",
   });
   assert.deepEqual(holidays.at(-1), {
     holiday_date: "2026-12-27",
     title: "Libur Minggu",
+    category: "holiday",
   });
 });
 
