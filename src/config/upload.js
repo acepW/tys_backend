@@ -12,6 +12,7 @@ const ALLOWED_FOLDERS = {
   ga_purchase_order: "ga_purchase_order",
   invoice: "invoice",
   inventory: "inventory",
+  leave_request: "leave_request",
 };
 
 const ALLOWED_MIME_TYPES = {
