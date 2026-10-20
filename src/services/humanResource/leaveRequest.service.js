@@ -6,7 +6,10 @@ const {
   mirrorUpdate,
   syncFiles,
 } = require("../procurement/shared");
-const { STAGES } = require("../../models/humanResource/leaveRequest.model");
+const {
+  STAGES,
+  SICK_LETTER_STATUSES,
+} = require("../../models/humanResource/leaveRequest.model");
 
 const FIELDS = [
   "id_employee",
@@ -39,6 +42,9 @@ function pick(input) {
     ]),
   );
 }
+
+// type is free text; any type containing "sick" (any case) is a sick leave.
+const isSickLeave = (type) => /sick/i.test(type ?? "");
 
 // Inclusive number of calendar days between two YYYY-MM-DD dates.
 function dayCount(startDate, endDate) {
@@ -193,8 +199,37 @@ class LeaveRequestService {
     return this.getById(id);
   }
 
-  // decision: "approve" or "reject"; stage: one of STAGES.
-  async decide(id, stage, decision, userId, note, isDoubleDatabase = true) {
+  // Adds files to files_attachment, keeping the ones already there (syncFiles would
+  // drop every file not sent again).
+  async appendAttachments(id, files, userId, t1, t2) {
+    for (const file of files)
+      await mirrorCreate(
+        "File",
+        {
+          fileable_type: "leave_requests",
+          fileable_id: id,
+          category: "files_attachment",
+          original_name: file.original_name,
+          indonesian_name: file.indonesian_name ?? file.original_name,
+          mandarin_name: file.mandarin_name ?? file.original_name,
+          stored_name: file.stored_name,
+          url: file.url,
+          mime_type: file.mime_type,
+          size: file.size,
+          uploaded_by: userId,
+          is_active: true,
+        },
+        t1,
+        t2,
+      );
+  }
+
+  // decision: "approve" or "reject"; stage: one of STAGES. data: { note,
+  // sick_letter_status }. HR approving a sick leave must say whether the doctor's
+  // letter (SKD) is attached; if not, the director's approval sends the request
+  // to HR verification instead of approving it.
+  async decide(id, stage, decision, userId, data, isDoubleDatabase = true) {
+    const { note, sick_letter_status: sickLetterStatus } = data ?? {};
     if (!STAGES.includes(stage)) fail("Invalid stage");
     if (!["approve", "reject"].includes(decision)) fail("Invalid decision");
     if (decision === "reject" && !note?.trim())
@@ -203,11 +238,45 @@ class LeaveRequestService {
       const request = await this.lock(id, t1);
       if (request.status !== `request ${stage}`)
         fail(`Action is not allowed from status "${request.status}"`, 409);
-      const status =
-        decision === "approve" ? NEXT_STATUS[stage] : `rejected ${stage}`;
-      await mirrorUpdate("LeaveRequest", id, { status }, t1, t2);
+      const update = {
+        status: decision === "approve" ? NEXT_STATUS[stage] : `rejected ${stage}`,
+      };
+      if (decision === "approve" && stage === "hr" && isSickLeave(request.type)) {
+        if (!SICK_LETTER_STATUSES.includes(sickLetterStatus))
+          fail(`sick_letter_status must be one of: ${SICK_LETTER_STATUSES.join(", ")}`);
+        update.sick_letter_status = sickLetterStatus;
+      }
+      if (
+        decision === "approve" &&
+        stage === "director" &&
+        request.sick_letter_status === "not attached"
+      )
+        update.status = "request verification hr";
+      await mirrorUpdate("LeaveRequest", id, update, t1, t2);
       const action = decision === "approve" ? "approved" : "rejected";
       await this.addProgress(id, userId, `${action} ${stage}`, note, t1, t2);
+    });
+    return this.getById(id);
+  }
+
+  // Admin/SPV HR attaches the doctor's letter that was missing at HR approval.
+  // The files are added to files_attachment and the request becomes approved.
+  async verifyHr(id, userId, data = {}, isDoubleDatabase = true) {
+    if (!Array.isArray(data.files_attachment) || !data.files_attachment.length)
+      fail("files_attachment must contain the doctor's letter (SKD)");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const request = await this.lock(id, t1);
+      if (request.status !== "request verification hr")
+        fail(`Action is not allowed from status "${request.status}"`, 409);
+      await this.appendAttachments(id, data.files_attachment, userId, t1, t2);
+      await mirrorUpdate(
+        "LeaveRequest",
+        id,
+        { status: "approved", sick_letter_status: "attached" },
+        t1,
+        t2,
+      );
+      await this.addProgress(id, userId, "verified hr", data.note, t1, t2);
     });
     return this.getById(id);
   }
@@ -215,3 +284,4 @@ class LeaveRequestService {
 
 module.exports = new LeaveRequestService();
 module.exports.dayCount = dayCount;
+module.exports.isSickLeave = isSickLeave;

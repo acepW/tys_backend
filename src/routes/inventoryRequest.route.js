@@ -6,6 +6,7 @@ const { requireApprover } = require("../middleware/approval.middleware");
 router.get("/", authenticate, controller.getAll);
 router.get("/:id", authenticate, controller.getById);
 router.post("/", authenticate, controller.create);
+router.post("/bulk", authenticate, controller.createMany);
 router.put("/:id", authenticate, controller.update);
 router.patch("/approve/:id", authenticate, requireApprover("inventory request", ["pending"]), controller.approve);
 router.patch("/reject/:id", authenticate, requireApprover("inventory request", ["pending"]), controller.reject);

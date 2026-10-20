@@ -8,6 +8,10 @@
     "db:sync-attendance": "node scripts/sync-attendance-models.js",
     "db:sync-employee-profile": "node scripts/sync-employee-profile.js",
     "db:sync-hr": "node scripts/sync-hr-models.js",
+    "db:sync-ga-purchase-order": "node scripts/sync-ga-purchase-order-receiving.js",
+    "db:sync-inventory-opname": "node scripts/sync-inventory-opname.js",
+    "db:sync-leave-request-sick-letter": "node scripts/sync-leave-request-sick-letter.js",
+    "db:sync-recruitment": "node scripts/sync-recruitment-models.js",
     "db:setup-approval-flows": "node scripts/setup-approval-flows.js",
     "start": "nodemon server.js"
   },

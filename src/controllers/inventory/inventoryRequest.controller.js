@@ -3,6 +3,9 @@ const service = require("../../services/inventory/inventoryRequest.service");
 const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
+// Keeps one bulk create inside a reasonably short transaction.
+const maxBulkItems = 100;
+
 function respondError(res, error) {
   return errorResponse(res, error.message, error.statusCode || 500);
 }
@@ -49,6 +52,24 @@ class InventoryRequestController {
       if (invalid) return errorResponse(res, invalid, 400);
       return successResponse(res, await service.create(body, req.user.id,
         body.is_double_database !== false), "Inventory request created", 201);
+    } catch (error) { return respondError(res, error); }
+  }
+
+  async createMany(req, res) {
+    try {
+      const body = req.body || {};
+      if (!Array.isArray(body.items) || !body.items.length)
+        return errorResponse(res, "items must be a non-empty array", 400);
+      if (body.items.length > maxBulkItems)
+        return errorResponse(res, `items can contain at most ${maxBulkItems} entries`, 400);
+      for (let i = 0; i < body.items.length; i++) {
+        const invalid = body.items[i] && typeof body.items[i] === "object"
+          ? validate(body.items[i]) : "must be an object";
+        if (invalid) return errorResponse(res, `items[${i}]: ${invalid}`, 400);
+      }
+      const result = await service.createMany(body.items, req.user.id, body.is_double_database !== false);
+      return successResponse(res, await approvalAccess.attachActionFlags("inventory request", result, req.user?.id),
+        `${result.length} inventory requests created`, 201);
     } catch (error) { return respondError(res, error); }
   }
 

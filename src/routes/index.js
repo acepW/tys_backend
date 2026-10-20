@@ -54,6 +54,8 @@ const purchaseRequestRoutes = require("./purchaseRequest.route");
 const gaPurchaseOrderRoutes = require("./gaPurchaseOrder.route");
 const inventoryRoutes = require("./inventory.route");
 const inventoryRequestRoutes = require("./inventoryRequest.route");
+const inventoryOpnameRoutes = require("./inventoryOpname.route");
+const recruitmentRoutes = require("./recruitment.route");
 
 //report
 const reportInvoiceRoutes = require("./reportInvoice.route");
@@ -128,6 +130,8 @@ router.use("/purchase-requests", purchaseRequestRoutes);
 router.use("/ga-purchase-orders", gaPurchaseOrderRoutes);
 router.use("/inventories", inventoryRoutes);
 router.use("/inventory-requests", inventoryRequestRoutes);
+router.use("/inventory-opnames", inventoryOpnameRoutes);
+router.use("/recruitment", recruitmentRoutes);
 
 //report
 router.use("/report-invoices", reportInvoiceRoutes);

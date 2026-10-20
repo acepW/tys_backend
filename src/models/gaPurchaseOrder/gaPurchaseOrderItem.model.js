@@ -146,29 +146,41 @@ module.exports = (sequelize) => {
         defaultValue: 0,
       },
       receiving_status: {
-        type: DataTypes.ENUM("pending", "returned", "accepted"),
+        type: DataTypes.ENUM(
+          "pending",
+          "returned",
+          "refund requested",
+          "accepted",
+          "refunded",
+        ),
         allowNull: false,
         defaultValue: "pending",
-        comment: "Per-item goods receiving status set by GA staff",
+        comment:
+          "Per-item receiving status; accepted and refunded are final (refunded = settled with a refund)",
       },
       purchase_realization_date: { type: DataTypes.DATE, allowNull: true },
       purchase_realization_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
       },
-      goods_in_date: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        comment: "Date the goods came in (tanggal barang masuk)",
+      purchase_realization_note: { type: DataTypes.TEXT, allowNull: true },
+      quantity_good: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Total good quantity from every goods receipt (added to inventory)",
       },
-      goods_status: {
-        type: DataTypes.ENUM(
-          "Good Without Exception",
-          "Good With Notes",
-          "Not Good Refund",
-          "Not Good Returned",
-        ),
-        allowNull: true,
+      quantity_returned: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Quantity currently returned to the vendor, awaiting replacement or refund",
+      },
+      quantity_refunded: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Quantity settled by an approved refund",
       },
       receiving_note: {
         type: DataTypes.TEXT,
@@ -179,6 +191,14 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 0,
+      },
+      refund_date: { type: DataTypes.DATE, allowNull: true },
+      refund_amount: { type: DataTypes.DECIMAL(15, 2), allowNull: true },
+      refund_note: { type: DataTypes.TEXT, allowNull: true },
+      refund_received_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Date the refund money was received, recorded by FAT on approval",
       },
     },
     {
@@ -212,13 +232,17 @@ module.exports = (sequelize) => {
       foreignKey: "id_requester",
       as: "requester",
     });
+    GaPurchaseOrderItem.hasMany(models.GaPurchaseOrderItemReceipt, {
+      foreignKey: "id_ga_purchase_order_item",
+      as: "receipts",
+    });
     for (const category of [
       "files_product",
       "files_attachment",
       "files_purchase_proof",
       "files_invoice",
-      "files_goods_in",
-      "files_goods_receipt",
+      "files_refund_proof",
+      "files_refund_received_proof",
     ]) {
       GaPurchaseOrderItem.hasMany(models.File, {
         foreignKey: "fileable_id",

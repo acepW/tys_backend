@@ -54,6 +54,11 @@ class InventoryService {
             as: "ga_purchase_order",
             attributes: ["id", "ga_purchase_order_no"],
           },
+          {
+            model: db.InventoryOpname,
+            as: "inventory_opname",
+            attributes: ["id", "opname_no"],
+          },
         ],
       },
     ];
@@ -184,8 +189,9 @@ class InventoryService {
     );
   }
 
-  // Called inside the GA purchase order transaction when GA staff accepts an item.
-  async addFromGaPurchaseOrderItem(orderId, itemId, userId, t1, t2) {
+  // Called inside the GA purchase order transaction when GA staff records a goods
+  // receipt; only the receipt's good quantity is added.
+  async addFromGaPurchaseOrderReceipt(orderId, itemId, receipt, userId, t1, t2) {
     const item = await models.db1.GaPurchaseOrderItem.findOne({
       where: { id: itemId, id_ga_purchase_order: orderId },
       include: [
@@ -199,11 +205,12 @@ class InventoryService {
       transaction: t1,
     });
     return this.addStock(
-      item,
+      { ...(item.toJSON ? item.toJSON() : item), quantity: receipt.quantity_good },
       {
         id_ga_purchase_order: orderId,
         id_ga_purchase_order_item: item.id,
-        note: "Goods accepted from GA purchase order",
+        id_ga_purchase_order_item_receipt: receipt.id,
+        note: `Goods ${receipt.type === "return" ? "partially accepted (rest returned)" : "accepted"} from GA purchase order`,
       },
       userId,
       t1,

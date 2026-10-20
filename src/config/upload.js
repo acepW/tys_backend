@@ -13,6 +13,7 @@ const ALLOWED_FOLDERS = {
   invoice: "invoice",
   inventory: "inventory",
   leave_request: "leave_request",
+  recruitment: "recruitment",
 };
 
 const ALLOWED_MIME_TYPES = {

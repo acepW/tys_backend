@@ -1,12 +1,16 @@
 const { DataTypes } = require("sequelize");
 
-// Approval chain, in order. Each stage approves to the next; the director approves to "approved".
+// Approval chain, in order. Each stage approves to the next; the director approves to
+// "approved", or to "request verification hr" for a sick leave whose doctor's
+// letter (SKD) was not attached yet. That last step can only be verified.
 const STAGES = ["supervisor", "hr", "spv hr", "manager hr", "director"];
 const STATUSES = [
   ...STAGES.map((stage) => `request ${stage}`),
+  "request verification hr",
   "approved",
   ...STAGES.map((stage) => `rejected ${stage}`),
 ];
+const SICK_LETTER_STATUSES = ["attached", "not attached"];
 
 module.exports = (sequelize) => {
   const LeaveRequest = sequelize.define(
@@ -56,6 +60,12 @@ module.exports = (sequelize) => {
       },
       clinic_address: { type: DataTypes.TEXT, allowNull: true },
       doctor_name: { type: DataTypes.STRING(255), allowNull: true },
+      sick_letter_status: {
+        type: DataTypes.ENUM(...SICK_LETTER_STATUSES),
+        allowNull: true,
+        comment:
+          "Doctor's letter (SKD) attached or not, chosen by HR on approval of a sick leave",
+      },
       status: {
         type: DataTypes.ENUM(...STATUSES),
         allowNull: false,
@@ -108,3 +118,4 @@ module.exports = (sequelize) => {
 
 module.exports.STAGES = STAGES;
 module.exports.STATUSES = STATUSES;
+module.exports.SICK_LETTER_STATUSES = SICK_LETTER_STATUSES;

@@ -25,6 +25,7 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 | List         | `GET /api/inventory-requests`               | Filter: `search` (nama barang), `status`, `page`, `limit` |
 | Detail       | `GET /api/inventory-requests/:id`           |                                                           |
 | Buat request | `POST /api/inventory-requests`              |                                                           |
+| Buat banyak  | `POST /api/inventory-requests/bulk`         | Banyak request sekaligus (maks. 100), lihat bagian 1b     |
 | Edit request | `PUT /api/inventory-requests/:id`           | Hanya pembuat, hanya saat `pending`                       |
 | Approve      | `PATCH /api/inventory-requests/approve/:id` | `note` opsional                                           |
 | Reject       | `PATCH /api/inventory-requests/reject/:id`  | `note` wajib                                              |
@@ -74,6 +75,25 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 Tips: sebelum submit, frontend bisa menampilkan stok saat ini dengan `GET /api/inventories/check-stock?item_name=...&brand=...&serial_number=...&size=...&material=...&other=...`. Jika barang belum ada, hasilnya `quantity: 0`.
 
 Response sukses (`201`) berisi detail request seperti di bagian 2.
+
+## 1b. Buat banyak request sekaligus
+
+`POST /api/inventory-requests/bulk`
+
+Isi `items` dengan array berisi body yang sama seperti bagian 1 (maksimal 100 item). Setiap item menjadi **satu inventory request terpisah** berstatus `pending`. Setelah dibuat, edit, approve, dan reject tetap dilakukan satu per satu per request seperti biasa.
+
+```json
+{
+  "items": [
+    { "item_name": "Kursi", "quantity_unit": "unit", "quantity": 10, "files_product": [] },
+    { "item_name": "Meja", "brand": "Olympic", "quantity_unit": "unit", "quantity": 5, "note": "Stok awal" }
+  ]
+}
+```
+
+- Semua item disimpan dalam satu transaksi: kalau satu item gagal, **tidak ada** yang tersimpan.
+- Pesan error validasi menyebut posisi item, mis. `items[1]: quantity must be a positive number` (index mulai dari 0).
+- Response sukses (`201`) berisi array detail request yang dibuat, urut sesuai `items`, masing-masing dengan `is_can_approve_reject` dan `action_label`.
 
 ## 2. List dan detail
 
@@ -208,6 +228,7 @@ Yang terjadi saat approve:
 | 400  | `item_name is required`, `quantity_unit is required`, `quantity must be a positive number` | Validasi form                                   |
 | 400  | `asset_category must be asset or non asset`                                                | Nilai `asset_category` tidak valid              |
 | 400  | `files_product must be an array`                                                           | `files_product` bukan array                     |
+| 400  | `items must be a non-empty array`, `items can contain at most 100 entries`, `items[i]: ...` | Validasi bulk create                            |
 | 400  | `note is required for rejection`                                                           | Reject tanpa note                               |
 | 403  | `Only the creator can edit this inventory request`                                         | Edit oleh user selain pembuat                   |
 | 403  | `You are not allowed to act on Inventory Request ...`                                      | Approve/reject oleh user yang bukan approver    |

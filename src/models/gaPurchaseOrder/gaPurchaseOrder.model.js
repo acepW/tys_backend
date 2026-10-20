@@ -48,6 +48,29 @@ module.exports = (sequelize) => {
       },
       planned_purchase_date: { type: DataTypes.DATE, allowNull: true },
       remarks: { type: DataTypes.TEXT, allowNull: true },
+      // Order totals are the sums of the item values, recalculated whenever items change.
+      sub_total: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      ppn: { type: DataTypes.DECIMAL(15, 0), allowNull: false, defaultValue: 0 },
+      pph: { type: DataTypes.DECIMAL(15, 0), allowNull: false, defaultValue: 0 },
+      pp_20: {
+        type: DataTypes.DECIMAL(15, 0),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      pph_4_ayat_2: {
+        type: DataTypes.DECIMAL(15, 0),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      total: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
       payment_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true,

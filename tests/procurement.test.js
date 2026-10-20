@@ -9,8 +9,9 @@ const { Op } = require("sequelize");
 test("procurement tables sync in foreign-key dependency order", async (t) => {
   const order = ["PurchaseRequest", "GaPurchaseOrder", "PurchaseRequestItem",
     "PurchaseRequestVerificationProgress", "GaPurchaseOrderItem",
-    "GaPurchaseOrderVerificationProgress", "Inventory", "InventoryRequest",
-    "InventoryRequestVerificationProgress", "InventoryHistory"];
+    "GaPurchaseOrderVerificationProgress", "GaPurchaseOrderItemReceipt", "Inventory", "InventoryRequest",
+    "InventoryRequestVerificationProgress", "InventoryOpname", "InventoryOpnameItem",
+    "InventoryOpnameVerificationProgress", "InventoryHistory"];
   const original = [];
   const calls = [];
   for (const [database, dbModels] of [["db1", models.db1], ["db2", models.db2]]) {
@@ -141,9 +142,10 @@ test("GA Purchase Order rejects a source item that was already ordered", async (
   await assert.rejects(gaOrderService.sourceItem(11, 1, null, { LOCK: { UPDATE: "UPDATE" } }), /already been ordered/);
 });
 
-test("GA Purchase Order rejection and item return require a note", async () => {
+test("GA Purchase Order rejections and item return require a note", async () => {
   await assert.rejects(gaOrderService.action(1, "reject_fat", 5, { note: "" }, false), /note is required/);
   await assert.rejects(gaOrderService.returnItem(1, 11, 5, {}, false), /note is required for return/);
+  await assert.rejects(gaOrderService.refundDecision(1, 11, 5, false, { note: " " }, false), /note is required for rejection/);
   await assert.rejects(gaOrderService.action(1, "accept_goods", 5, {}, false), /Invalid action/);
 });
 
@@ -157,6 +159,7 @@ function mockGaOrder(t, order, fileCounts = {}, items = []) {
     itemFindOne: models.db1.GaPurchaseOrderItem.findOne,
     itemUpdate: models.db1.GaPurchaseOrderItem.update,
     itemCount: models.db1.GaPurchaseOrderItem.count,
+    receipt: models.db1.GaPurchaseOrderItemReceipt.create,
     getById: gaOrderService.getById,
   };
   t.after(() => {
@@ -168,6 +171,7 @@ function mockGaOrder(t, order, fileCounts = {}, items = []) {
     models.db1.GaPurchaseOrderItem.findOne = originals.itemFindOne;
     models.db1.GaPurchaseOrderItem.update = originals.itemUpdate;
     models.db1.GaPurchaseOrderItem.count = originals.itemCount;
+    models.db1.GaPurchaseOrderItemReceipt.create = originals.receipt;
     gaOrderService.getById = originals.getById;
   });
   const writes = [];
@@ -184,6 +188,11 @@ function mockGaOrder(t, order, fileCounts = {}, items = []) {
   };
   models.db1.GaPurchaseOrderItem.count = async ({ where }) =>
     items.filter((item) => where.receiving_status.includes(item.receiving_status)).length;
+  models.db1.GaPurchaseOrderItemReceipt.create = async (data) => {
+    writes.push(["receipt", data.type, data.quantity_received, data.quantity_good, data.quantity_returned,
+      data.return_shipping_cost]);
+    return { id: 100 + writes.length, ...data };
+  };
   gaOrderService.getById = async () => order;
   return writes;
 }
@@ -229,65 +238,201 @@ test("Orders left in the old return cycle can still go back to receiving", async
     ["return approved ga manager", "return approved cashier"]);
 });
 
-const acceptBody = {
-  purchase_realization_date: "2026-10-10", purchase_realization_amount: 3330000,
-  goods_in_date: "2026-10-12", goods_status: "Good With Notes", note: "Dus penyok",
+const realizationBody = { purchase_realization_date: "2026-10-10", purchase_realization_amount: 3330000 };
+const acceptBody = { goods_in_date: "2026-10-12", goods_status: "Good With Notes", note: "Dus penyok" };
+const returnBody = {
+  goods_in_date: "2026-10-12", goods_status: "Not Good", note: "2 unit rusak",
+  return_delivery_date: "2026-10-13", return_shipping_cost: 25000,
 };
-
-test("GA staff returns an item without changing the order status", async (t) => {
-  const order = { status: "request receiving" };
-  const items = [{ id: 11, receiving_status: "pending", return_count: 0, item_category: "item" }];
-  const writes = mockGaOrder(t, order, {}, items);
-  await gaOrderService.returnItem(1, 11, 5, { note: "Barang rusak" }, false);
-  assert.equal(items[0].receiving_status, "returned");
-  assert.equal(items[0].return_count, 1);
-  assert.equal(items[0].receiving_note, "Barang rusak");
-  assert.equal(order.status, "request receiving");
-  assert.deepEqual(writes, [["progress", "goods returned", 11]]);
-  await assert.rejects(gaOrderService.returnItem(1, 99, 5, { note: "x" }, false), /item not found/);
+const allFiles = { files_purchase_proof: 1, files_invoice: 1, files_goods_in: 1, files_goods_receipt: 1,
+  files_return_delivery_proof: 1, files_return_waybill: 1, files_refund_proof: 1 };
+const receivingItemRow = (id, extra = {}) => ({
+  id, id_ga_purchase_order: 1, receiving_status: "pending", return_count: 0, item_category: "item",
+  quantity: "5.00", quantity_good: "0.00", quantity_returned: "0.00", quantity_refunded: "0.00",
+  purchase_realization_date: "2026-10-10", ...extra,
 });
 
-test("GA staff item acceptance requires receiving data and every file", async (t) => {
+function mockInventory(t) {
+  const original = inventoryService.addFromGaPurchaseOrderReceipt;
+  t.after(() => { inventoryService.addFromGaPurchaseOrderReceipt = original; });
+  const calls = [];
+  inventoryService.addFromGaPurchaseOrderReceipt = async (orderId, itemId, receipt) => {
+    calls.push([itemId, receipt.type, receipt.quantity_good]);
+  };
+  return calls;
+}
+
+const progressOf = (writes) => writes.filter(([kind]) => kind === "progress").map(([, status, itemId]) => [status, itemId]);
+
+test("GA staff saves the purchase realization before receiving an item", async (t) => {
   const order = { status: "request receiving" };
-  const items = [{ id: 11, receiving_status: "pending", return_count: 0, item_category: "item" }];
-  const counts = { files_purchase_proof: 1, files_invoice: 1, files_goods_in: 1, files_goods_receipt: 0 };
-  mockGaOrder(t, order, counts, items);
-  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, {}, false), /purchase_realization_date is required/);
-  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, purchase_realization_amount: "" }, false),
+  const items = [receivingItemRow(11, { purchase_realization_date: null })];
+  const counts = { files_purchase_proof: 1, files_invoice: 0 };
+  const writes = mockGaOrder(t, order, counts, items);
+  await assert.rejects(gaOrderService.saveRealization(1, 11, 5, {}, false), /purchase_realization_date is required/);
+  await assert.rejects(gaOrderService.saveRealization(1, 11, 5, { ...realizationBody, purchase_realization_amount: "" }, false),
     /purchase_realization_amount/);
+  await assert.rejects(gaOrderService.saveRealization(1, 11, 5, realizationBody, false), /files_invoice is required/);
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 5 }, false),
+    /Purchase realization must be saved/);
+  counts.files_invoice = 1;
+  await gaOrderService.saveRealization(1, 11, 5, { ...realizationBody, note: "Invoice toko" }, false);
+  assert.equal(items[0].purchase_realization_amount, 3330000);
+  assert.equal(items[0].purchase_realization_note, "Invoice toko");
+  assert.equal(items[0].receiving_status, "pending");
+  await gaOrderService.saveRealization(1, 11, 5, realizationBody, false);
+  assert.deepEqual(progressOf(writes), [["purchase realization saved", 11], ["purchase realization updated", 11]]);
+});
+
+test("GA staff return needs a note, the return shipment data and its files", async (t) => {
+  const order = { status: "request receiving" };
+  const items = [receivingItemRow(11)];
+  mockGaOrder(t, order, { ...allFiles, files_return_waybill: 0 }, items);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, {}, false), /note is required for return/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3, return_delivery_date: "" }, false),
+    /return_delivery_date is required/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3, return_shipping_cost: -1 }, false),
+    /return_shipping_cost/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 5 }, false),
+    /less than the outstanding quantity \(5\)/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3 }, false),
+    /files_return_waybill is required/);
   await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, goods_status: "Good" }, false),
     /goods_status must be one of/);
-  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, acceptBody, false), /files_goods_receipt is required/);
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, acceptBody, false), /quantity_good/);
   assert.equal(items[0].receiving_status, "pending");
+  await assert.rejects(gaOrderService.returnItem(1, 99, 5, { ...returnBody, quantity_good: 3 }, false), /item not found/);
 });
 
-test("Accepting every item finishes the order; only item_category item goes to inventory", async (t) => {
+test("Partial return stocks the good quantity; the replacement is accepted later and finishes the order", async (t) => {
+  const order = { status: "request receiving" };
+  const items = [receivingItemRow(11), receivingItemRow(12, { item_category: "services", quantity: "1.00" })];
+  const writes = mockGaOrder(t, order, allFiles, items);
+  const inventoryCalls = mockInventory(t);
+
+  await gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3 }, false);
+  assert.equal(items[0].receiving_status, "returned");
+  assert.equal(items[0].quantity_good, 3);
+  assert.equal(items[0].quantity_returned, 2);
+  assert.equal(items[0].return_count, 1);
+  assert.equal(order.status, "request receiving");
+
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 3 }, false),
+    /equal the outstanding quantity \(2\)/);
+  await gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 2 }, false);
+  assert.equal(items[0].receiving_status, "accepted");
+  assert.equal(items[0].quantity_good, 5);
+  assert.equal(items[0].quantity_returned, 0);
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 0 }, false), /already been accepted/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 0 }, false), /already been accepted/);
+
+  await gaOrderService.acceptItem(1, 12, 5, { ...acceptBody, quantity_good: 1 }, false);
+  assert.equal(order.status, "finished");
+  assert.deepEqual(writes.filter(([kind]) => kind === "receipt").map(([, ...rest]) => rest),
+    [["return", 5, 3, 2, 25000], ["accept", 2, 2, 0, null], ["accept", 1, 1, 0, null]]);
+  assert.deepEqual(inventoryCalls, [[11, "return", 3], [11, "accept", 2]]);
+  assert.deepEqual(progressOf(writes),
+    [["goods returned", 11], ["goods accepted", 11], ["goods accepted", 12], ["finished", null]]);
+  await assert.rejects(gaOrderService.acceptItem(1, 12, 5, { ...acceptBody, quantity_good: 1 }, false), /awaits receiving/);
+});
+
+test("Returned quantity can be refunded after FAT approval, which finishes the order", async (t) => {
   const order = { status: "request receiving" };
   const items = [
-    { id: 11, receiving_status: "returned", return_count: 1, item_category: "item" },
-    { id: 12, receiving_status: "pending", return_count: 0, item_category: "services" },
+    receivingItemRow(11, { receiving_status: "returned", quantity_good: "3.00", quantity_returned: "2.00", return_count: 1 }),
+    receivingItemRow(12, { receiving_status: "accepted", quantity_good: "5.00" }),
+    receivingItemRow(13),
   ];
-  const counts = { files_purchase_proof: 1, files_invoice: 1, files_goods_in: 1, files_goods_receipt: 1 };
+  const counts = { ...allFiles, files_refund_proof: 0 };
   const writes = mockGaOrder(t, order, counts, items);
-  const addInventory = inventoryService.addFromGaPurchaseOrderItem;
-  t.after(() => { inventoryService.addFromGaPurchaseOrderItem = addInventory; });
-  const inventoryCalls = [];
-  inventoryService.addFromGaPurchaseOrderItem = async (orderId, itemId) => { inventoryCalls.push([orderId, itemId]); };
+  const refund = { refund_date: "2026-10-20", refund_amount: 1332000, note: "Toko transfer balik" };
+  const received = { refund_received_date: "2026-10-22" };
 
-  await gaOrderService.acceptItem(1, 11, 5, acceptBody, false);
-  assert.equal(items[0].receiving_status, "accepted");
-  assert.equal(items[0].purchase_realization_amount, 3330000);
-  assert.equal(items[0].goods_status, "Good With Notes");
+  await assert.rejects(gaOrderService.requestRefund(1, 13, 5, refund, false), /while the item is pending/);
+  await assert.rejects(gaOrderService.requestRefund(1, 11, 5, { ...refund, refund_amount: 0 }, false), /refund_amount must be a positive/);
+  await assert.rejects(gaOrderService.requestRefund(1, 11, 5, refund, false), /files_refund_proof is required/);
+  counts.files_refund_proof = 1;
+  await assert.rejects(gaOrderService.refundDecision(1, 11, 5, true, received, false), /while the item is returned/);
+  await gaOrderService.requestRefund(1, 11, 5, refund, false);
+  assert.equal(items[0].receiving_status, "refund requested");
+  assert.equal(items[0].refund_amount, 1332000);
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 2 }, false),
+    /while the item is refund requested/);
+
+  await assert.rejects(gaOrderService.refundDecision(1, 11, 7, false, {}, false), /note is required for rejection/);
+  await gaOrderService.refundDecision(1, 11, 7, false, { note: "Bukti kurang jelas" }, false);
+  assert.equal(items[0].receiving_status, "returned");
+  await gaOrderService.requestRefund(1, 11, 5, refund, false);
+  await assert.rejects(gaOrderService.refundDecision(1, 11, 7, true, {}, false), /refund_received_date is required/);
+  await assert.rejects(gaOrderService.refundDecision(1, 11, 7, true, received, false),
+    /files_refund_received_proof is required/);
+  assert.equal(items[0].receiving_status, "refund requested");
+  counts.files_refund_received_proof = 1;
+  await gaOrderService.refundDecision(1, 11, 7, true, received, false);
+  assert.equal(items[0].receiving_status, "refunded");
+  assert.equal(items[0].refund_received_date, "2026-10-22");
+  assert.equal(items[0].quantity_refunded, 2);
+  assert.equal(items[0].quantity_returned, 0);
   assert.equal(order.status, "request receiving");
-  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, acceptBody, false), /already been accepted/);
-  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { note: "x" }, false), /already been accepted/);
+  await assert.rejects(gaOrderService.requestRefund(1, 11, 5, refund, false), /settled with a refund/);
 
-  await gaOrderService.acceptItem(1, 12, 5, acceptBody, false);
+  mockInventory(t);
+  await gaOrderService.acceptItem(1, 13, 5, { ...acceptBody, quantity_good: 5 }, false);
   assert.equal(order.status, "finished");
-  assert.deepEqual(inventoryCalls, [[1, 11]]);
-  assert.deepEqual(writes.filter(([kind]) => kind === "progress").map(([, status, itemId]) => [status, itemId]),
-    [["goods accepted", 11], ["goods accepted", 12], ["finished", null]]);
-  await assert.rejects(gaOrderService.acceptItem(1, 12, 5, acceptBody, false), /awaits receiving/);
+  assert.deepEqual(progressOf(writes), [["refund requested", 11], ["refund rejected spv/manager fat", 11],
+    ["refund requested", 11], ["refund approved spv/manager fat", 11], ["goods accepted", 13], ["finished", null]]);
+});
+
+test("Order totals are the sums of the item values", async (t) => {
+  const originals = { findAll: models.db1.GaPurchaseOrderItem.findAll, update: models.db1.GaPurchaseOrder.update };
+  t.after(() => {
+    models.db1.GaPurchaseOrderItem.findAll = originals.findAll;
+    models.db1.GaPurchaseOrder.update = originals.update;
+  });
+  let attributes;
+  models.db1.GaPurchaseOrderItem.findAll = async (options) => {
+    attributes = options.attributes;
+    return [
+      { sub_total: "1000000.00", ppn: "110000", pph: "20000", pp_20: "0", pph_4_ayat_2: "0", total: "1090000.00" },
+      { sub_total: "500000.10", ppn: "55000", pph: "0", pp_20: "2500", pph_4_ayat_2: "10000", total: "542500.10" },
+    ];
+  };
+  let totals;
+  models.db1.GaPurchaseOrder.update = async (data) => { totals = data; return [1]; };
+  await gaOrderService.updateTotals(1, {});
+  assert.deepEqual(attributes, ["sub_total", "ppn", "pph", "pp_20", "pph_4_ayat_2", "total"]);
+  assert.deepEqual(totals, { sub_total: 1500000.1, ppn: 165000, pph: 20000, pp_20: 2500, pph_4_ayat_2: 10000, total: 1632500.1 });
+});
+
+test("Returned item list only includes items returned at least once", async (t) => {
+  const original = models.db1.GaPurchaseOrderItem.findAll;
+  t.after(() => { models.db1.GaPurchaseOrderItem.findAll = original; });
+  let options;
+  models.db1.GaPurchaseOrderItem.findAll = async (value) => { options = value; return []; };
+  await gaOrderService.getReturnedItems({ receiving_status: "returned" }, { id_company: 2 });
+  assert.equal(options.where.receiving_status, "returned");
+  assert.equal(options.where.return_count[Op.gt], 0);
+  assert.deepEqual(options.include[0].where, { id_company: 2 });
+  assert.ok(options.include.some((include) => include.as === "receipts"));
+});
+
+test("Returned item search matches the item name or the GA purchase order number", async (t) => {
+  const originals = { items: models.db1.GaPurchaseOrderItem.findAll, orders: models.db1.GaPurchaseOrder.findAll };
+  t.after(() => {
+    models.db1.GaPurchaseOrderItem.findAll = originals.items;
+    models.db1.GaPurchaseOrder.findAll = originals.orders;
+  });
+  let orderWhere;
+  let options;
+  models.db1.GaPurchaseOrder.findAll = async (value) => { orderWhere = value.where; return [{ id: 4 }, { id: 9 }]; };
+  models.db1.GaPurchaseOrderItem.findAll = async (value) => { options = value; return []; };
+  await gaOrderService.getReturnedItems({}, {}, null, null, "GAPO-TYS");
+  assert.deepEqual(orderWhere.ga_purchase_order_no, { [Op.like]: "%GAPO-TYS%" });
+  assert.deepEqual(options.where[Op.or], [
+    { item_name: { [Op.like]: "%GAPO-TYS%" } },
+    { id_ga_purchase_order: [4, 9] },
+  ]);
+  assert.equal(options.where.return_count[Op.gt], 0);
 });
 
 test("Accepted goods add quantity to a matching inventory row or create a new one", async (t) => {
@@ -325,19 +470,19 @@ test("Accepted goods add quantity to a matching inventory row or create a new on
   const writes = [];
   models.db1.Inventory.update = async (data, { where }) => { writes.push(["update", where.id, data.quantity, data.asset_category]); return [1]; };
   models.db1.Inventory.create = async (data) => { writes.push(["create", data.brand, data.quantity, data.asset_category]); return { id: 8 }; };
-  models.db1.InventoryHistory.create = async (data) => { writes.push(["history", data.id_inventory, data.id_ga_purchase_order_item]); return {}; };
+  models.db1.InventoryHistory.create = async (data) => { writes.push(["history", data.id_inventory, data.id_ga_purchase_order_item, data.id_ga_purchase_order_item_receipt, data.quantity]); return {}; };
   models.db1.File.findAll = async () => [{ stored_name: "a.png" }];
   models.db1.File.create = async (data) => { writes.push(["file", data.fileable_id, data.stored_name]); return {}; };
 
   const t1 = { LOCK: { UPDATE: "UPDATE" } };
-  await inventoryService.addFromGaPurchaseOrderItem(1, 21, 5, t1);
-  await inventoryService.addFromGaPurchaseOrderItem(1, 22, 5, t1);
+  await inventoryService.addFromGaPurchaseOrderReceipt(1, 21, { id: 31, type: "return", quantity_good: 2 }, 5, t1);
+  await inventoryService.addFromGaPurchaseOrderReceipt(1, 22, { id: 32, type: "accept", quantity_good: 1 }, 5, t1);
 
   assert.deepEqual(wheres[0][Op.and].slice(0, 3), [{ item_name: "Printer" }, { brand: "HP" }, { serial_number: "M404dn" }]);
   assert.deepEqual(wheres[0][Op.and][3], { [Op.or]: [{ size: null }, { size: "" }] });
   assert.deepEqual(writes, [
-    ["update", 7, 5, "asset"], ["history", 7, 21], ["file", 7, "b.png"],
-    ["create", "Canon", "1.00", "non asset"], ["history", 8, 22],
+    ["update", 7, 5, "asset"], ["history", 7, 21, 31, 2], ["file", 7, "b.png"],
+    ["create", "Canon", 1, "non asset"], ["history", 8, 22, 32, 1],
   ]);
 });
 
@@ -442,4 +587,55 @@ test("Only the creator can edit a pending inventory request", async (t) => {
   await inventoryRequestService.update(5, { quantity: 2, status: "approve", id_user_request: 8 }, 5, false);
   assert.deepEqual(writes[0], ["request", { quantity: 2 }]);
   assert.equal(request.status, "pending");
+});
+
+test("Bulk create makes one pending request per item in one transaction", async (t) => {
+  const originals = {
+    transaction: db1.transaction,
+    create: models.db1.InventoryRequest.create,
+    findAll: models.db1.InventoryRequest.findAll,
+    progress: models.db1.InventoryRequestVerificationProgress.create,
+  };
+  t.after(() => {
+    db1.transaction = originals.transaction;
+    models.db1.InventoryRequest.create = originals.create;
+    models.db1.InventoryRequest.findAll = originals.findAll;
+    models.db1.InventoryRequestVerificationProgress.create = originals.progress;
+  });
+  let transactions = 0;
+  let rolledBack = false;
+  db1.transaction = async () => {
+    transactions++;
+    return { LOCK: { UPDATE: "UPDATE" }, commit: async () => {}, rollback: async () => { rolledBack = true; } };
+  };
+  const created = [];
+  models.db1.InventoryRequest.create = async (data) => {
+    if (data.item_name === "Gagal") throw new Error("insert failed");
+    created.push(data);
+    return { id: 40 + created.length };
+  };
+  const progress = [];
+  models.db1.InventoryRequestVerificationProgress.create = async (data) => { progress.push(data.id_inventory_request); return {}; };
+  let findWhere;
+  models.db1.InventoryRequest.findAll = async (options) => {
+    findWhere = options.where;
+    return options.where.id.map((id) => ({ toJSON: () => ({ id, status: "pending" }) }));
+  };
+
+  const result = await inventoryRequestService.createMany([
+    { item_name: "Kursi", quantity_unit: "unit", quantity: 2, status: "approve" },
+    { item_name: "Meja", quantity_unit: "unit", quantity: 1 },
+  ], 5, false);
+  assert.equal(transactions, 1);
+  assert.deepEqual(created.map((data) => [data.item_name, data.status, data.id_user_request]),
+    [["Kursi", "pending", 5], ["Meja", "pending", 5]]);
+  assert.deepEqual(progress, [41, 42]);
+  assert.deepEqual(findWhere.id, [41, 42]);
+  assert.deepEqual(result.map((row) => row.id), [41, 42]);
+
+  await assert.rejects(inventoryRequestService.createMany([
+    { item_name: "Lemari", quantity_unit: "unit", quantity: 1 },
+    { item_name: "Gagal", quantity_unit: "unit", quantity: 1 },
+  ], 5, false), /insert failed/);
+  assert.equal(rolledBack, true);
 });

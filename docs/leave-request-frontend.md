@@ -10,6 +10,12 @@ Leave request dipakai karyawan untuk mengajukan izin (misalnya sakit atau keperl
 request supervisor → request hr → request spv hr → request manager hr → request director → approved
 ```
 
+Khusus **sick leave** yang SKD-nya belum terlampir saat approval HR:
+
+```
+... → request director → request verification hr → approved
+```
+
 | Status               | Arti                                  | Tombol yang tampil                        |
 | -------------------- | ------------------------------------- | ----------------------------------------- |
 | `request supervisor` | Menunggu atasan                       | Edit (pembuat), Approve / Reject (Atasan) |
@@ -17,10 +23,20 @@ request supervisor → request hr → request spv hr → request manager hr → 
 | `request spv hr`     | Menunggu SPV HR                       | Approve / Reject (SPV HR)                 |
 | `request manager hr` | Menunggu Manager HR                   | Approve / Reject (Manager HR)             |
 | `request director`   | Menunggu Direktur                     | Approve / Reject (Direktur)               |
+| `request verification hr` | Sick leave tanpa SKD: menunggu Admin/SPV HR melampirkan surat keterangan dokter | Verify + upload SKD (Admin/SPV HR) |
 | `approved`           | Disetujui semua tahap                 | Tidak ada                                 |
 | `rejected supervisor`, `rejected hr`, `rejected spv hr`, `rejected manager hr`, `rejected director` | Ditolak di tahap tersebut | Tidak ada |
 
-`approved` dan semua `rejected ...` adalah status akhir. Reject di tahap mana pun langsung menghentikan request.
+`approved` dan semua `rejected ...` adalah status akhir. Reject di tahap mana pun langsung menghentikan request. Step `request verification hr` tidak punya reject.
+
+### Sick leave dan SKD
+
+Request dianggap **sick leave** jika `type` mengandung kata `sick` (huruf besar/kecil tidak berpengaruh), misalnya `Sick` atau `Sick Leave`.
+
+- Saat **HR approve** sick leave, HR wajib memilih `sick_letter_status`: `attached` (sudah terlampir SKD) atau `not attached` (belum terlampir SKD). Untuk type lain field ini diabaikan.
+- Jika `not attached`, setelah Direktur approve status menjadi `request verification hr`. Admin/SPV HR lalu melampirkan SKD lewat endpoint verify, dan status menjadi `approved`.
+- Jika `attached`, alurnya sama seperti biasa: Direktur approve → `approved`.
+- `sick_letter_status` ada di response list/detail. Setelah verify nilainya menjadi `attached`.
 
 > **Penting:** fitur ini **belum terhubung ke approval flow**, jadi response belum membawa `is_can_approve_reject` / `action_label`. Backend hanya mengecek urutan status, bukan siapa yang menekan tombol. **Frontend yang perlu menampilkan tombol Approve/Reject hanya ke role yang sesuai** dengan status saat ini (lihat tabel di atas).
 
@@ -34,6 +50,7 @@ request supervisor → request hr → request spv hr → request manager hr → 
 | `edited`              | Request diedit pembuat      |
 | `approved supervisor` / `approved hr` / `approved spv hr` / `approved manager hr` / `approved director` | Tahap tersebut approve |
 | `rejected supervisor` / `rejected hr` / `rejected spv hr` / `rejected manager hr` / `rejected director` | Tahap tersebut reject (alasan ada di `note`) |
+| `verified hr`         | Admin/SPV HR melampirkan SKD |
 
 ## Endpoint
 
@@ -44,6 +61,7 @@ request supervisor → request hr → request spv hr → request manager hr → 
 | Buat              | `POST /api/leave-requests`                         |                                                   |
 | Edit              | `PUT /api/leave-requests/:id`                      | Hanya pembuat, hanya saat `request supervisor`    |
 | Approve / Reject  | `PATCH /api/leave-requests/{tahap}/approve/:id`, `PATCH /api/leave-requests/{tahap}/reject/:id` | `{tahap}` lihat tabel di bawah |
+| Verify SKD        | `PATCH /api/leave-requests/verification-hr/verify/:id` | Hanya saat `request verification hr`, lihat bagian 5b |
 
 | Status saat ini      | `{tahap}` di URL |
 | -------------------- | ---------------- |
@@ -167,7 +185,9 @@ Catatan field:
 | Kondisi                                                                  | Tampilkan                         |
 | ------------------------------------------------------------------------ | --------------------------------- |
 | `status === "request supervisor"` dan user login = pembuat (`id_user_request`) | Tombol **Edit**             |
-| `status` diawali `request ` dan role user sesuai tahap (lihat tabel Konsep singkat) | Tombol **Approve** dan **Reject** |
+| `status` diawali `request ` (selain `request verification hr`) dan role user sesuai tahap (lihat tabel Konsep singkat) | Tombol **Approve** dan **Reject** |
+| `status === "request hr"` dan `type` mengandung `sick` | Di form approve HR, tampilkan pilihan **Sudah terlampir SKD** (`attached`) / **Belum terlampir SKD** (`not attached`), wajib dipilih |
+| `status === "request verification hr"` dan role Admin/SPV HR | Tombol **Verify** dengan upload SKD |
 | `status === "approved"` atau diawali `rejected `                         | Tanpa tombol                      |
 
 Untuk badge "Menunggu ...", ambil nama tahap dari status, misalnya `request spv hr` → "Menunggu SPV HR".
@@ -221,7 +241,42 @@ PATCH /api/leave-requests/hr/reject/12
 { "note": "Surat dokter tidak terbaca, mohon ajukan ulang" }
 ```
 
+Approve HR untuk sick leave (`sick_letter_status` **wajib**):
+
+```http
+PATCH /api/leave-requests/hr/approve/12
+```
+
+```json
+{ "sick_letter_status": "not attached", "note": "SKD menyusul" }
+```
+
 Keduanya mengembalikan detail request terbaru. Request yang ditolak tidak bisa diedit atau dibuka lagi; karyawan perlu membuat request baru.
+
+## 5b. Verify SKD (Admin/SPV HR)
+
+```http
+PATCH /api/leave-requests/verification-hr/verify/12
+```
+
+```json
+{
+  "note": "SKD diterima (opsional)",
+  "files_attachment": [
+    {
+      "original_name": "skd-budi.pdf",
+      "stored_name": "1760600000000-skd-budi.pdf",
+      "url": "/uploads/leave/1760600000000-skd-budi.pdf",
+      "mime_type": "application/pdf",
+      "size": 150000
+    }
+  ]
+}
+```
+
+- `files_attachment` wajib berisi minimal satu file baru (SKD). Upload dulu lewat endpoint upload, lalu kirim hasilnya.
+- File **ditambahkan** ke `files_attachment` yang sudah ada; lampiran sebelumnya tidak dihapus. Jadi kirim file baru saja, tidak perlu menyertakan `id` file lama.
+- Status menjadi `approved` dan `sick_letter_status` menjadi `attached`.
 
 ## 6. Pesan error yang perlu ditangani
 
@@ -235,6 +290,8 @@ Keduanya mengembalikan detail request terbaru. Request yang ditolak tidak bisa d
 | 400  | `files_attachment must be an array`                           | `files_attachment` bukan array                          |
 | 400  | `Employee <id> not found`                                     | `id_employee` tidak ada                                 |
 | 400  | `note is required for rejection`                              | Reject tanpa note                                       |
+| 400  | `sick_letter_status must be one of: attached, not attached`  | HR approve sick leave tanpa memilih status SKD          |
+| 400  | `files_attachment must contain the doctor's letter (SKD)`, `files_attachment[i] must have original_name, stored_name and url` | Verify tanpa file SKD |
 | 403  | `Only the creator can edit this leave request`                | Edit oleh user selain pembuat                           |
 | 404  | `Leave request not found`                                     | ID tidak ada                                            |
 | 409  | `Only leave requests awaiting the supervisor can be edited`   | Edit setelah atasan memproses                           |

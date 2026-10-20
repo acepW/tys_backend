@@ -95,10 +95,24 @@ class LeaveRequestController {
       try {
         const body = req.body || {};
         return successResponse(res,
-          await service.decide(req.params.id, stage, decision, req.user.id, body.note, body.is_double_database !== false),
+          await service.decide(req.params.id, stage, decision, req.user.id, body, body.is_double_database !== false),
           `Leave request ${decision === "approve" ? "approved" : "rejected"} successfully`);
       } catch (error) { return respondError(res, error); }
     };
+  }
+
+  async verifyHr(req, res) {
+    try {
+      const body = req.body || {};
+      const files = body.files_attachment;
+      if (!Array.isArray(files) || !files.length)
+        return errorResponse(res, "files_attachment must contain the doctor's letter (SKD)", 400);
+      for (let i = 0; i < files.length; i++)
+        if (!files[i]?.original_name || !files[i]?.stored_name || !files[i]?.url)
+          return errorResponse(res, `files_attachment[${i}] must have original_name, stored_name and url`, 400);
+      return successResponse(res, await service.verifyHr(req.params.id, req.user.id, body, body.is_double_database !== false),
+        "Leave request verified successfully");
+    } catch (error) { return respondError(res, error); }
   }
 }
 

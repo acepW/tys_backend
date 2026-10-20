@@ -118,27 +118,48 @@ class InventoryRequestService {
     return request;
   }
 
+  async createOne(input, userId, t1, t2) {
+    const request = await mirrorCreate(
+      "InventoryRequest",
+      { ...pick(input), status: "pending", id_user_request: userId },
+      t1,
+      t2,
+    );
+    await syncFiles(
+      "inventory_requests",
+      request.id,
+      "files_product",
+      input.files_product,
+      userId,
+      t1,
+      t2,
+    );
+    await this.addProgress(request.id, userId, "pending", "Inventory request created", t1, t2);
+    return request.id;
+  }
+
   async create(input, userId, isDoubleDatabase = true) {
-    const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      const request = await mirrorCreate(
-        "InventoryRequest",
-        { ...pick(input), status: "pending", id_user_request: userId },
-        t1,
-        t2,
-      );
-      await syncFiles(
-        "inventory_requests",
-        request.id,
-        "files_product",
-        input.files_product,
-        userId,
-        t1,
-        t2,
-      );
-      await this.addProgress(request.id, userId, "pending", "Inventory request created", t1, t2);
-      return request.id;
-    });
+    const id = await withTransactions(isDoubleDatabase, (t1, t2) =>
+      this.createOne(input, userId, t1, t2),
+    );
     return this.getById(id);
+  }
+
+  // Creates one pending request per input in a single transaction (all or nothing).
+  // Each request is then edited, approved and rejected on its own.
+  async createMany(inputs, userId, isDoubleDatabase = true) {
+    const ids = await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const created = [];
+      for (const input of inputs)
+        created.push(await this.createOne(input, userId, t1, t2));
+      return created;
+    });
+    const rows = await models.db1.InventoryRequest.findAll({
+      where: { id: ids, is_active: true },
+      include: this.includes(),
+      order: [["id", "ASC"]],
+    });
+    return rows.map((row) => row.toJSON());
   }
 
   async update(id, input, userId, isDoubleDatabase = true) {

@@ -21,7 +21,9 @@ function validateItems(items) {
 }
 
 function validateFileArrays(body) {
-  for (const key of ["files_payment", "files_purchase_proof", "files_invoice", "files_goods_in", "files_goods_receipt"])
+  for (const key of ["files_payment", "files_purchase_proof", "files_invoice", "files_goods_in", "files_goods_receipt",
+    "files_return_delivery_proof", "files_return_waybill", "files_refund_proof",
+    "files_refund_received_proof"])
     if (body[key] !== undefined && !Array.isArray(body[key])) return `${key} must be an array`;
   return null;
 }
@@ -37,6 +39,18 @@ class GaPurchaseOrderController {
       const where = {};
       for (const key of ["id_company", "status"]) if (req.query?.[key]) where[key] = req.query[key];
       return successResponse(res, await service.getAll(where, Number(req.query?.page) || null, Number(req.query?.limit) || null));
+    } catch (error) { return respondError(res, error); }
+  }
+
+  async getReturnedItems(req, res) {
+    try {
+      const itemWhere = {};
+      const orderWhere = {};
+      for (const key of ["id_ga_purchase_order", "id_vendor", "receiving_status"])
+        if (req.query?.[key]) itemWhere[key] = req.query[key];
+      if (req.query?.id_company) orderWhere.id_company = req.query.id_company;
+      return successResponse(res, await service.getReturnedItems(itemWhere, orderWhere,
+        Number(req.query?.page) || null, Number(req.query?.limit) || null, req.query?.search?.trim()));
     } catch (error) { return respondError(res, error); }
   }
 
@@ -74,23 +88,29 @@ class GaPurchaseOrderController {
     } catch (error) { return respondError(res, error); }
   }
 
-  async acceptItem(req, res) {
-    try {
-      const body = req.body || {};
-      const invalid = validateFileArrays(body);
-      if (invalid) return errorResponse(res, invalid, 400);
-      return successResponse(res, await service.acceptItem(req.params.id, req.params.itemId, req.user.id,
-        body, body.is_double_database !== false), "GA purchase order item accepted");
-    } catch (error) { return respondError(res, error); }
+  // Builds a per-item receiving handler; call receives (id, itemId, userId, body, isDoubleDatabase).
+  itemAction(call, message) {
+    return async (req, res) => {
+      try {
+        const body = req.body || {};
+        const invalid = validateFileArrays(body);
+        if (invalid) return errorResponse(res, invalid, 400);
+        return successResponse(res, await call(req.params.id, req.params.itemId, req.user.id,
+          body, body.is_double_database !== false), message);
+      } catch (error) { return respondError(res, error); }
+    };
   }
 
-  async returnItem(req, res) {
-    try {
-      const body = req.body || {};
-      return successResponse(res, await service.returnItem(req.params.id, req.params.itemId, req.user.id,
-        body, body.is_double_database !== false), "GA purchase order item returned");
-    } catch (error) { return respondError(res, error); }
-  }
+  saveRealization = this.itemAction((...args) => service.saveRealization(...args),
+    "GA purchase order item realization saved");
+  acceptItem = this.itemAction((...args) => service.acceptItem(...args), "GA purchase order item accepted");
+  returnItem = this.itemAction((...args) => service.returnItem(...args), "GA purchase order item returned");
+  requestRefund = this.itemAction((...args) => service.requestRefund(...args),
+    "GA purchase order item refund requested");
+  approveRefund = this.itemAction((id, itemId, userId, body, isDouble) =>
+    service.refundDecision(id, itemId, userId, true, body, isDouble), "GA purchase order item refund approved");
+  rejectRefund = this.itemAction((id, itemId, userId, body, isDouble) =>
+    service.refundDecision(id, itemId, userId, false, body, isDouble), "GA purchase order item refund rejected");
 
   async action(req, res) {
     try {

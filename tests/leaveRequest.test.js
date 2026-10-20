@@ -62,9 +62,9 @@ test("leave request goes through every approval stage in order", async (t) => {
 test("leave request rejection needs a note and stops at that stage", async (t) => {
   const request = { id: 1, status: "request spv hr", id_user_request: 5 };
   const writes = mockLeaveRequest(t, request);
-  await assert.rejects(service.decide(1, "spv hr", "reject", 9, " ", false), /note is required/);
-  await assert.rejects(service.decide(1, "hr", "reject", 9, "x", false), /not allowed from status "request spv hr"/);
-  await service.decide(1, "spv hr", "reject", 9, "Surat dokter tidak jelas", false);
+  await assert.rejects(service.decide(1, "spv hr", "reject", 9, { note: " " }, false), /note is required/);
+  await assert.rejects(service.decide(1, "hr", "reject", 9, { note: "x" }, false), /not allowed from status "request spv hr"/);
+  await service.decide(1, "spv hr", "reject", 9, { note: "Surat dokter tidak jelas" }, false);
   assert.equal(request.status, "rejected spv hr");
   assert.deepEqual(writes.at(-1), ["progress", "rejected spv hr", "Surat dokter tidak jelas"]);
 });
@@ -80,6 +80,50 @@ test("only the creator can edit a leave request awaiting the supervisor", async 
 
   request.status = "request hr";
   await assert.rejects(service.update(1, { reason: "x" }, 5, false), /awaiting the supervisor/);
+});
+
+test("sick leave without a doctor's letter goes to HR verification after the director", async (t) => {
+  const request = { id: 1, type: "Sick Leave", status: "request hr", id_user_request: 5 };
+  const writes = mockLeaveRequest(t, request);
+  const originalFile = models.db1.File.create;
+  t.after(() => { models.db1.File.create = originalFile; });
+  const files = [];
+  models.db1.File.create = async (data) => { files.push(data); return { id: 50 + files.length, ...data }; };
+
+  await assert.rejects(service.decide(1, "hr", "approve", 9, {}, false), /sick_letter_status must be one of: attached, not attached/);
+  await service.decide(1, "hr", "approve", 9, { sick_letter_status: "not attached" }, false);
+  assert.equal(request.sick_letter_status, "not attached");
+  for (const stage of ["spv hr", "manager hr"]) await service.decide(1, stage, "approve", 9, {}, false);
+  await assert.rejects(service.verifyHr(1, 9, { files_attachment: [{ original_name: "skd.pdf" }] }, false),
+    /not allowed from status "request director"/);
+  await service.decide(1, "director", "approve", 9, {}, false);
+  assert.equal(request.status, "request verification hr");
+
+  await assert.rejects(service.verifyHr(1, 9, { files_attachment: [] }, false), /doctor's letter/);
+  const skd = { original_name: "skd.pdf", stored_name: "1-skd.pdf", url: "/files/1-skd.pdf", mime_type: "application/pdf", size: 10 };
+  await service.verifyHr(1, 9, { files_attachment: [skd], note: "SKD diterima" }, false);
+  assert.equal(request.status, "approved");
+  assert.equal(request.sick_letter_status, "attached");
+  assert.deepEqual(files.map((file) => [file.fileable_type, file.fileable_id, file.category, file.stored_name, file.indonesian_name, file.uploaded_by]),
+    [["leave_requests", 1, "files_attachment", "1-skd.pdf", "skd.pdf", 9]]);
+  assert.deepEqual(writes.at(-1), ["progress", "verified hr", "SKD diterima"]);
+});
+
+test("sick leave with the doctor's letter attached, and other types, end at the director", async (t) => {
+  const sick = { id: 1, type: "sick", status: "request hr", id_user_request: 5 };
+  mockLeaveRequest(t, sick);
+  await service.decide(1, "hr", "approve", 9, { sick_letter_status: "attached" }, false);
+  for (const stage of ["spv hr", "manager hr", "director"]) await service.decide(1, stage, "approve", 9, {}, false);
+  assert.equal(sick.status, "approved");
+
+  const personal = { id: 2, type: "Paternity Leave (Husband)", status: "request hr", id_user_request: 5 };
+  mockLeaveRequest(t, personal);
+  await service.decide(2, "hr", "approve", 9, { sick_letter_status: "not attached" }, false);
+  assert.equal(personal.sick_letter_status, undefined);
+  for (const stage of ["spv hr", "manager hr", "director"]) await service.decide(2, stage, "approve", 9, {}, false);
+  assert.equal(personal.status, "approved");
+  assert.equal(service.isSickLeave("Sick Leave"), true);
+  assert.equal(service.isSickLeave("Personal"), false);
 });
 
 test("leave request duration defaults to the inclusive day count", () => {

@@ -96,4 +96,48 @@ module.exports = {
     numberField: "item_name",
     statuses: { pending: "Approve / Reject Inventory Request" },
   },
+  // While request, the approver reviews each item, then approves the whole opname.
+  "inventory opname": {
+    model: "InventoryOpname",
+    label: "Inventory Opname",
+    numberField: "opname_no",
+    statuses: { request: "Approve / Reject Inventory Opname" },
+  },
+  // Recruitment modules: each document is created pending and approved or rejected.
+  "recruitment request": {
+    model: "RecruitmentRequest",
+    label: "Recruitment Request",
+    numberField: "job_title",
+    statuses: { pending: "Approve / Reject Recruitment Request" },
+  },
+  "recruitment candidate": {
+    model: "RecruitmentCandidate",
+    label: "Recruitment Candidate",
+    numberField: "name",
+    statuses: { pending: "Approve / Reject Recruitment Candidate" },
+  },
+  "recruitment hr interview": {
+    model: "RecruitmentHrInterview",
+    label: "Recruitment HR Interview",
+    numberField: "candidate_name",
+    statuses: { pending: "Approve / Reject HR Interview" },
+  },
+  "recruitment user interview": {
+    model: "RecruitmentUserInterview",
+    label: "Recruitment User Interview",
+    numberField: "candidate_name",
+    statuses: { pending: "Approve / Reject User Interview" },
+  },
+  "recruitment offering": {
+    model: "RecruitmentOffering",
+    label: "Recruitment Offering Letter",
+    numberField: "candidate_name",
+    statuses: { pending: "Approve / Reject Offering Letter" },
+  },
+  "recruitment contract": {
+    model: "RecruitmentContract",
+    label: "Recruitment Employment Contract",
+    numberField: "candidate_name",
+    statuses: { pending: "Approve / Reject Employment Contract" },
+  },
 };
