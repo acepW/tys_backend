@@ -63,11 +63,11 @@ Semua field opsional; `opname_date` default hari ini. `opname_no` dibuat otomati
 
 - `GET /api/inventory-opnames?search=OPN-10&status=pending&page=1&limit=10`: `search` mencari `opname_no`. Response tidak berisi item.
 - `GET /api/inventory-opnames/:id`: detail beserta `user_opname`, semua `items` (urut nama barang), dan `verification_progress`.
-- `GET /api/inventory-opnames/:id/items?search=kursi&status=reject&page=1&limit=50`: item saja dengan pagination, untuk opname yang itemnya banyak. `search` mencari nama barang.
+- `GET /api/inventory-opnames/:id/items?search=kursi&status=reject&page=1&limit=50`: item saja dengan pagination, untuk opname yang itemnya banyak. `search` mencari nama barang. Bisa juga difilter dengan `purchase_request_category`.
 
 List dan detail berisi `is_can_approve_reject` (user boleh review item/approve tiket) dan `action_label`.
 
-Field item: `id`, `id_inventory`, `item_name`, `brand`, `serial_number`, `size`, `material`, `other`, `quantity_unit`, `quantity_system`, `quantity_actual`, `quantity_difference`, `input_status`, `note`, `status`, `review_note`.
+Field item: `id`, `id_inventory`, `item_name`, `brand`, `serial_number`, `size`, `material`, `other`, `purchase_request_category` (disalin dari inventory saat opname dibuat), `quantity_unit`, `quantity_system`, `quantity_actual`, `quantity_difference`, `input_status`, `note`, `status`, `review_note`, dan `details` (rincian status, lihat bagian 3).
 
 ## 3. Simpan hitungan (banyak sekaligus)
 
@@ -76,13 +76,23 @@ Field item: `id`, `id_inventory`, `item_name`, `brand`, `serial_number`, `size`,
 ```json
 {
   "items": [
-    { "id": 101, "quantity_actual": 8, "input_status": "2 unit patah", "note": "Gudang A" },
+    {
+      "id": 101,
+      "quantity_actual": 8,
+      "input_status": "2 unit patah",
+      "note": "Gudang A",
+      "details": [
+        { "quantity": 6, "input_status": "Baik", "note": "Rak 1" },
+        { "quantity": 2, "input_status": "Patah" }
+      ]
+    },
     { "id": 102, "quantity_actual": 4 }
   ]
 }
 ```
 
 - `id` adalah `items[].id` (bukan `id_inventory`). `quantity_actual` wajib (angka ≥ 0); `input_status` dan `note` opsional.
+- `details` **opsional**: rincian status item. Setiap baris berisi `quantity` (wajib, angka ≥ 0), `input_status` (wajib), dan `note` (opsional). Jika `details` dikirim, isinya menggantikan rincian lama (`[]` menghapus semua rincian). Jika tidak dikirim, rincian lama tetap. Jumlah `quantity` di `details` tidak harus sama dengan `quantity_actual`.
 - Item menjadi `save` dan `quantity_difference` dihitung otomatis.
 - Saat tiket `pending`: item `pending` dan `save` bisa disimpan (dan disimpan ulang).
 - Saat tiket `request`: hanya item `reject` yang bisa disimpan; setelah disimpan statusnya kembali `save` dan approver bisa langsung me-review lagi.
@@ -156,5 +166,5 @@ Progress dicatat per aksi tiket, **bukan per item**, karena satu opname berisi s
 
 ## Setup
 
-- Migrasi database (sekali per environment): `npm run db:sync-inventory-opname`.
+- Migrasi database (sekali per environment): `npm run db:sync-inventory-opname`. Jalankan lagi untuk membuat tabel rincian status item `inventory_opname_item_details` dan kolom `purchase_request_category` di item opname (item opname lama diisi dari inventory-nya).
 - Approver diatur lewat approval flow dengan `approval_for` = `inventory opname` dan status `request`. `npm run db:setup-approval-flows [nama_posisi]` membuat flow default jika belum ada. Selama `APPROVAL_ENFORCE` belum `true`, review dan approve oleh siapa pun tetap berhasil.

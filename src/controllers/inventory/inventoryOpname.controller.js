@@ -30,6 +30,18 @@ function checkCount(item) {
   if (item.quantity_actual == null || item.quantity_actual === "" || !Number.isFinite(quantity) || quantity < 0)
     return "quantity_actual must be a non-negative number";
   if (item.input_status != null && typeof item.input_status !== "string") return "input_status must be a string";
+  if (item.details === undefined) return null;
+  if (!Array.isArray(item.details)) return "details must be an array";
+  for (let i = 0; i < item.details.length; i++) {
+    const detail = item.details[i];
+    if (!detail || typeof detail !== "object") return `details[${i}] must be an object`;
+    const detailQuantity = Number(detail.quantity);
+    if (detail.quantity == null || detail.quantity === "" || !Number.isFinite(detailQuantity) || detailQuantity < 0)
+      return `details[${i}].quantity must be a non-negative number`;
+    if (typeof detail.input_status !== "string" || !detail.input_status.trim())
+      return `details[${i}].input_status is required`;
+    if (detail.note != null && typeof detail.note !== "string") return `details[${i}].note must be a string`;
+  }
   return null;
 }
 
@@ -65,6 +77,8 @@ class InventoryOpnameController {
       const where = {};
       if (req.query?.search) where.item_name = { [Op.like]: `%${req.query.search}%` };
       if (req.query?.status) where.status = req.query.status;
+      if (req.query?.purchase_request_category)
+        where.purchase_request_category = req.query.purchase_request_category;
       return successResponse(res, await service.getItems(req.params.id, where, ...page(req)));
     } catch (error) { return respondError(res, error); }
   }

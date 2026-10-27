@@ -45,6 +45,11 @@ const check = {
     const id = Number(data[key]);
     if (!Number.isInteger(id) || id <= 0) fail(`${key} must be a positive integer`);
   },
+  positiveInteger(data, key) {
+    if (data[key] == null || data[key] === "") return;
+    const value = Number(data[key]);
+    if (!Number.isInteger(value) || value <= 0) fail(`${key} must be a positive integer`);
+  },
   amount(data, key) {
     if (data[key] == null || data[key] === "") return;
     const amount = Number(data[key]);
@@ -59,9 +64,13 @@ const check = {
 const blankToNull = (data) =>
   Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value === "" ? null : value]));
 
+// Values compared and stored as text in revisions, so 3 and "3" are the same value.
+const revisionValue = (value) => (value == null || value === "" ? null : String(value));
+
 /**
  * One recruitment module: a document created as "pending", edited while pending
- * (or always, with editableStatuses null) and approved or rejected once.
+ * (or always, with editableStatuses null) and approved or rejected once, or through
+ * several approval stages.
  * config:
  *   module        name stored in recruitment_verification_progress.module
  *   modelName     Sequelize model
@@ -73,6 +82,13 @@ const blankToNull = (data) =>
  *   prepare(data, existing, t1)    validates and completes data before it is saved
  *   afterSave(doc, input, userId, t1, t2)   side effects after create/edit
  *   editableStatuses   statuses that may be edited (null = any)
+ *   initialStatus(data, userId, t1)   status on create (default "pending")
+ *   approvalStages     { status: { by, next } }: each status waiting for an approver,
+ *                      who acts as `by`; approve moves to `next`, reject to "reject".
+ *                      Without it, only "pending" can be approved or rejected.
+ *   revisions          { modelName, foreignKey }: every edit is a revision: its changed
+ *                      fields (old and new value) are stored in that model and the
+ *                      progress says "revised" instead of "edited"
  */
 class RecruitmentDocumentService {
   constructor(config) {
@@ -159,9 +175,10 @@ class RecruitmentDocumentService {
   async create(input, userId, isDoubleDatabase = true) {
     const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const data = await this.config.prepare(this.pick(input, true), null, t1);
+      const status = (await this.config.initialStatus?.(data, userId, t1)) ?? "pending";
       const doc = await mirrorCreate(
         this.config.modelName,
-        { ...data, id_user_request: userId, status: "pending" },
+        { ...data, id_user_request: userId, status },
         t1,
         t2,
       );
@@ -180,6 +197,8 @@ class RecruitmentDocumentService {
       if (editableStatuses && !editableStatuses.includes(existing.status))
         fail(`${this.config.label} cannot be edited while it is ${existing.status}`, 409);
       const data = await this.config.prepare(this.pick(input, false), existing, t1);
+      const isRevision = Boolean(this.config.revisions);
+      const changed = isRevision ? await this.addRevisions(existing, data, userId, t1, t2) : [];
       await mirrorUpdate(this.config.modelName, existing.id, data, t1, t2);
       await this.syncAllFiles(existing.id, input, userId, t1, t2);
       await this.config.afterSave?.(
@@ -190,21 +209,60 @@ class RecruitmentDocumentService {
         t2,
         existing,
       );
-      await this.addProgress(existing.id, userId, "edited", `${this.config.label} edited`, t1, t2);
+      const action = isRevision ? "revised" : "edited";
+      const note = changed.length
+        ? `${this.config.label} ${action}: ${changed.join(", ")}`
+        : `${this.config.label} ${action}`;
+      await this.addProgress(existing.id, userId, action, note, t1, t2);
     });
     return this.getById(id);
   }
 
-  // decision: "approve" or "reject"; a rejection needs a note. Only pending documents.
+  // Stores one revision row per field whose value changes, all under the next
+  // revision_no of the document; returns the changed field names.
+  async addRevisions(existing, data, userId, t1, t2) {
+    const { modelName, foreignKey } = this.config.revisions;
+    const changed = Object.keys(data).filter(
+      (key) => revisionValue(existing[key]) !== revisionValue(data[key]),
+    );
+    if (!changed.length) return changed;
+    const last = await models.db1[modelName].max("revision_no", {
+      where: { [foreignKey]: existing.id },
+      transaction: t1,
+    });
+    const revisionNo = (Number(last) || 0) + 1;
+    for (const field of changed)
+      await mirrorCreate(
+        modelName,
+        {
+          [foreignKey]: existing.id,
+          revision_no: revisionNo,
+          id_user: userId,
+          field,
+          old_value: revisionValue(existing[field]),
+          new_value: revisionValue(data[field]),
+        },
+        t1,
+        t2,
+      );
+    return changed;
+  }
+
+  // decision: "approve" or "reject"; a rejection needs a note. With approvalStages
+  // the document moves stage by stage and the progress names who acted (e.g.
+  // "approve hr staff"); without it only a pending document is decided, once.
   async decide(id, decision, userId, note, isDoubleDatabase = true) {
     if (!["approve", "reject"].includes(decision)) fail("Invalid decision");
     if (decision === "reject" && !note?.trim()) fail("note is required for rejection");
+    const { approvalStages } = this.config;
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const doc = await this.lock(id, t1);
-      if (doc.status !== "pending")
-        fail(`${this.config.label} is already ${doc.status}`, 409);
-      await mirrorUpdate(this.config.modelName, doc.id, { status: decision }, t1, t2);
-      await this.addProgress(doc.id, userId, decision, note, t1, t2);
+      const stage = approvalStages ? approvalStages[doc.status] : doc.status === "pending" && { next: "approve" };
+      if (!stage) fail(`${this.config.label} is already ${doc.status}`, 409);
+      const status = decision === "approve" ? stage.next : "reject";
+      await mirrorUpdate(this.config.modelName, doc.id, { status }, t1, t2);
+      const progressStatus = stage.by ? `${decision} ${stage.by}` : decision;
+      await this.addProgress(doc.id, userId, progressStatus, note, t1, t2);
     });
     return this.getById(id);
   }

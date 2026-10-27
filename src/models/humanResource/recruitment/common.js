@@ -1,10 +1,12 @@
 const { DataTypes } = require("sequelize");
 
 // Shared columns and associations of the recruitment modules. Every module is a
-// document created as "pending" and then approved or rejected.
+// document created as "pending" (the request: its first approval stage) and then
+// approved or rejected.
 const APPROVAL_STATUSES = ["pending", "approve", "reject"];
 
-const approvalColumns = () => ({
+// statuses[0] is the status a new document starts with.
+const approvalColumns = (statuses = APPROVAL_STATUSES) => ({
   id_user_request: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -12,9 +14,9 @@ const approvalColumns = () => ({
     comment: "User who created the document",
   },
   status: {
-    type: DataTypes.ENUM(...APPROVAL_STATUSES),
+    type: DataTypes.ENUM(...statuses),
     allowNull: false,
-    defaultValue: "pending",
+    defaultValue: statuses[0],
   },
   is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 });

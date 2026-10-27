@@ -104,11 +104,17 @@ module.exports = {
     statuses: { request: "Approve / Reject Inventory Opname" },
   },
   // Recruitment modules: each document is created pending and approved or rejected.
+  // A request (candidate request) has no number; tasks show its id. It is created at
+  // "request hr staff", or "request spv/manager hr" from the HR division.
   "recruitment request": {
     model: "RecruitmentRequest",
     label: "Recruitment Request",
-    numberField: "job_title",
-    statuses: { pending: "Approve / Reject Recruitment Request" },
+    numberField: "id",
+    statuses: {
+      "request hr staff": "Approve / Reject Recruitment Request by HR Staff",
+      "request spv/manager hr": "Approve / Reject Recruitment Request by SPV/Manager HR",
+      "request director": "Approve / Reject Recruitment Request by Director",
+    },
   },
   "recruitment candidate": {
     model: "RecruitmentCandidate",

@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const service = require("../../services/humanResource/leaveRequest.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const { isValidDateOnly } = require("../../utils/holidayCalendar");
+const { SICK_LETTER_STATUSES } = require("../../models/humanResource/leaveRequest.model");
 
 const OPTIONAL_TEXT = {
   health_facility_name: 255,
@@ -42,6 +43,9 @@ function validate(body, partial = false) {
     if (typeof value !== "string") return `${field} must be a string`;
     if (max && value.length > max) return `${field} must not exceed ${max} characters`;
   }
+  // Optional: leave requests are not only for sick leave.
+  if (body.sick_letter_status != null && !SICK_LETTER_STATUSES.includes(body.sick_letter_status))
+    return `sick_letter_status must be one of: ${SICK_LETTER_STATUSES.join(", ")}`;
   if (body.files_attachment !== undefined && !Array.isArray(body.files_attachment))
     return "files_attachment must be an array";
   return null;
@@ -101,7 +105,7 @@ class LeaveRequestController {
     };
   }
 
-  async verifyHr(req, res) {
+  async submitDoctorLetter(req, res) {
     try {
       const body = req.body || {};
       const files = body.files_attachment;
@@ -110,6 +114,14 @@ class LeaveRequestController {
       for (let i = 0; i < files.length; i++)
         if (!files[i]?.original_name || !files[i]?.stored_name || !files[i]?.url)
           return errorResponse(res, `files_attachment[${i}] must have original_name, stored_name and url`, 400);
+      return successResponse(res, await service.submitDoctorLetter(req.params.id, req.user.id, body,
+        body.is_double_database !== false), "Doctor's letter submitted successfully");
+    } catch (error) { return respondError(res, error); }
+  }
+
+  async verifyHr(req, res) {
+    try {
+      const body = req.body || {};
       return successResponse(res, await service.verifyHr(req.params.id, req.user.id, body, body.is_double_database !== false),
         "Leave request verified successfully");
     } catch (error) { return respondError(res, error); }

@@ -1,5 +1,9 @@
-const { models, fail, mirrorUpdate } = require("../../procurement/shared");
+const { models, fail, withTransactions, mirrorUpdate } = require("../../procurement/shared");
 const { RecruitmentDocumentService, check } = require("./recruitmentDocument.service");
+const {
+  REQUEST_TYPES,
+  HIRING_STATUSES,
+} = require("../../../models/humanResource/recruitment/recruitmentRequest.model");
 
 const today = () => new Date().toISOString().slice(0, 10);
 const activeStatuses = ["pending", "approve"];
@@ -62,25 +66,99 @@ const department = () => ({
   as: "department",
   attributes: ["id", "department_name"],
 });
+const company = () => ({ model: models.db1.Company, as: "company", attributes: ["id", "company_name"] });
+const division = () => ({
+  model: models.db1.Division,
+  as: "division",
+  attributes: ["id", "division_name", "division_code"],
+});
+const level = () => ({ model: models.db1.Level, as: "level", attributes: ["id", "level_name"] });
 const candidateInclude = () => ({
   model: models.db1.RecruitmentCandidate,
   as: "candidate",
-  attributes: ["id", "name", "job_title", "id_position", "id_department", "status"],
+  attributes: ["id", "id_recruitment_request", "name", "job_title", "id_position", "id_department", "status"],
 });
+
+// The HR division is recognised by its code or name, e.g. "HR", "HRD", "HRGA",
+// "Human Resources" or "HR & GA", so a renamed division still matches.
+function isHrDivision(division) {
+  if (!division) return false;
+  const code = String(division.division_code ?? "").toUpperCase();
+  const name = String(division.division_name ?? "");
+  return code.includes("HR") || /human\s*resource/i.test(name) || /\bHR/i.test(name);
+}
+
+async function isHrUser(userId, t1) {
+  const user = await models.db1.User.findByPk(userId, {
+    attributes: ["id", "id_division"],
+    include: [{ model: models.db1.Division, as: "division", attributes: ["division_code", "division_name"] }],
+    transaction: t1,
+  });
+  return isHrDivision(user?.division);
+}
+
+const requestMasterIds = ["id_company", "id_department", "id_division", "id_position", "id_level"];
 
 const request = new RecruitmentDocumentService({
   module: "request",
   modelName: "RecruitmentRequest",
   label: "Recruitment request",
-  fields: ["job_title", "id_position", "job_recruitment", "job_description"],
-  includes: () => [position()],
+  fields: [
+    ...requestMasterIds, "number_of_people", "job_requirement", "job_description", "request_type",
+    "reason", "hiring_deadline", "hiring_status",
+  ],
+  includes: () => [
+    company(),
+    department(),
+    division(),
+    position(),
+    level(),
+    {
+      model: models.db1.RecruitmentRequestRevision,
+      as: "revisions",
+      separate: true,
+      order: [["revision_no", "ASC"], ["id", "ASC"]],
+      include: [{ model: models.db1.User, as: "user", attributes: ["id", "name"] }],
+    },
+  ],
+  // Editable by anyone at every approval stage; every edit is kept in revisions.
+  editableStatuses: ["request hr staff", "request spv/manager hr", "request director"],
+  revisions: { modelName: "RecruitmentRequestRevision", foreignKey: "id_recruitment_request" },
+  approvalStages: {
+    "request hr staff": { by: "hr staff", next: "request spv/manager hr" },
+    "request spv/manager hr": { by: "spv/manager hr", next: "request director" },
+    "request director": { by: "director", next: "approve" },
+  },
+  // Created straight to HR Staff; a request from the HR division skips that stage.
+  async initialStatus(data, userId, t1) {
+    return (await isHrUser(userId, t1)) ? "request spv/manager hr" : "request hr staff";
+  },
   async prepare(data, existing) {
-    if (!existing || data.job_title !== undefined) check.required(data, "job_title");
-    if (!existing || data.id_position !== undefined) check.required(data, "id_position");
-    check.id(data, "id_position");
+    for (const key of [...requestMasterIds, "number_of_people", "request_type"])
+      if (!existing || data[key] !== undefined) check.required(data, key);
+    for (const key of requestMasterIds) check.id(data, key);
+    check.positiveInteger(data, "number_of_people");
+    if (data.request_type != null) check.oneOf(data, "request_type", REQUEST_TYPES);
+    check.date(data, "hiring_deadline");
+    if (data.hiring_status === null) fail("hiring_status is required");
+    if (data.hiring_status !== undefined) check.oneOf(data, "hiring_status", HIRING_STATUSES);
     return data;
   },
 });
+
+// Opens or closes hiring on an approved request; recorded in its progress.
+request.setHiringStatus = async function setHiringStatus(id, hiringStatus, userId, note, isDoubleDatabase = true) {
+  check.oneOf({ hiring_status: hiringStatus }, "hiring_status", HIRING_STATUSES);
+  await withTransactions(isDoubleDatabase, async (t1, t2) => {
+    const doc = await this.lock(id, t1);
+    if (doc.status !== "approve")
+      fail(`Hiring status can only be changed on an approved request, not ${doc.status}`, 409);
+    if (doc.hiring_status === hiringStatus) fail(`Hiring is already ${hiringStatus}`, 409);
+    await mirrorUpdate("RecruitmentRequest", doc.id, { hiring_status: hiringStatus }, t1, t2);
+    await this.addProgress(doc.id, userId, `hiring ${hiringStatus}`, note, t1, t2);
+  });
+  return this.getById(id);
+};
 
 const stepIncludes = () => {
   const db = models.db1;
@@ -99,23 +177,54 @@ const stepIncludes = () => {
   ];
 };
 
+// Locks in the recruitment request a candidate applies to: it must be approved and
+// still hiring.
+async function openRequest(id, t1) {
+  check.id({ id_recruitment_request: id }, "id_recruitment_request");
+  const row = await models.db1.RecruitmentRequest.findOne({ where: { id, is_active: true }, transaction: t1 });
+  if (!row) fail("Recruitment request not found", 404);
+  if (row.status !== "approve") fail(`Recruitment request is ${row.status}, not approved yet`, 409);
+  if (row.hiring_status !== "open") fail("Recruitment request hiring is closed", 409);
+  return row;
+}
+
 const candidate = new RecruitmentDocumentService({
   module: "candidate",
   modelName: "RecruitmentCandidate",
   label: "Recruitment candidate",
+  // Company, department, division, position and level are not taken from the body:
+  // they are copied from the chosen recruitment request.
   fields: [
-    "name", "job_title", "id_position", "id_department", "source", "disc", "recruitment_process",
-    "hr_interview_mechanism", "hr_interview_date", "hr_interview_time",
+    "id_recruitment_request", "name", "phone_number", "email", "job_title", "source", "disc",
+    "recruitment_process", "hr_interview_mechanism", "hr_interview_date", "hr_interview_time",
+    "hr_interview_meeting_room", "hr_interview_meeting_room_link",
     "user_interview_mechanism", "user_interview_date", "user_interview_time",
   ],
   fileableType: "recruitment_candidates",
   fileCategories: ["files_cv", "files_application_form"],
   // HR can always edit a candidate, e.g. to reschedule an interview.
   editableStatuses: null,
-  includes: () => [position(), department(), ...stepIncludes()],
-  async prepare(data, existing) {
-    if (!existing || data.name !== undefined) check.required(data, "name");
-    for (const key of ["id_position", "id_department"]) check.id(data, key);
+  includes: () => [
+    {
+      model: models.db1.RecruitmentRequest,
+      as: "recruitment_request",
+      attributes: ["id", "status", "hiring_status", "number_of_people", "hiring_deadline", "request_type"],
+    },
+    company(), department(), division(), position(), level(), ...stepIncludes(),
+  ],
+  async prepare(data, existing, t1) {
+    for (const key of ["id_recruitment_request", "name"])
+      if (!existing || data[key] !== undefined) check.required(data, key);
+    // A new or changed request copies its master data onto the candidate.
+    if (
+      data.id_recruitment_request !== undefined &&
+      Number(data.id_recruitment_request) !== existing?.id_recruitment_request
+    ) {
+      const row = await openRequest(data.id_recruitment_request, t1);
+      for (const key of requestMasterIds) data[key] = row[key];
+    }
+    if (data.email != null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))
+      fail("email must be a valid email address");
     for (const key of ["hr_interview_date", "user_interview_date"]) check.date(data, key);
     for (const key of ["hr_interview_time", "user_interview_time"]) check.time(data, key);
     return data;
@@ -289,4 +398,4 @@ async function candidateOptions(stage) {
     });
 }
 
-module.exports = { ...services, services, candidateOptions, STAGES, enterStage };
+module.exports = { ...services, services, candidateOptions, STAGES, enterStage, isHrDivision };

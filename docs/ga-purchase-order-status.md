@@ -59,16 +59,16 @@ Qty item:
 
 | Aksi                                 | Endpoint                                        | `receiving_status` yang diizinkan        | Hasil                                          |
 | ------------------------------------ | ----------------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
-| GA Staff simpan purchase realization | `PATCH /ga-staff/realization/:id/items/:itemId` | semua (selama order `request receiving`) | Data realisasi tersimpan; status tidak berubah |
+| GA Staff simpan purchase realization | `PATCH /ga-staff/realization/:id/items/:itemId` | semua (selama order `request receiving` atau `finished`) | Realisasi baru ditambahkan ke `realizations[]`; status tidak berubah |
 | GA Staff Accepted                    | `PATCH /ga-staff/accept/:id/items/:itemId`      | `pending`, `returned`                    | `accepted`                                     |
 | GA Staff Returned                    | `PATCH /ga-staff/return/:id/items/:itemId`      | `pending`, `returned`                    | `returned`                                     |
 | GA Staff ajukan refund               | `PATCH /ga-staff/refund/:id/items/:itemId`      | `returned`                               | `refund requested`                             |
 | FAT SPV/Manager approve refund       | `PATCH /fat/refund/approve/:id/items/:itemId`   | `refund requested`                       | `refunded`                                     |
 | FAT SPV/Manager reject refund        | `PATCH /fat/refund/reject/:id/items/:itemId`    | `refund requested`                       | kembali `returned`                             |
 
-`:itemId` adalah `id` item GA Purchase Order (`items[].id`). Semua aksi hanya bisa saat order berstatus `request receiving`. Kalau dipanggil dari status yang tidak sesuai, API mengembalikan error 409.
+`:itemId` adalah `id` item GA Purchase Order (`items[].id`). Semua aksi hanya bisa saat order berstatus `request receiving`, kecuali simpan purchase realization yang juga bisa saat order `finished` (misalnya realisasi diisi lagi setelah refund menyelesaikan order). Kalau dipanggil dari status yang tidak sesuai, API mengembalikan error 409.
 
-**Accept dan return hanya bisa dilakukan setelah purchase realization item tersebut disimpan.**
+**Accept dan return hanya bisa dilakukan setelah item tersebut punya minimal satu purchase realization.**
 
 ### Contoh skenario
 
@@ -119,7 +119,7 @@ Beli 5 unit, datang 3 bagus dan 2 rusak:
 }
 ```
 
-**GA Staff simpan purchase realization**: semua field wajib kecuali `note`. `files_purchase_proof` dan `files_invoice` wajib berisi minimal satu file. Boleh dipanggil lagi untuk mengoreksi data.
+**GA Staff simpan purchase realization**: semua field wajib kecuali `note`. `files_purchase_proof` dan `files_invoice` wajib berisi minimal satu file. Setiap pemanggilan **menambah** satu baris baru ke `items[].realizations[]`; data sebelumnya tidak ditimpa (misalnya realisasi diisi lagi setelah ada refund).
 
 ```json
 {
@@ -228,24 +228,25 @@ Setiap item (`items[]`):
 | --------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `receiving_status`                                                                      | Lihat tabel status per item                      |
 | `quantity_good`, `quantity_returned`, `quantity_refunded`                               | Rekap qty                                        |
-| `purchase_realization_date`, `purchase_realization_amount`, `purchase_realization_note` | Purchase realization                             |
-| `files_purchase_proof`, `files_invoice`                                                 | File purchase realization                        |
+| `realizations[]`                                                                        | Semua purchase realization item, urut dari yang pertama |
 | `refund_date`, `refund_amount`, `refund_note`, `files_refund_proof`                     | Data refund dari GA Staff                        |
 | `refund_received_date`, `files_refund_received_proof`                                    | Penerimaan uang refund, diisi FAT saat approve   |
 | `receiving_note`                                                                        | Note accept/return terakhir                      |
 | `return_count`                                                                          | Berapa kali item sudah di-return                 |
 | `receipts[]`                                                                            | Semua goods receipt item, urut dari yang pertama |
 
+Setiap purchase realization (`items[].realizations[]`): `purchase_realization_date`, `purchase_realization_amount`, `note`, `user`, dan file `files_purchase_proof`, `files_invoice`.
+
 Setiap goods receipt (`items[].receipts[]`): `type` (`accept` / `return`), `quantity_received` (qty tersisa saat itu), `quantity_good`, `quantity_returned`, `goods_in_date`, `goods_status`, `return_delivery_date`, `return_shipping_cost`, `note`, `user`, dan file `files_goods_in`, `files_goods_receipt`, `files_return_delivery_proof`, `files_return_waybill`.
 
-Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`, `mime_type`, `size`. `indonesian_name` dan `mandarin_name` opsional. Saat update (realization/refund), sertakan `id` file lama yang ingin dipertahankan. File yang tidak dikirim akan dihapus.
+Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`, `mime_type`, `size`. `indonesian_name` dan `mandarin_name` opsional. Saat update (refund), sertakan `id` file lama yang ingin dipertahankan. File yang tidak dikirim akan dihapus.
 
 ## Verification progress per item
 
 | `status`                          | Dari aksi                |
 | --------------------------------- | ------------------------ |
-| `purchase realization saved`      | Simpan realisasi pertama |
-| `purchase realization updated`    | Koreksi realisasi        |
+| `purchase realization saved`      | Tambah realisasi         |
+| `purchase realization updated`    | Koreksi realisasi (data lama, sebelum realisasi berupa array) |
 | `goods accepted`                  | Accepted                 |
 | `goods returned`                  | Returned                 |
 | `refund requested`                | Ajukan refund            |
@@ -257,12 +258,13 @@ Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`,
 
 - API belum membatasi role. Frontend yang perlu menampilkan tombol sesuai role user.
 - Saat order `request receiving`, per item:
-  - Tampilkan form purchase realization. Tombol Accepted / Returned baru aktif setelah `purchase_realization_date` terisi.
+  - Tampilkan riwayat `realizations[]` dan form tambah purchase realization. Tombol Accepted / Returned baru aktif setelah `realizations[]` tidak kosong.
   - Accepted / Returned tampil jika `receiving_status` = `pending` atau `returned`. Isi default `quantity_good` dengan qty tersisa.
   - Ajukan refund tampil jika `receiving_status` = `returned`.
   - Approve / Reject refund (FAT) tampil jika `receiving_status` = `refund requested`.
+- Saat order `finished`, form tambah purchase realization tetap ditampilkan per item.
 - Belum ada notifikasi otomatis. Untuk menampilkan riwayat gunakan `verification_progress`.
 
 ## Migrasi database
 
-Jalankan sekali setelah deploy: `npm run db:sync-ga-purchase-order`. Script ini aman dijalankan ulang. Isinya: membuat tabel `ga_purchase_order_item_receipts`, menambah kolom baru, memperluas enum `receiving_status`, mengubah index `inventory_histories` agar satu item bisa punya beberapa riwayat stok, lalu mengisi total order, qty item, dan satu goods receipt untuk item yang di-accept dengan alur lama (file `files_goods_in` / `files_goods_receipt` item lama dipindah ke receipt tersebut).
+Jalankan sekali setelah deploy: `npm run db:sync-ga-purchase-order`. Script ini aman dijalankan ulang. Isinya: membuat tabel `ga_purchase_order_item_receipts` dan `ga_purchase_order_item_realizations`, menambah kolom baru, memperluas enum `receiving_status`, mengubah index `inventory_histories` agar satu item bisa punya beberapa riwayat stok, lalu mengisi total order, qty item, dan satu goods receipt untuk item yang di-accept dengan alur lama (file `files_goods_in` / `files_goods_receipt` item lama dipindah ke receipt tersebut), serta satu realization untuk item yang realisasinya tersimpan di kolom item lama (file `files_purchase_proof` / `files_invoice` ikut dipindah).

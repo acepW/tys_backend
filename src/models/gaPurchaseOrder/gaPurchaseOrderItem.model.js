@@ -158,12 +158,6 @@ module.exports = (sequelize) => {
         comment:
           "Per-item receiving status; accepted and refunded are final (refunded = settled with a refund)",
       },
-      purchase_realization_date: { type: DataTypes.DATE, allowNull: true },
-      purchase_realization_amount: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: true,
-      },
-      purchase_realization_note: { type: DataTypes.TEXT, allowNull: true },
       quantity_good: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
@@ -236,11 +230,13 @@ module.exports = (sequelize) => {
       foreignKey: "id_ga_purchase_order_item",
       as: "receipts",
     });
+    GaPurchaseOrderItem.hasMany(models.GaPurchaseOrderItemRealization, {
+      foreignKey: "id_ga_purchase_order_item",
+      as: "realizations",
+    });
     for (const category of [
       "files_product",
       "files_attachment",
-      "files_purchase_proof",
-      "files_invoice",
       "files_refund_proof",
       "files_refund_received_proof",
     ]) {

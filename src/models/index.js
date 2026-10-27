@@ -8,6 +8,7 @@ const CustomerModel = require("./customer.model");
 const DivisionModel = require("./division.model");
 const DepartmentModel = require("./department/department.model");
 const PositionModel = require("./position/position.model");
+const LevelModel = require("./level.model");
 const FlowProcessModel = require("./masterFlowProcess/flowProcess.model");
 const ClauseTemplateModel = require("./masterClause/clauseTemplate.model");
 const ClauseModel = require("./masterClause/clause.model");
@@ -40,6 +41,7 @@ const EvaluationModel = require("./humanResource/evaluation.model");
 const LeaveRequestModel = require("./humanResource/leaveRequest.model");
 const LeaveRequestVerificationProgressModel = require("./humanResource/leaveRequestVerificationProgress.model");
 const RecruitmentRequestModel = require("./humanResource/recruitment/recruitmentRequest.model");
+const RecruitmentRequestRevisionModel = require("./humanResource/recruitment/recruitmentRequestRevision.model");
 const RecruitmentCandidateModel = require("./humanResource/recruitment/recruitmentCandidate.model");
 const RecruitmentHrInterviewModel = require("./humanResource/recruitment/recruitmentHrInterview.model");
 const RecruitmentUserInterviewModel = require("./humanResource/recruitment/recruitmentUserInterview.model");
@@ -118,6 +120,7 @@ const GaPurchaseOrderModel = require("./gaPurchaseOrder/gaPurchaseOrder.model");
 const GaPurchaseOrderItemModel = require("./gaPurchaseOrder/gaPurchaseOrderItem.model");
 const GaPurchaseOrderVerificationProgressModel = require("./gaPurchaseOrder/gaPurchaseOrderVerificationProgress.model");
 const GaPurchaseOrderItemReceiptModel = require("./gaPurchaseOrder/gaPurchaseOrderItemReceipt.model");
+const GaPurchaseOrderItemRealizationModel = require("./gaPurchaseOrder/gaPurchaseOrderItemRealization.model");
 
 //inventory
 const InventoryModel = require("./inventory/inventory.model");
@@ -126,6 +129,7 @@ const InventoryRequestModel = require("./inventory/inventoryRequest.model");
 const InventoryRequestVerificationProgressModel = require("./inventory/inventoryRequestVerificationProgress.model");
 const InventoryOpnameModel = require("./inventory/inventoryOpname.model");
 const InventoryOpnameItemModel = require("./inventory/inventoryOpnameItem.model");
+const InventoryOpnameItemDetailModel = require("./inventory/inventoryOpnameItemDetail.model");
 const InventoryOpnameVerificationProgressModel = require("./inventory/inventoryOpnameVerificationProgress.model");
 
 //vendor
@@ -177,6 +181,7 @@ const initializeModels = (sequelize) => {
     Division: DivisionModel(sequelize),
     Department: DepartmentModel(sequelize),
     Position: PositionModel(sequelize),
+    Level: LevelModel(sequelize),
     FlowProcess: FlowProcessModel(sequelize),
     ClauseTemplate: ClauseTemplateModel(sequelize),
     Clause: ClauseModel(sequelize),
@@ -208,6 +213,7 @@ const initializeModels = (sequelize) => {
     LeaveRequest: LeaveRequestModel(sequelize),
     LeaveRequestVerificationProgress: LeaveRequestVerificationProgressModel(sequelize),
     RecruitmentRequest: RecruitmentRequestModel(sequelize),
+    RecruitmentRequestRevision: RecruitmentRequestRevisionModel(sequelize),
     RecruitmentCandidate: RecruitmentCandidateModel(sequelize),
     RecruitmentHrInterview: RecruitmentHrInterviewModel(sequelize),
     RecruitmentUserInterview: RecruitmentUserInterviewModel(sequelize),
@@ -289,6 +295,7 @@ const initializeModels = (sequelize) => {
     GaPurchaseOrderItem: GaPurchaseOrderItemModel(sequelize),
     GaPurchaseOrderVerificationProgress: GaPurchaseOrderVerificationProgressModel(sequelize),
     GaPurchaseOrderItemReceipt: GaPurchaseOrderItemReceiptModel(sequelize),
+    GaPurchaseOrderItemRealization: GaPurchaseOrderItemRealizationModel(sequelize),
 
     //inventory
     Inventory: InventoryModel(sequelize),
@@ -297,6 +304,7 @@ const initializeModels = (sequelize) => {
     InventoryRequestVerificationProgress: InventoryRequestVerificationProgressModel(sequelize),
     InventoryOpname: InventoryOpnameModel(sequelize),
     InventoryOpnameItem: InventoryOpnameItemModel(sequelize),
+    InventoryOpnameItemDetail: InventoryOpnameItemDetailModel(sequelize),
     InventoryOpnameVerificationProgress: InventoryOpnameVerificationProgressModel(sequelize),
 
     //vendor
@@ -414,11 +422,13 @@ const syncProcurementModels = async () => {
     "GaPurchaseOrderItem",
     "GaPurchaseOrderVerificationProgress",
     "GaPurchaseOrderItemReceipt",
+    "GaPurchaseOrderItemRealization",
     "Inventory",
     "InventoryRequest",
     "InventoryRequestVerificationProgress",
     "InventoryOpname",
     "InventoryOpnameItem",
+    "InventoryOpnameItemDetail",
     "InventoryOpnameVerificationProgress",
     "InventoryHistory",
   ];

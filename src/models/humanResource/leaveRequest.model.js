@@ -1,16 +1,19 @@
 const { DataTypes } = require("sequelize");
 
 // Approval chain, in order. Each stage approves to the next; the director approves to
-// "approved", or to "request verification hr" for a sick leave whose doctor's
-// letter (SKD) was not attached yet. That last step can only be verified.
+// "approved", or, for a request created with a referral letter, back to the
+// requester to upload the doctor's letter (SKD) and then to HR verification. Those
+// last two steps can only be submitted and verified.
 const STAGES = ["supervisor", "hr", "spv hr", "manager hr", "director"];
 const STATUSES = [
   ...STAGES.map((stage) => `request ${stage}`),
+  "request doctor letter",
   "request verification hr",
   "approved",
   ...STAGES.map((stage) => `rejected ${stage}`),
 ];
-const SICK_LETTER_STATUSES = ["attached", "not attached"];
+// doctor letter = surat keterangan dokter (SKD), referral letter = surat rujukan.
+const SICK_LETTER_STATUSES = ["doctor letter", "referral letter"];
 
 module.exports = (sequelize) => {
   const LeaveRequest = sequelize.define(
@@ -64,7 +67,7 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM(...SICK_LETTER_STATUSES),
         allowNull: true,
         comment:
-          "Doctor's letter (SKD) attached or not, chosen by HR on approval of a sick leave",
+          "Optional letter chosen on create: doctor letter (SKD) or referral letter; a referral letter needs the SKD after the director",
       },
       status: {
         type: DataTypes.ENUM(...STATUSES),

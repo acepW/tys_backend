@@ -17,7 +17,7 @@ const taxAmounts = ["ppn", "pph", "pp_20", "pph_4_ayat_2"];
 // Order fields that hold the sum of the same item fields.
 const orderTotalFields = ["sub_total", ...taxAmounts, "total"];
 const orderFileCategories = ["file_attachment", "files_payment"];
-// Purchase realization files, saved per item before it can be accepted or returned.
+// Files required on every purchase realization of an item.
 const realizationFileCategories = ["files_purchase_proof", "files_invoice"];
 // Goods receipt files, required on every accept and return.
 const receiptFileCategories = ["files_goods_in", "files_goods_receipt"];
@@ -29,7 +29,6 @@ const returnFileCategories = [
 const itemFileCategories = [
   "files_product",
   "files_attachment",
-  ...realizationFileCategories,
   "files_refund_proof",
   "files_refund_received_proof",
 ];
@@ -233,6 +232,16 @@ class GaPurchaseOrderService {
         attributes: ["id", "name", "email"],
       },
       ...itemFileCategories.map(activeFiles),
+      {
+        model: db.GaPurchaseOrderItemRealization,
+        as: "realizations",
+        separate: true,
+        order: [["id", "ASC"]],
+        include: [
+          { model: db.User, as: "user", attributes: ["id", "name"] },
+          ...realizationFileCategories.map(activeFiles),
+        ],
+      },
       {
         model: db.GaPurchaseOrderItemReceipt,
         as: "receipts",
@@ -711,9 +720,13 @@ class GaPurchaseOrderService {
   }
 
   // Locks the order and loads one of its items whose receiving_status is in statuses.
-  async receivingItem(id, itemId, t1, statuses) {
+  // allowFinished also accepts a finished order (realizations added after a refund).
+  async receivingItem(id, itemId, t1, statuses, allowFinished = false) {
     const order = await this.lockOrder(id, t1);
-    if (order.status !== "request receiving")
+    if (
+      order.status !== "request receiving" &&
+      !(allowFinished && order.status === "finished")
+    )
       fail("Items can only be received while the order awaits receiving", 409);
     const item = await models.db1.GaPurchaseOrderItem.findOne({
       where: { id: itemId, id_ga_purchase_order: id },
@@ -730,8 +743,10 @@ class GaPurchaseOrderService {
     return item;
   }
 
-  // GA staff saves (or corrects) the purchase realization of one item. It must be
-  // saved before the item can be accepted or returned.
+  // GA staff adds a purchase realization to one item. Every save is a new row, so
+  // earlier realizations are kept (e.g. one is added again after a refund). At least
+  // one is needed before the item can be accepted or returned. Realizations can still
+  // be added once the order is finished, since a refund can finish it.
   async saveRealization(id, itemId, userId, data = {}, isDoubleDatabase = true) {
     if (!data.purchase_realization_date)
       fail("purchase_realization_date is required");
@@ -740,31 +755,38 @@ class GaPurchaseOrderService {
       "purchase_realization_amount",
     );
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      const item = await this.receivingItem(id, itemId, t1);
-      const progressStatus = item.purchase_realization_date
-        ? "purchase realization updated"
-        : "purchase realization saved";
+      const item = await this.receivingItem(id, itemId, t1, null, true);
+      const realization = await mirrorCreate(
+        "GaPurchaseOrderItemRealization",
+        {
+          id_ga_purchase_order: item.id_ga_purchase_order,
+          id_ga_purchase_order_item: item.id,
+          id_user: userId,
+          purchase_realization_date: data.purchase_realization_date,
+          purchase_realization_amount: amount,
+          note: data.note || null,
+        },
+        t1,
+        t2,
+      );
       await syncRequiredFiles(
-        "ga_purchase_order_items",
-        item.id,
+        "ga_purchase_order_item_realizations",
+        realization.id,
         realizationFileCategories,
         data,
         userId,
         t1,
         t2,
       );
-      await mirrorUpdate(
-        "GaPurchaseOrderItem",
+      await this.addProgress(
+        id,
+        userId,
+        "purchase realization saved",
+        data.note,
         item.id,
-        {
-          purchase_realization_date: data.purchase_realization_date,
-          purchase_realization_amount: amount,
-          purchase_realization_note: data.note || null,
-        },
         t1,
         t2,
       );
-      await this.addProgress(id, userId, progressStatus, data.note, item.id, t1, t2);
     });
     return this.getById(id);
   }
@@ -793,7 +815,11 @@ class GaPurchaseOrderService {
         "pending",
         "returned",
       ]);
-      if (!item.purchase_realization_date)
+      const realizations = await models.db1.GaPurchaseOrderItemRealization.count({
+        where: { id_ga_purchase_order_item: item.id },
+        transaction: t1,
+      });
+      if (!realizations)
         fail("Purchase realization must be saved before receiving the item", 409);
       const outstanding = round2(
         item.quantity - item.quantity_good - item.quantity_refunded,

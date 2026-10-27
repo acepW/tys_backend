@@ -82,48 +82,55 @@ test("only the creator can edit a leave request awaiting the supervisor", async 
   await assert.rejects(service.update(1, { reason: "x" }, 5, false), /awaiting the supervisor/);
 });
 
-test("sick leave without a doctor's letter goes to HR verification after the director", async (t) => {
-  const request = { id: 1, type: "Sick Leave", status: "request hr", id_user_request: 5 };
+test("referral letter: after the director the requester uploads the doctor's letter, then HR only verifies", async (t) => {
+  const request = { id: 1, type: "Sick Leave", status: "request hr", id_user_request: 5, sick_letter_status: "referral letter" };
   const writes = mockLeaveRequest(t, request);
   const originalFile = models.db1.File.create;
   t.after(() => { models.db1.File.create = originalFile; });
   const files = [];
   models.db1.File.create = async (data) => { files.push(data); return { id: 50 + files.length, ...data }; };
+  const skd = { original_name: "skd.pdf", stored_name: "1-skd.pdf", url: "/files/1-skd.pdf", mime_type: "application/pdf", size: 10 };
 
-  await assert.rejects(service.decide(1, "hr", "approve", 9, {}, false), /sick_letter_status must be one of: attached, not attached/);
-  await service.decide(1, "hr", "approve", 9, { sick_letter_status: "not attached" }, false);
-  assert.equal(request.sick_letter_status, "not attached");
-  for (const stage of ["spv hr", "manager hr"]) await service.decide(1, stage, "approve", 9, {}, false);
-  await assert.rejects(service.verifyHr(1, 9, { files_attachment: [{ original_name: "skd.pdf" }] }, false),
+  for (const stage of ["hr", "spv hr", "manager hr"]) await service.decide(1, stage, "approve", 9, {}, false);
+  await assert.rejects(service.submitDoctorLetter(1, 5, { files_attachment: [skd] }, false),
     /not allowed from status "request director"/);
   await service.decide(1, "director", "approve", 9, {}, false);
-  assert.equal(request.status, "request verification hr");
+  assert.equal(request.status, "request doctor letter");
 
-  await assert.rejects(service.verifyHr(1, 9, { files_attachment: [] }, false), /doctor's letter/);
-  const skd = { original_name: "skd.pdf", stored_name: "1-skd.pdf", url: "/files/1-skd.pdf", mime_type: "application/pdf", size: 10 };
-  await service.verifyHr(1, 9, { files_attachment: [skd], note: "SKD diterima" }, false);
-  assert.equal(request.status, "approved");
-  assert.equal(request.sick_letter_status, "attached");
+  await assert.rejects(service.verifyHr(1, 9, {}, false), /not allowed from status "request doctor letter"/);
+  await assert.rejects(service.submitDoctorLetter(1, 5, { files_attachment: [] }, false), /doctor's letter/);
+  await assert.rejects(service.submitDoctorLetter(1, 8, { files_attachment: [skd] }, false), /Only the creator/);
+  await service.submitDoctorLetter(1, 5, { files_attachment: [skd], note: "SKD dari rumah sakit" }, false);
+  assert.equal(request.status, "request verification hr");
   assert.deepEqual(files.map((file) => [file.fileable_type, file.fileable_id, file.category, file.stored_name, file.indonesian_name, file.uploaded_by]),
-    [["leave_requests", 1, "files_attachment", "1-skd.pdf", "skd.pdf", 9]]);
-  assert.deepEqual(writes.at(-1), ["progress", "verified hr", "SKD diterima"]);
+    [["leave_requests", 1, "files_attachment", "1-skd.pdf", "skd.pdf", 5]]);
+
+  await service.verifyHr(1, 9, { note: "SKD valid", files_attachment: [skd] }, false);
+  assert.equal(request.status, "approved");
+  assert.equal(request.sick_letter_status, "referral letter");
+  assert.equal(files.length, 1);
+  assert.deepEqual(writes.filter(([kind]) => kind === "progress").slice(-2),
+    [["progress", "doctor letter submitted", "SKD dari rumah sakit"], ["progress", "verified hr", "SKD valid"]]);
 });
 
-test("sick leave with the doctor's letter attached, and other types, end at the director", async (t) => {
-  const sick = { id: 1, type: "sick", status: "request hr", id_user_request: 5 };
-  mockLeaveRequest(t, sick);
-  await service.decide(1, "hr", "approve", 9, { sick_letter_status: "attached" }, false);
-  for (const stage of ["spv hr", "manager hr", "director"]) await service.decide(1, stage, "approve", 9, {}, false);
-  assert.equal(sick.status, "approved");
+test("doctor letter, or no sick letter at all, ends at the director", async (t) => {
+  for (const sickLetterStatus of ["doctor letter", null, undefined]) {
+    const request = { id: 1, type: "Sick", status: "request hr", id_user_request: 5, sick_letter_status: sickLetterStatus };
+    mockLeaveRequest(t, request);
+    for (const stage of ["hr", "spv hr", "manager hr", "director"]) await service.decide(1, stage, "approve", 9, {}, false);
+    assert.equal(request.status, "approved");
+  }
+});
 
-  const personal = { id: 2, type: "Paternity Leave (Husband)", status: "request hr", id_user_request: 5 };
-  mockLeaveRequest(t, personal);
-  await service.decide(2, "hr", "approve", 9, { sick_letter_status: "not attached" }, false);
-  assert.equal(personal.sick_letter_status, undefined);
-  for (const stage of ["spv hr", "manager hr", "director"]) await service.decide(2, stage, "approve", 9, {}, false);
-  assert.equal(personal.status, "approved");
-  assert.equal(service.isSickLeave("Sick Leave"), true);
-  assert.equal(service.isSickLeave("Personal"), false);
+test("HR approval no longer sets sick_letter_status; it is chosen on create and edit", async (t) => {
+  const request = { id: 1, type: "Sick", status: "request hr", id_user_request: 5, sick_letter_status: "doctor letter" };
+  const writes = mockLeaveRequest(t, request);
+  await service.decide(1, "hr", "approve", 9, { sick_letter_status: "referral letter" }, false);
+  assert.equal(request.sick_letter_status, "doctor letter");
+
+  request.status = "request supervisor";
+  await service.update(1, { sick_letter_status: "referral letter" }, 5, false);
+  assert.deepEqual(writes.filter(([kind]) => kind === "request").at(-1), ["request", { sick_letter_status: "referral letter" }]);
 });
 
 test("leave request duration defaults to the inclusive day count", () => {
@@ -145,6 +152,11 @@ test("leave request create validates the form", async (t) => {
   await controller.create({ body: valid, user: { id: 5 } }, res);
   assert.equal(res.code, 201);
   assert.equal(saved.type, "Sick");
+  for (const sickLetterStatus of ["doctor letter", "referral letter", null]) {
+    const ok = response();
+    await controller.create({ body: { ...valid, sick_letter_status: sickLetterStatus }, user: { id: 5 } }, ok);
+    assert.equal(ok.code, 201);
+  }
 
   for (const [body, message] of [
     [{ ...valid, type: " " }, /type is required/],
@@ -154,6 +166,7 @@ test("leave request create validates the form", async (t) => {
     [{ ...valid, reason: "" }, /reason is required/],
     [{ ...valid, clinic_phone: 21123 }, /clinic_phone must be a string/],
     [{ ...valid, files_attachment: "x" }, /files_attachment must be an array/],
+    [{ ...valid, sick_letter_status: "attached" }, /sick_letter_status must be one of: doctor letter, referral letter/],
     [{ ...valid, id_employee: undefined }, /id_employee must be a positive integer/],
   ]) {
     const invalid = response();

@@ -46,6 +46,11 @@ module.exports = (sequelize) => {
         defaultValue: 0,
         comment: "Current stock quantity",
       },
+      received_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Date the stock that created this row was received (tanggal penerimaan)",
+      },
     },
     {
       tableName: "inventories",

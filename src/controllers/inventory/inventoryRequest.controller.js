@@ -19,6 +19,8 @@ function validate(body, partial = false) {
     const quantity = Number(body.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0) return "quantity must be a positive number";
   }
+  if (has("received_date") && (!body.received_date || Number.isNaN(Date.parse(body.received_date))))
+    return "received_date must be a valid date";
   if (body.files_product !== undefined && !Array.isArray(body.files_product))
     return "files_product must be an array";
   if (body.asset_category != null && !["asset", "non asset"].includes(body.asset_category))

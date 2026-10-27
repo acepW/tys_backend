@@ -7,7 +7,7 @@ const { models, db1 } = require("../src/models");
 // In-memory stand-in for the opname, inventory and history tables (DB1 only).
 function mockStore(t, inventories) {
   const db = models.db1;
-  const store = { opnames: [], items: [], histories: [], progress: [], inventories };
+  const store = { opnames: [], items: [], details: [], histories: [], progress: [], inventories };
   const replace = [
     [db1, "transaction", async () => ({ LOCK: { UPDATE: "UPDATE" }, commit: async () => {}, rollback: async () => {} })],
     [db.InventoryOpname, "findOne", async ({ where }) => {
@@ -45,6 +45,15 @@ function mockStore(t, inventories) {
       Object.assign(store.items.find((row) => row.id === where.id), data);
       return [1];
     }],
+    [db.InventoryOpnameItemDetail, "destroy", async ({ where }) => {
+      store.details = store.details.filter((row) => row.id_inventory_opname_item !== where.id_inventory_opname_item);
+      return 1;
+    }],
+    [db.InventoryOpnameItemDetail, "bulkCreate", async (rows) => rows.map((data) => {
+      const row = { id: 500 + store.details.length + 1, ...data };
+      store.details.push(row);
+      return row;
+    })],
     [db.InventoryHistory, "create", async (data) => { store.histories.push(data); return data; }],
     [db.InventoryOpnameVerificationProgress, "create", async (data) => {
       store.progress.push([data.status, data.note]);
@@ -60,9 +69,9 @@ function mockStore(t, inventories) {
 
 const inventoryRows = () => [
   { id: 1, item_name: "Kursi", brand: null, serial_number: null, size: null, material: null, other: null,
-    quantity_unit: "unit", quantity: "10.00" },
+    purchase_request_category: "Furniture", quantity_unit: "unit", quantity: "10.00" },
   { id: 2, item_name: "Meja", brand: "Olympic", serial_number: null, size: null, material: null, other: null,
-    quantity_unit: "unit", quantity: "4.00" },
+    purchase_request_category: null, quantity_unit: "unit", quantity: "4.00" },
 ];
 
 test("Creating an opname copies every inventory row as a pending item with an automatic number", async (t) => {
@@ -73,8 +82,9 @@ test("Creating an opname copies every inventory row as a pending item with an au
   assert.equal(opname.opname_no, `OPN-${month}-${year}-0001`);
   assert.equal(opname.status, "pending");
   assert.equal(opname.id_user_opname, 5);
-  assert.deepEqual(store.items.map((item) => [item.id_inventory, item.item_name, item.quantity_system, item.status]),
-    [[1, "Kursi", "10.00", "pending"], [2, "Meja", "4.00", "pending"]]);
+  assert.deepEqual(store.items.map((item) =>
+    [item.id_inventory, item.item_name, item.purchase_request_category, item.quantity_system, item.status]),
+  [[1, "Kursi", "Furniture", "10.00", "pending"], [2, "Meja", null, "4.00", "pending"]]);
   await assert.rejects(opnameService.create({}, 5, false), /is still pending; finish it/);
 
   await opnameService.cancel(1, 5, false);
@@ -137,4 +147,48 @@ test("Opname approval refuses to make stock negative", async (t) => {
   await opnameService.reviewItems(1, store.items.map((item) => ({ id: item.id, decision: "approve" })), 7, false);
   store.inventories[0].quantity = "6.00";
   await assert.rejects(opnameService.approve(1, 7, null, false), /Stock of Kursi would become negative \(-4\)/);
+});
+
+test("Opname item status details are optional, replaced when sent and kept when left out", async (t) => {
+  const store = mockStore(t, inventoryRows());
+  await opnameService.create({}, 5, false);
+  const [kursi, meja] = store.items.map((item) => item.id);
+  const details = (itemId) => store.details.filter((row) => row.id_inventory_opname_item === itemId)
+    .map((row) => [row.quantity, row.input_status, row.note]);
+
+  await opnameService.saveItems(1, [{ id: meja, quantity_actual: 4 }], 5, false);
+  assert.deepEqual(details(meja), []);
+
+  await opnameService.saveItems(1, [{ id: kursi, quantity_actual: 10, details: [
+    { quantity: 7, input_status: " Baik ", note: "Gudang A" }, { quantity: "3", input_status: "Rusak" },
+  ] }], 5, false);
+  assert.deepEqual(details(kursi), [[7, "Baik", "Gudang A"], [3, "Rusak", null]]);
+
+  await opnameService.saveItems(1, [{ id: kursi, quantity_actual: 9 }], 5, false);
+  assert.deepEqual(details(kursi), [[7, "Baik", "Gudang A"], [3, "Rusak", null]]);
+
+  await opnameService.saveItems(1, [{ id: kursi, quantity_actual: 9, details: [{ quantity: 9, input_status: "Baik" }] }], 5, false);
+  assert.deepEqual(details(kursi), [[9, "Baik", null]]);
+
+  await opnameService.saveItems(1, [{ id: kursi, quantity_actual: 9, details: [] }], 5, false);
+  assert.deepEqual(details(kursi), []);
+});
+
+test("Opname save validates the optional details", async (t) => {
+  const controller = require("../src/controllers/inventory/inventoryOpname.controller");
+  const original = opnameService.saveItems;
+  t.after(() => { opnameService.saveItems = original; });
+  opnameService.saveItems = async () => ({});
+  const save = async (item) => {
+    const res = { status(code) { this.code = code; return this; }, json(payload) { this.payload = payload; return this; } };
+    await controller.saveItems({ body: { items: [{ id: 1, quantity_actual: 5, ...item }] }, params: { id: 1 }, user: { id: 5 } }, res);
+    return [res.code, res.payload.message];
+  };
+  assert.equal((await save({}))[0], 200);
+  assert.equal((await save({ details: [] }))[0], 200);
+  assert.deepEqual(await save({ details: "x" }), [400, "items[0]: details must be an array"]);
+  assert.deepEqual(await save({ details: [{ input_status: "Baik" }] }),
+    [400, "items[0]: details[0].quantity must be a non-negative number"]);
+  assert.deepEqual(await save({ details: [{ quantity: 5, input_status: " " }] }),
+    [400, "items[0]: details[0].input_status is required"]);
 });

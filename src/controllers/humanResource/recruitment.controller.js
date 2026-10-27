@@ -15,11 +15,19 @@ const stepFilters = { equal: ["id_recruitment_candidate", "status", "decision"],
 const MODULES = {
   requests: {
     service: recruitment.request, approvalFor: "recruitment request", label: "Recruitment request",
-    filters: { equal: ["id_position", "status"], like: { search: "job_title" } },
+    filters: {
+      equal: ["id_company", "id_department", "id_division", "id_position", "id_level", "request_type",
+        "hiring_status", "status"],
+      like: { search: "job_description" },
+    },
   },
   candidates: {
     service: recruitment.candidate, approvalFor: "recruitment candidate", label: "Recruitment candidate",
-    filters: { equal: ["id_position", "id_department", "status"], like: { name: "name", job_title: "job_title" } },
+    filters: {
+      equal: ["id_recruitment_request", "id_company", "id_department", "id_division", "id_position", "id_level",
+        "status"],
+      like: { name: "name", job_title: "job_title" },
+    },
   },
   "hr-interviews": {
     service: recruitment.hrInterview, approvalFor: "recruitment hr interview", label: "HR interview",
@@ -93,8 +101,20 @@ async function candidateOptions(req, res) {
   } catch (error) { return respondError(res, error); }
 }
 
+// Opens or closes hiring on an approved recruitment request.
+async function setRequestHiringStatus(req, res) {
+  try {
+    const body = req.body || {};
+    const result = await recruitment.request.setHiringStatus(req.params.id, body.hiring_status, req.user.id, body.note,
+      body.is_double_database !== false);
+    return successResponse(res, await approvalAccess.attachActionFlags("recruitment request", result, req.user?.id),
+      `Hiring ${body.hiring_status === "close" ? "closed" : "opened"}`);
+  } catch (error) { return respondError(res, error); }
+}
+
 module.exports = {
   MODULES,
   modules: Object.fromEntries(Object.entries(MODULES).map(([path, config]) => [path, moduleController(config)])),
   candidateOptions,
+  setRequestHiringStatus,
 };

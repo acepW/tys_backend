@@ -4,7 +4,7 @@ Semua endpoint berawalan `/api/recruitment` dan butuh login.
 
 ## Konsep singkat
 
-Ada 6 modul. Semuanya dibuat dengan status `pending`, lalu di-**approve** atau di-**reject** (reject wajib `note`). Approve/reject diatur lewat approval flow per modul; untuk sementara approver-nya posisi Developer.
+Ada 6 modul. Semuanya dibuat dengan status `pending` (Pengajuan Kandidat: `request hr staff`), lalu di-**approve** atau di-**reject** (reject wajib `note`). Pengajuan Kandidat punya approval bertahap (lihat bagian 1). Approve/reject diatur lewat approval flow per modul; untuk sementara approver-nya posisi Developer.
 
 | Modul              | Path               | `approval_for`               | Syarat create                                             |
 | ------------------ | ------------------ | ---------------------------- | --------------------------------------------------------- |
@@ -18,10 +18,10 @@ Ada 6 modul. Semuanya dibuat dengan status `pending`, lalu di-**approve** atau d
 Aturan step:
 
 - Satu kandidat hanya boleh punya **satu** dokumen `pending`/`approve` per step. Kalau dokumen step di-reject, buat dokumen baru untuk step itu.
-- Dokumen step dan pengajuan hanya bisa diedit saat `pending`. **Kandidat bisa diedit kapan saja**, termasuk untuk reschedule jadwal interview.
+- Dokumen step hanya bisa diedit saat `pending`, pengajuan selama masih dalam proses approval (`request hr staff`, `request spv/manager hr`, `request director`). **Kandidat bisa diedit kapan saja**, termasuk untuk reschedule jadwal interview.
 - Kontrak kerja yang di-approve **tidak** otomatis membuat data karyawan.
 
-Status dokumen (`status`): `pending`, `approve`, `reject`.
+Status dokumen (`status`): `pending`, `approve`, `reject`. Pengajuan Kandidat memakai `request hr staff`, `request spv/manager hr`, `request director`, `approve`, `reject`.
 
 ## Endpoint (sama untuk setiap modul)
 
@@ -29,7 +29,7 @@ Status dokumen (`status`): `pending`, `approve`, `reject`.
 | -------- | ------------------------------ | --------------------------------------------- |
 | List     | `GET /{modul}`                 | Filter per modul lihat di bawah, `page`, `limit` |
 | Detail   | `GET /{modul}/:id`             | Termasuk `verification_progress`              |
-| Buat     | `POST /{modul}`                | Status `pending`                              |
+| Buat     | `POST /{modul}`                | Status `pending` (pengajuan: `request hr staff`) |
 | Edit     | `PUT /{modul}/:id`             | Kirim hanya field yang diubah                 |
 | Approve  | `PATCH /{modul}/approve/:id`   | Body `{ "note": "opsional" }`                 |
 | Reject   | `PATCH /{modul}/reject/:id`    | Body `{ "note": "wajib" }`                    |
@@ -40,33 +40,112 @@ Dropdown kandidat di form step: `GET /candidates/options?stage=...`, `stage` = `
 
 File mengikuti format file lain (`original_name`, `stored_name`, `url`, `mime_type`, `size`); upload dulu ke folder `recruitment`. Saat edit, sertakan `id` file lama yang ingin dipertahankan.
 
-## 1. Pengajuan Kandidat (`/requests`)
+## 1. Pengajuan Kandidat / Candidate Request (`/requests`)
 
 ```json
 {
-  "job_title": "Staff",
+  "id_company": 1,
+  "id_department": 3,
+  "id_division": 1,
   "id_position": 2,
-  "job_recruitment": "Dibutuhkan 2 orang, pengalaman 1 tahun",
-  "job_description": "Mengelola administrasi gudang"
+  "id_level": 1,
+  "number_of_people": 2,
+  "job_requirement": "Pengalaman minimal 1 tahun di bidang gudang",
+  "job_description": "Mengelola administrasi gudang",
+  "request_type": "replacement",
+  "reason": "Karyawan sebelumnya resign",
+  "hiring_deadline": "2026-12-01",
+  "hiring_status": "open"
 }
 ```
 
-`job_title` (Jabatan, teks) dan `id_position` (Posisi, dari master positions) wajib. Filter list: `search` (jabatan), `id_position`, `status`.
+| Field              | Wajib | Label di form        | Keterangan |
+| ------------------ | ----- | -------------------- | ---------- |
+| `id_company`       | Ya    | Company              | Dari `GET /api/companies` |
+| `id_department`    | Ya    | Department           | Dari `GET /api/departments` |
+| `id_division`      | Ya    | Division             | Dari `GET /api/divisions` |
+| `id_position`      | Ya    | Position             | Dari `GET /api/positions` |
+| `id_level`         | Ya    | Level                | Dari `GET /api/levels` (master baru, lihat bagian 7) |
+| `number_of_people` | Ya    | Number of People     | Bilangan bulat > 0 |
+| `job_requirement`  | Tidak | Job Requirement      | Menggantikan field lama `job_recruitment` |
+| `job_description`  | Tidak | Job Description      | |
+| `request_type`     | Ya    | Type of Request      | `replacement` (Replacement) atau `additional member` (Additional Member) |
+| `reason`           | Tidak | Reason               | |
+| `hiring_deadline`  | Tidak | Hiring Deadline      | `YYYY-MM-DD` |
+| `hiring_status`    | Tidak | Hiring Status        | `open` (default) atau `close` |
+
+Field lama `job_title` (Jabatan teks) diganti `id_level` dan tidak diterima lagi. Request lama tetap menyimpan `job_title`-nya, dan `id_level`-nya kosong.
+
+Response list/detail membawa `company`, `department`, `division`, `position`, `level`, dan `revisions` (riwayat revisi). Filter list: `id_company`, `id_department`, `id_division`, `id_position`, `id_level`, `request_type`, `hiring_status`, `status`, `search` (job description).
+
+### Alur approval
+
+Tidak ada langkah submit terpisah: begitu dibuat, request langsung menunggu approval HR Staff.
+
+```
+create → request hr staff → request spv/manager hr → request director → approve
+```
+
+| Status                   | Menunggu        | Bisa edit |
+| ------------------------ | --------------- | --------- |
+| `request hr staff`       | HR Staff        | Ya        |
+| `request spv/manager hr` | SPV/Manager HR  | Ya        |
+| `request director`       | Director        | Ya        |
+| `approve`                | Selesai         | Tidak (kecuali hiring status, lihat di bawah) |
+| `reject`                 | Selesai         | Tidak     |
+
+- Approve/reject di setiap tahap memakai endpoint yang sama: `PATCH /requests/approve/:id` dan `PATCH /requests/reject/:id`. Backend yang menentukan tahapnya dari status saat ini. Reject di tahap mana pun langsung menjadi `reject`.
+- **Divisi HR:** jika user pembuat request berada di divisi HR, request langsung dibuat dengan status `request spv/manager hr` (melewati HR Staff). Divisi HR dikenali dari `division_code` yang mengandung `HR` atau `division_name` yang mengandung `Human Resource` / kata `HR`, misalnya `HR`, `HRD`, `HRGA`, `Human Resources`.
+- Tampilkan tombol approve/reject berdasarkan `is_can_approve_reject`. `action_label` menyebut tahapnya, misalnya `Approve / Reject Recruitment Request by SPV/Manager HR`.
+
+### Revisi
+
+Selama request masih dalam proses approval (`request hr staff`, `request spv/manager hr`, `request director`), form bisa diubah lewat `PUT /requests/:id` (kirim hanya field yang diubah) oleh **siapa pun**, apa pun divisi atau department-nya. Setelah `approve` / `reject`, request tidak bisa diedit lagi.
+
+**Setiap update dicatat sebagai revisi**: field yang nilainya benar-benar berubah masuk ke `revisions`, dan `verification_progress` mencatat `revised`.
+
+```json
+"revisions": [
+  { "revision_no": 1, "field": "number_of_people", "old_value": "2", "new_value": "3", "createdAt": "...", "user": { "id": 7, "name": "HR Staff" } },
+  { "revision_no": 1, "field": "reason", "old_value": "Karyawan resign", "new_value": "Tambah shift malam", "createdAt": "...", "user": { "id": 7, "name": "HR Staff" } }
+]
+```
+
+- Field yang diubah dalam satu kali simpan punya `revision_no` yang sama. Kelompokkan berdasarkan `revision_no` untuk menampilkan histori per revisi.
+- `old_value` / `new_value` disimpan sebagai teks. Untuk field `id_*`, isinya ID master; tampilkan namanya dengan mencocokkan ke data master.
+- `verification_progress` juga mencatat `revised` dengan note berisi daftar field yang diubah, misalnya `Recruitment request revised: number_of_people, reason`.
+
+### Open / close hiring
+
+Setelah request `approve`, hiring bisa ditutup atau dibuka lagi:
+
+```http
+PATCH /api/recruitment/requests/hiring-status/:id
+```
+
+```json
+{ "hiring_status": "close", "note": "Posisi sudah terisi (opsional)" }
+```
+
+Hanya untuk request berstatus `approve`. Tercatat di `verification_progress` sebagai `hiring close` / `hiring open`.
 
 ## 2. Database Kandidat (`/candidates`)
 
 ```json
 {
+  "id_recruitment_request": 5,
   "name": "Budi Santoso",
+  "phone_number": "0812-3456-7890",
+  "email": "budi@example.com",
   "job_title": "Staff",
-  "id_position": 2,
-  "id_department": 3,
   "source": "JobStreet",
   "disc": "Dominan - Influence",
   "recruitment_process": "Screening CV",
   "hr_interview_mechanism": "Online",
   "hr_interview_date": "2026-10-21",
   "hr_interview_time": "09:00",
+  "hr_interview_meeting_room": "Ruang Meeting 2",
+  "hr_interview_meeting_room_link": "https://meet.google.com/abc-defg-hij",
   "user_interview_mechanism": "Onsite",
   "user_interview_date": "2026-10-25",
   "user_interview_time": "13:30",
@@ -75,7 +154,25 @@ File mengikuti format file lain (`original_name`, `stored_name`, `url`, `mime_ty
 }
 ```
 
-Hanya `name` yang wajib. Tanggal `YYYY-MM-DD`, jam `HH:MM`. Filter list: `name`, `job_title`, `id_position`, `id_department`, `status` (sesuai form pencarian Nama, Jabatan, Posisi, Department).
+**Wajib saat create:** `id_recruitment_request` dan `name`. Field lain opsional. Tanggal `YYYY-MM-DD`, jam `HH:MM`, `email` harus format email yang valid.
+
+**Pilih recruitment request**
+
+- Dropdown request di form kandidat: `GET /api/recruitment/requests?status=approve&hiring_status=open`. Hanya request yang sudah `approve` **dan** hiring-nya `open` yang bisa dipilih. Selain itu, create ditolak (`Recruitment request is ... not approved yet` / `Recruitment request hiring is closed`).
+- `id_company`, `id_department`, `id_division`, `id_position`, dan `id_level` kandidat **diambil otomatis dari request** yang dipilih. Field ini tidak perlu dikirim; kalau dikirim, nilainya diabaikan. Tampilkan di form sebagai field read-only dari data request.
+- Saat edit, kalau `id_recruitment_request` diganti ke request lain (yang juga harus approve dan open), kelima field itu ikut diperbarui dari request baru.
+- Kandidat lama (dibuat sebelum fitur ini) belum punya request. Hubungkan dengan mengisi `id_recruitment_request` lewat edit.
+
+| Field baru                       | Label di form                  |
+| -------------------------------- | ------------------------------ |
+| `phone_number`                   | Phone Number                   |
+| `email`                          | Email                          |
+| `hr_interview_meeting_room`      | HR Interview Meeting Room      |
+| `hr_interview_meeting_room_link` | HR Interview Meeting Room Link |
+
+Response list/detail berisi `recruitment_request` (`id`, `status`, `hiring_status`, `number_of_people`, `hiring_deadline`, `request_type`), `company`, `department`, `division`, `position`, dan `level`.
+
+Filter list: `id_recruitment_request`, `id_company`, `id_department`, `id_division`, `id_position`, `id_level`, `name`, `job_title`, `status`.
 
 Response list/detail kandidat sudah membawa data step lain: `hr_interviews`, `user_interviews`, `offerings`, `contracts`, masing-masing **urut terbaru dulu** (pakai index `0`).
 
@@ -173,7 +270,21 @@ Jika tidak dikirim saat create, nilai default-nya: nama dari kandidat; `birth_pl
 
 ## Verification progress
 
-`verification_progress` di detail berisi `created`, `edited`, `approve`, dan `reject` (dengan `note`).
+`verification_progress` di detail berisi `created`, `edited`, `approve`, dan `reject` (dengan `note`). Untuk Pengajuan Kandidat, approve/reject menyebut tahapnya: `approve hr staff`, `approve spv/manager hr`, `approve director`, `reject hr staff`, `reject spv/manager hr`, `reject director`, `revised` (setiap edit pengajuan), ditambah `hiring close` / `hiring open`.
+
+## 7. Master Level (`/api/levels`)
+
+Master baru untuk field Level, polanya sama seperti master department/division:
+
+| Aksi   | Endpoint                 | Body                                  |
+| ------ | ------------------------ | ------------------------------------- |
+| List   | `GET /api/levels`        | Hanya yang aktif, urut nama           |
+| Detail | `GET /api/levels/:id`    |                                       |
+| Buat   | `POST /api/levels`       | `{ "level_name": "Supervisor" }`      |
+| Edit   | `PUT /api/levels/:id`    | `{ "level_name": "...", "is_active": true }` |
+| Hapus  | `DELETE /api/levels/:id` | Soft delete (`is_active` = false)     |
+
+`level_name` wajib dan tidak boleh sama dengan level lain (`Level already exists`). Position tetap memakai master `GET /api/positions` yang sudah ada.
 
 ## Pesan error yang perlu ditangani
 
@@ -187,8 +298,10 @@ Jika tidak dikirim saat create, nilai default-nya: nama dari kandidat; `birth_pl
 | 409  | `Candidate needs ... first`                                            | Step sebelumnya belum approved / tidak lolos |
 | 409  | `Candidate already has a pending/approve <step>`                       | Step sudah punya dokumen aktif             |
 | 409  | `<Modul> cannot be edited while it is ...`, `<Modul> is already ...`   | Edit/approve dokumen yang sudah diproses   |
+| 400  | `number_of_people must be a positive integer`, `request_type must be one of: ...`, `hiring_status must be one of: open, close` | Validasi form Pengajuan Kandidat |
+| 409  | `Hiring status can only be changed on an approved request, not ...`, `Hiring is already ...` | Open/close hiring di status yang salah |
 
 ## Setup
 
-- Migrasi (sekali per environment): `npm run db:sync-recruitment`.
-- Approval flow: `npm run db:setup-approval-flows [nama_posisi]` membuat flow `pending` untuk keenam modul jika belum ada. Selama `APPROVAL_ENFORCE` belum `true`, approve/reject oleh siapa pun tetap berhasil.
+- Migrasi (sekali per environment): `npm run db:sync-recruitment`. Script ini juga membuat tabel `levels` dan `recruitment_request_revisions`, mengganti nama kolom `job_recruitment` menjadi `job_requirement`, menambah kolom baru Pengajuan Kandidat, dan mengganti status pengajuan `pending` menjadi `request hr staff` (termasuk baris approval flow-nya) serta menambah `request spv/manager hr` / `request director`, lalu menambah kolom baru kandidat (`id_recruitment_request`, `id_company`, `id_division`, `id_level`, `phone_number`, `email`, `hr_interview_meeting_room`, `hr_interview_meeting_room_link`). Aman dijalankan ulang. Jalankan **sebelum** `db:setup-approval-flows` supaya flow `request hr staff` tidak dobel.
+- Approval flow: `npm run db:setup-approval-flows [nama_posisi]` membuat flow untuk setiap status yang belum punya flow, termasuk `request spv/manager hr` dan `request director` milik `recruitment request`. Setelah itu atur posisi HR Staff, SPV/Manager HR, dan Director lewat `/api/approval-flows`. Selama `APPROVAL_ENFORCE` belum `true`, approve/reject oleh siapa pun tetap berhasil.

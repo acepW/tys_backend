@@ -113,6 +113,7 @@ class InventoryService {
 
   // Adds source.quantity to the inventory row matching every matchFields value, or
   // creates a new row, then records the history and copies the product files.
+  // source.received_date goes on the history and on a newly created row.
   // history holds the history row's source references and note.
   async addStock(source, history, userId, t1, t2) {
     let inventory = await models.db1.Inventory.findOne({
@@ -144,6 +145,7 @@ class InventoryService {
           asset_category: source.asset_category || null,
           quantity_unit: source.quantity_unit,
           quantity: source.quantity,
+          received_date: source.received_date || null,
         },
         t1,
         t2,
@@ -156,6 +158,7 @@ class InventoryService {
         id_inventory: inventory.id,
         id_user: userId,
         quantity: source.quantity,
+        received_date: source.received_date || null,
       },
       t1,
       t2,
@@ -205,7 +208,11 @@ class InventoryService {
       transaction: t1,
     });
     return this.addStock(
-      { ...(item.toJSON ? item.toJSON() : item), quantity: receipt.quantity_good },
+      {
+        ...(item.toJSON ? item.toJSON() : item),
+        quantity: receipt.quantity_good,
+        received_date: receipt.goods_in_date,
+      },
       {
         id_ga_purchase_order: orderId,
         id_ga_purchase_order_item: item.id,

@@ -19,6 +19,7 @@ const fields = [
   "asset_category",
   "quantity_unit",
   "quantity",
+  "received_date",
   "note",
 ];
 

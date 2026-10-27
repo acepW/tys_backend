@@ -46,6 +46,7 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
   "asset_category": "asset",
   "quantity_unit": "unit",
   "quantity": 2,
+  "received_date": "2026-10-20",
   "note": "Stok awal gudang",
   "files_product": [
     {
@@ -66,6 +67,7 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 | `item_name`                                           | Ya    | Nama barang                                                                                                |
 | `quantity_unit`                                       | Ya    | Satuan, misalnya `unit`, `pcs`, `box`                                                                      |
 | `quantity`                                            | Ya    | Angka lebih dari 0                                                                                         |
+| `received_date`                                       | Ya    | Tanggal penerimaan barang, format `YYYY-MM-DD`                                                             |
 | `brand`, `serial_number`, `size`, `material`, `other` | Tidak | Spesifikasi barang. Dipakai untuk mencocokkan stok (lihat bagian 4)                                        |
 | `purchase_request_category`                           | Tidak | Kategori barang                                                                                            |
 | `asset_category`                                      | Tidak | `asset` atau `non asset`                                                                                   |
@@ -85,8 +87,8 @@ Isi `items` dengan array berisi body yang sama seperti bagian 1 (maksimal 100 it
 ```json
 {
   "items": [
-    { "item_name": "Kursi", "quantity_unit": "unit", "quantity": 10, "files_product": [] },
-    { "item_name": "Meja", "brand": "Olympic", "quantity_unit": "unit", "quantity": 5, "note": "Stok awal" }
+    { "item_name": "Kursi", "quantity_unit": "unit", "quantity": 10, "received_date": "2026-10-20", "files_product": [] },
+    { "item_name": "Meja", "brand": "Olympic", "quantity_unit": "unit", "quantity": 5, "received_date": "2026-10-21", "note": "Stok awal" }
   ]
 }
 ```
@@ -218,14 +220,15 @@ Keduanya mengembalikan detail request terbaru.
 Yang terjadi saat approve:
 
 - Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, dan `other` yang **sama persis** (kosong dianggap sama), `quantity` request ditambahkan ke inventory tersebut.
-- Jika tidak ada yang sama, dibuat data inventory baru.
-- `files_product` request disalin ke inventory, dan penambahan stok tercatat di `histories` inventory.
+- Jika tidak ada yang sama, dibuat data inventory baru dengan `received_date` dari request.
+- `files_product` request disalin ke inventory, dan penambahan stok tercatat di `histories` inventory beserta `received_date` request.
 
 ## 6. Pesan error yang perlu ditangani
 
 | HTTP | Pesan                                                                                      | Kapan                                           |
 | ---- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
 | 400  | `item_name is required`, `quantity_unit is required`, `quantity must be a positive number` | Validasi form                                   |
+| 400  | `received_date must be a valid date`                                                       | `received_date` kosong atau bukan tanggal       |
 | 400  | `asset_category must be asset or non asset`                                                | Nilai `asset_category` tidak valid              |
 | 400  | `files_product must be an array`                                                           | `files_product` bukan array                     |
 | 400  | `items must be a non-empty array`, `items can contain at most 100 entries`, `items[i]: ...` | Validasi bulk create                            |

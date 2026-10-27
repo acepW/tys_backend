@@ -15,6 +15,7 @@ const itemFields = [
   "size",
   "material",
   "other",
+  "purchase_request_category",
   "quantity_unit",
 ];
 // Item statuses the counting user may save, per ticket status. While the ticket is
@@ -93,8 +94,18 @@ class InventoryOpnameService {
           ["item_name", "ASC"],
           ["id", "ASC"],
         ],
+        include: [this.detailInclude()],
       });
     return includes;
+  }
+
+  detailInclude() {
+    return {
+      model: models.db1.InventoryOpnameItemDetail,
+      as: "details",
+      separate: true,
+      order: [["id", "ASC"]],
+    };
   }
 
   async getById(id) {
@@ -125,6 +136,7 @@ class InventoryOpnameService {
       models.db1.InventoryOpnameItem,
       {
         where: { ...where, id_inventory_opname: id },
+        include: [this.detailInclude()],
         order: [
           ["item_name", "ASC"],
           ["id", "ASC"],
@@ -239,8 +251,33 @@ class InventoryOpnameService {
     return this.getById(id);
   }
 
+  // Replaces an item's status breakdown with details; [] clears it.
+  async replaceDetails(itemId, details, t1, t2) {
+    const where = { id_inventory_opname_item: itemId };
+    await models.db1.InventoryOpnameItemDetail.destroy({ where, transaction: t1 });
+    if (t2)
+      await models.db2.InventoryOpnameItemDetail.destroy({ where, transaction: t2 });
+    if (!details.length) return;
+    const rows = details.map((detail) => ({
+      id_inventory_opname_item: itemId,
+      quantity: round2(detail.quantity),
+      input_status: detail.input_status.trim(),
+      note: detail.note || null,
+    }));
+    const created = await models.db1.InventoryOpnameItemDetail.bulkCreate(rows, {
+      transaction: t1,
+    });
+    if (t2)
+      await models.db2.InventoryOpnameItemDetail.bulkCreate(
+        rows.map((row, index) => ({ ...row, id: created[index].id })),
+        { transaction: t2 },
+      );
+  }
+
   // Saves the count of several items at once. Each input: { id, quantity_actual,
-  // input_status, note }. A saved item becomes "save".
+  // input_status, note, details? }. A saved item becomes "save". details is the
+  // optional status breakdown ({ quantity, input_status, note }); when sent it
+  // replaces the saved one, when left out the saved one is kept.
   async saveItems(id, inputs, userId, isDoubleDatabase = true) {
     const itemIds = inputs.map((input) => Number(input.id));
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
@@ -274,6 +311,8 @@ class InventoryOpnameService {
           t1,
           t2,
         );
+        if (input.details !== undefined)
+          await this.replaceDetails(item.id, input.details, t1, t2);
       }
       await this.addProgress(
         opname.id,

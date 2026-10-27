@@ -22,6 +22,11 @@ module.exports = (sequelize) => {
       },
       quantity_unit: { type: DataTypes.STRING(100), allowNull: false },
       quantity: { type: DataTypes.DECIMAL(15, 2), allowNull: false },
+      received_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Date the stock was received (tanggal penerimaan); required on create",
+      },
       note: { type: DataTypes.TEXT, allowNull: true },
       status: {
         type: DataTypes.ENUM("pending", "approve", "reject"),

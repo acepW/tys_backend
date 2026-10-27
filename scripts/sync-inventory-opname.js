@@ -1,5 +1,7 @@
-// Creates the inventory opname tables and links inventory_histories to them.
-// Safe to run more than once: existing tables and columns are left untouched.
+// Creates the inventory opname tables, links inventory_histories to them and adds
+// new opname item columns; purchase_request_category of existing items is filled
+// from their inventory row. Safe to run more than once: existing tables and
+// columns are left untouched.
 const { models, db1, db2 } = require("../src/models");
 
 async function addMissingColumns(model) {
@@ -32,10 +34,17 @@ const run = async () => {
       for (const modelName of [
         "InventoryOpname",
         "InventoryOpnameItem",
+        "InventoryOpnameItemDetail",
         "InventoryOpnameVerificationProgress",
       ])
         await dbModels[modelName].sync({ alter: false });
       await addMissingColumns(dbModels.InventoryHistory);
+      await addMissingColumns(dbModels.InventoryOpnameItem);
+      const [result] = await dbModels.InventoryOpnameItem.sequelize.query(`
+        UPDATE inventory_opname_items i JOIN inventories v ON v.id = i.id_inventory
+        SET i.purchase_request_category = v.purchase_request_category
+        WHERE i.purchase_request_category IS NULL AND v.purchase_request_category IS NOT NULL`);
+      console.log(`  ~ opname items purchase_request_category filled: ${result.affectedRows}`);
     }
     console.log("Inventory opname tables synchronized successfully");
   } finally {

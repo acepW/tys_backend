@@ -57,6 +57,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Quantity added to the inventory (negative when an opname reduces it)",
       },
+      received_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "Date this stock was received (tanggal penerimaan); NULL for opname adjustments",
+      },
       note: { type: DataTypes.TEXT, allowNull: true },
     },
     {

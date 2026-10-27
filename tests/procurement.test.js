@@ -9,8 +9,9 @@ const { Op } = require("sequelize");
 test("procurement tables sync in foreign-key dependency order", async (t) => {
   const order = ["PurchaseRequest", "GaPurchaseOrder", "PurchaseRequestItem",
     "PurchaseRequestVerificationProgress", "GaPurchaseOrderItem",
-    "GaPurchaseOrderVerificationProgress", "GaPurchaseOrderItemReceipt", "Inventory", "InventoryRequest",
-    "InventoryRequestVerificationProgress", "InventoryOpname", "InventoryOpnameItem",
+    "GaPurchaseOrderVerificationProgress", "GaPurchaseOrderItemReceipt", "GaPurchaseOrderItemRealization",
+    "Inventory", "InventoryRequest",
+    "InventoryRequestVerificationProgress", "InventoryOpname", "InventoryOpnameItem", "InventoryOpnameItemDetail",
     "InventoryOpnameVerificationProgress", "InventoryHistory"];
   const original = [];
   const calls = [];
@@ -160,6 +161,8 @@ function mockGaOrder(t, order, fileCounts = {}, items = []) {
     itemUpdate: models.db1.GaPurchaseOrderItem.update,
     itemCount: models.db1.GaPurchaseOrderItem.count,
     receipt: models.db1.GaPurchaseOrderItemReceipt.create,
+    realization: models.db1.GaPurchaseOrderItemRealization.create,
+    realizationCount: models.db1.GaPurchaseOrderItemRealization.count,
     getById: gaOrderService.getById,
   };
   t.after(() => {
@@ -172,6 +175,8 @@ function mockGaOrder(t, order, fileCounts = {}, items = []) {
     models.db1.GaPurchaseOrderItem.update = originals.itemUpdate;
     models.db1.GaPurchaseOrderItem.count = originals.itemCount;
     models.db1.GaPurchaseOrderItemReceipt.create = originals.receipt;
+    models.db1.GaPurchaseOrderItemRealization.create = originals.realization;
+    models.db1.GaPurchaseOrderItemRealization.count = originals.realizationCount;
     gaOrderService.getById = originals.getById;
   });
   const writes = [];
@@ -193,6 +198,13 @@ function mockGaOrder(t, order, fileCounts = {}, items = []) {
       data.return_shipping_cost]);
     return { id: 100 + writes.length, ...data };
   };
+  models.db1.GaPurchaseOrderItemRealization.create = async (data) => {
+    const item = items.find((row) => row.id === data.id_ga_purchase_order_item);
+    item.realizations = [...(item.realizations ?? []), data];
+    return { id: 200 + item.realizations.length, ...data };
+  };
+  models.db1.GaPurchaseOrderItemRealization.count = async ({ where }) =>
+    items.find((item) => item.id === where.id_ga_purchase_order_item)?.realizations?.length ?? 0;
   gaOrderService.getById = async () => order;
   return writes;
 }
@@ -249,7 +261,7 @@ const allFiles = { files_purchase_proof: 1, files_invoice: 1, files_goods_in: 1,
 const receivingItemRow = (id, extra = {}) => ({
   id, id_ga_purchase_order: 1, receiving_status: "pending", return_count: 0, item_category: "item",
   quantity: "5.00", quantity_good: "0.00", quantity_returned: "0.00", quantity_refunded: "0.00",
-  purchase_realization_date: "2026-10-10", ...extra,
+  realizations: [realizationBody], ...extra,
 });
 
 function mockInventory(t) {
@@ -264,24 +276,34 @@ function mockInventory(t) {
 
 const progressOf = (writes) => writes.filter(([kind]) => kind === "progress").map(([, status, itemId]) => [status, itemId]);
 
-test("GA staff saves the purchase realization before receiving an item", async (t) => {
+test("GA staff saves the purchase realization before receiving an item; each save is kept", async (t) => {
   const order = { status: "request receiving" };
-  const items = [receivingItemRow(11, { purchase_realization_date: null })];
+  const items = [receivingItemRow(11, { realizations: [] })];
   const counts = { files_purchase_proof: 1, files_invoice: 0 };
   const writes = mockGaOrder(t, order, counts, items);
   await assert.rejects(gaOrderService.saveRealization(1, 11, 5, {}, false), /purchase_realization_date is required/);
   await assert.rejects(gaOrderService.saveRealization(1, 11, 5, { ...realizationBody, purchase_realization_amount: "" }, false),
     /purchase_realization_amount/);
-  await assert.rejects(gaOrderService.saveRealization(1, 11, 5, realizationBody, false), /files_invoice is required/);
   await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 5 }, false),
     /Purchase realization must be saved/);
+  await assert.rejects(gaOrderService.saveRealization(1, 11, 5, realizationBody, false), /files_invoice is required/);
+  // The mock has no rollback, so drop the row the failed save created.
+  items[0].realizations = [];
   counts.files_invoice = 1;
   await gaOrderService.saveRealization(1, 11, 5, { ...realizationBody, note: "Invoice toko" }, false);
-  assert.equal(items[0].purchase_realization_amount, 3330000);
-  assert.equal(items[0].purchase_realization_note, "Invoice toko");
   assert.equal(items[0].receiving_status, "pending");
+  await gaOrderService.saveRealization(1, 11, 5, { ...realizationBody, purchase_realization_amount: 1332000 }, false);
+  assert.deepEqual(items[0].realizations.map((row) => [row.purchase_realization_amount, row.note, row.id_user]),
+    [[3330000, "Invoice toko", 5], [1332000, null, 5]]);
+  assert.deepEqual(progressOf(writes), [["purchase realization saved", 11], ["purchase realization saved", 11]]);
+  // A refund can finish the order; realizations can still be added, receiving cannot.
+  order.status = "finished";
   await gaOrderService.saveRealization(1, 11, 5, realizationBody, false);
-  assert.deepEqual(progressOf(writes), [["purchase realization saved", 11], ["purchase realization updated", 11]]);
+  assert.equal(items[0].realizations.length, 3);
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 5 }, false),
+    /order awaits receiving/);
+  order.status = "rejected cashier";
+  await assert.rejects(gaOrderService.saveRealization(1, 11, 5, realizationBody, false), /order awaits receiving/);
 });
 
 test("GA staff return needs a note, the return shipment data and its files", async (t) => {
@@ -469,20 +491,28 @@ test("Accepted goods add quantity to a matching inventory row or create a new on
   };
   const writes = [];
   models.db1.Inventory.update = async (data, { where }) => { writes.push(["update", where.id, data.quantity, data.asset_category]); return [1]; };
-  models.db1.Inventory.create = async (data) => { writes.push(["create", data.brand, data.quantity, data.asset_category]); return { id: 8 }; };
-  models.db1.InventoryHistory.create = async (data) => { writes.push(["history", data.id_inventory, data.id_ga_purchase_order_item, data.id_ga_purchase_order_item_receipt, data.quantity]); return {}; };
+  models.db1.Inventory.create = async (data) => {
+    writes.push(["create", data.brand, data.quantity, data.asset_category, data.received_date]); return { id: 8 };
+  };
+  models.db1.InventoryHistory.create = async (data) => {
+    writes.push(["history", data.id_inventory, data.id_ga_purchase_order_item, data.id_ga_purchase_order_item_receipt,
+      data.quantity, data.received_date]);
+    return {};
+  };
   models.db1.File.findAll = async () => [{ stored_name: "a.png" }];
   models.db1.File.create = async (data) => { writes.push(["file", data.fileable_id, data.stored_name]); return {}; };
 
   const t1 = { LOCK: { UPDATE: "UPDATE" } };
-  await inventoryService.addFromGaPurchaseOrderReceipt(1, 21, { id: 31, type: "return", quantity_good: 2 }, 5, t1);
-  await inventoryService.addFromGaPurchaseOrderReceipt(1, 22, { id: 32, type: "accept", quantity_good: 1 }, 5, t1);
+  await inventoryService.addFromGaPurchaseOrderReceipt(1, 21,
+    { id: 31, type: "return", quantity_good: 2, goods_in_date: "2026-10-12" }, 5, t1);
+  await inventoryService.addFromGaPurchaseOrderReceipt(1, 22,
+    { id: 32, type: "accept", quantity_good: 1, goods_in_date: "2026-10-14" }, 5, t1);
 
   assert.deepEqual(wheres[0][Op.and].slice(0, 3), [{ item_name: "Printer" }, { brand: "HP" }, { serial_number: "M404dn" }]);
   assert.deepEqual(wheres[0][Op.and][3], { [Op.or]: [{ size: null }, { size: "" }] });
   assert.deepEqual(writes, [
-    ["update", 7, 5, "asset"], ["history", 7, 21, 31, 2], ["file", 7, "b.png"],
-    ["create", "Canon", 1, "non asset"], ["history", 8, 22, 32, 1],
+    ["update", 7, 5, "asset"], ["history", 7, 21, 31, 2, "2026-10-12"], ["file", 7, "b.png"],
+    ["create", "Canon", 1, "non asset", "2026-10-14"], ["history", 8, 22, 32, 1, "2026-10-14"],
   ]);
 });
 
@@ -623,12 +653,12 @@ test("Bulk create makes one pending request per item in one transaction", async 
   };
 
   const result = await inventoryRequestService.createMany([
-    { item_name: "Kursi", quantity_unit: "unit", quantity: 2, status: "approve" },
-    { item_name: "Meja", quantity_unit: "unit", quantity: 1 },
+    { item_name: "Kursi", quantity_unit: "unit", quantity: 2, received_date: "2026-10-20", status: "approve" },
+    { item_name: "Meja", quantity_unit: "unit", quantity: 1, received_date: "2026-10-21" },
   ], 5, false);
   assert.equal(transactions, 1);
-  assert.deepEqual(created.map((data) => [data.item_name, data.status, data.id_user_request]),
-    [["Kursi", "pending", 5], ["Meja", "pending", 5]]);
+  assert.deepEqual(created.map((data) => [data.item_name, data.status, data.id_user_request, data.received_date]),
+    [["Kursi", "pending", 5, "2026-10-20"], ["Meja", "pending", 5, "2026-10-21"]]);
   assert.deepEqual(progress, [41, 42]);
   assert.deepEqual(findWhere.id, [41, 42]);
   assert.deepEqual(result.map((row) => row.id), [41, 42]);
@@ -638,4 +668,48 @@ test("Bulk create makes one pending request per item in one transaction", async 
     { item_name: "Gagal", quantity_unit: "unit", quantity: 1 },
   ], 5, false), /insert failed/);
   assert.equal(rolledBack, true);
+});
+
+test("Inventory request create requires a valid received_date; edit only checks it when sent", async (t) => {
+  const controller = require("../src/controllers/inventory/inventoryRequest.controller");
+  const originals = { create: inventoryRequestService.create, update: inventoryRequestService.update };
+  t.after(() => Object.assign(inventoryRequestService, originals));
+  inventoryRequestService.create = async (body) => body;
+  inventoryRequestService.update = async (id, body) => body;
+  const call = async (method, body) => {
+    const res = { status(code) { this.code = code; return this; }, json(payload) { this.payload = payload; return this; } };
+    await controller[method]({ body, params: { id: 1 }, user: { id: 5 } }, res);
+    return [res.code, res.payload.message];
+  };
+  const body = { item_name: "Kursi", quantity_unit: "unit", quantity: 2 };
+  assert.deepEqual(await call("create", body), [400, "received_date must be a valid date"]);
+  assert.deepEqual(await call("create", { ...body, received_date: "bukan tanggal" }), [400, "received_date must be a valid date"]);
+  assert.equal((await call("create", { ...body, received_date: "2026-10-20" }))[0], 201);
+  assert.equal((await call("update", { quantity: 3 }))[0], 200);
+  assert.deepEqual(await call("update", { received_date: "" }), [400, "received_date must be a valid date"]);
+});
+
+test("Approved inventory request stock carries its received_date to the new inventory row and history", async (t) => {
+  const originals = {
+    findByPk: models.db1.InventoryRequest.findByPk,
+    findOne: models.db1.Inventory.findOne,
+    create: models.db1.Inventory.create,
+    history: models.db1.InventoryHistory.create,
+  };
+  t.after(() => {
+    models.db1.InventoryRequest.findByPk = originals.findByPk;
+    models.db1.Inventory.findOne = originals.findOne;
+    models.db1.Inventory.create = originals.create;
+    models.db1.InventoryHistory.create = originals.history;
+  });
+  models.db1.InventoryRequest.findByPk = async () => ({ id: 3, item_name: "Kursi", quantity_unit: "unit",
+    quantity: "2.00", received_date: "2026-10-20", note: null, files_product: [] });
+  models.db1.Inventory.findOne = async () => null;
+  const writes = [];
+  models.db1.Inventory.create = async (data) => { writes.push(["create", data.received_date]); return { id: 9 }; };
+  models.db1.InventoryHistory.create = async (data) => {
+    writes.push(["history", data.id_inventory_request, data.received_date]); return {};
+  };
+  assert.equal(await inventoryService.addFromInventoryRequest(3, 5, { LOCK: { UPDATE: "UPDATE" } }), 9);
+  assert.deepEqual(writes, [["create", "2026-10-20"], ["history", 3, "2026-10-20"]]);
 });

@@ -6,10 +6,7 @@ const {
   mirrorUpdate,
   syncFiles,
 } = require("../procurement/shared");
-const {
-  STAGES,
-  SICK_LETTER_STATUSES,
-} = require("../../models/humanResource/leaveRequest.model");
+const { STAGES } = require("../../models/humanResource/leaveRequest.model");
 
 const FIELDS = [
   "id_employee",
@@ -22,9 +19,12 @@ const FIELDS = [
   "clinic_phone",
   "clinic_address",
   "doctor_name",
+  "sick_letter_status",
 ];
 
 // Approval chain: supervisor -> hr -> spv hr -> manager hr -> director -> approved.
+// With a referral letter the director's approval goes to "request doctor letter"
+// (requester uploads the SKD) and then "request verification hr".
 // Approval positions are not wired to approval_flows yet, so any user can act;
 // only the status order is enforced.
 const NEXT_STATUS = Object.fromEntries(
@@ -42,9 +42,6 @@ function pick(input) {
     ]),
   );
 }
-
-// type is free text; any type containing "sick" (any case) is a sick leave.
-const isSickLeave = (type) => /sick/i.test(type ?? "");
 
 // Inclusive number of calendar days between two YYYY-MM-DD dates.
 function dayCount(startDate, endDate) {
@@ -224,12 +221,11 @@ class LeaveRequestService {
       );
   }
 
-  // decision: "approve" or "reject"; stage: one of STAGES. data: { note,
-  // sick_letter_status }. HR approving a sick leave must say whether the doctor's
-  // letter (SKD) is attached; if not, the director's approval sends the request
-  // to HR verification instead of approving it.
+  // decision: "approve" or "reject"; stage: one of STAGES. data: { note }. For a
+  // request created with a referral letter, the director's approval sends it back
+  // to the requester for the doctor's letter instead of approving it.
   async decide(id, stage, decision, userId, data, isDoubleDatabase = true) {
-    const { note, sick_letter_status: sickLetterStatus } = data ?? {};
+    const { note } = data ?? {};
     if (!STAGES.includes(stage)) fail("Invalid stage");
     if (!["approve", "reject"].includes(decision)) fail("Invalid decision");
     if (decision === "reject" && !note?.trim())
@@ -241,17 +237,12 @@ class LeaveRequestService {
       const update = {
         status: decision === "approve" ? NEXT_STATUS[stage] : `rejected ${stage}`,
       };
-      if (decision === "approve" && stage === "hr" && isSickLeave(request.type)) {
-        if (!SICK_LETTER_STATUSES.includes(sickLetterStatus))
-          fail(`sick_letter_status must be one of: ${SICK_LETTER_STATUSES.join(", ")}`);
-        update.sick_letter_status = sickLetterStatus;
-      }
       if (
         decision === "approve" &&
         stage === "director" &&
-        request.sick_letter_status === "not attached"
+        request.sick_letter_status === "referral letter"
       )
-        update.status = "request verification hr";
+        update.status = "request doctor letter";
       await mirrorUpdate("LeaveRequest", id, update, t1, t2);
       const action = decision === "approve" ? "approved" : "rejected";
       await this.addProgress(id, userId, `${action} ${stage}`, note, t1, t2);
@@ -259,23 +250,39 @@ class LeaveRequestService {
     return this.getById(id);
   }
 
-  // Admin/SPV HR attaches the doctor's letter that was missing at HR approval.
-  // The files are added to files_attachment and the request becomes approved.
-  async verifyHr(id, userId, data = {}, isDoubleDatabase = true) {
+  // The requester uploads the doctor's letter (SKD) for a request created with a
+  // referral letter. The files are added to files_attachment and the request goes
+  // to HR verification.
+  async submitDoctorLetter(id, userId, data = {}, isDoubleDatabase = true) {
     if (!Array.isArray(data.files_attachment) || !data.files_attachment.length)
       fail("files_attachment must contain the doctor's letter (SKD)");
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const request = await this.lock(id, t1);
-      if (request.status !== "request verification hr")
+      if (request.status !== "request doctor letter")
         fail(`Action is not allowed from status "${request.status}"`, 409);
+      if (request.id_user_request !== userId)
+        fail("Only the creator can submit the doctor's letter", 403);
       await this.appendAttachments(id, data.files_attachment, userId, t1, t2);
       await mirrorUpdate(
         "LeaveRequest",
         id,
-        { status: "approved", sick_letter_status: "attached" },
+        { status: "request verification hr" },
         t1,
         t2,
       );
+      await this.addProgress(id, userId, "doctor letter submitted", data.note, t1, t2);
+    });
+    return this.getById(id);
+  }
+
+  // Admin/SPV HR verifies the doctor's letter the requester uploaded; nothing is
+  // uploaded here. The request becomes approved.
+  async verifyHr(id, userId, data = {}, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const request = await this.lock(id, t1);
+      if (request.status !== "request verification hr")
+        fail(`Action is not allowed from status "${request.status}"`, 409);
+      await mirrorUpdate("LeaveRequest", id, { status: "approved" }, t1, t2);
       await this.addProgress(id, userId, "verified hr", data.note, t1, t2);
     });
     return this.getById(id);
@@ -284,4 +291,3 @@ class LeaveRequestService {
 
 module.exports = new LeaveRequestService();
 module.exports.dayCount = dayCount;
-module.exports.isSickLeave = isSickLeave;

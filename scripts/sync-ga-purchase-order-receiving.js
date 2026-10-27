@@ -1,11 +1,12 @@
 // Migrates GA purchase orders to per-item realization, goods receipts and refunds.
 // Safe to run more than once: every step checks the current schema/data first.
-//   1. Creates ga_purchase_order_item_receipts.
+//   1. Creates ga_purchase_order_item_receipts and ga_purchase_order_item_realizations.
 //   2. Adds missing columns (order totals, item quantities/refund, inventory history receipt link).
 //   3. Widens ga_purchase_order_items.receiving_status with "refund requested" and "refunded",
 //      and merges receipt goods_status "Not Good Refund" / "Not Good Returned" into "Not Good".
 //   4. Lets inventory_histories hold several rows per order item (one per receipt).
-//   5. Backfills order totals, item quantities and one receipt per item accepted the old way.
+//   5. Backfills order totals, item quantities, one receipt per item accepted the old way
+//      and one realization per item that saved it on the item columns.
 const { DataTypes } = require("sequelize");
 const { models, db1, db2 } = require("../src/models");
 
@@ -36,6 +37,7 @@ async function addMissingColumns(dbModels, modelName) {
 async function migrateSchema(name, dbModels) {
   console.log(`[${name}] schema`);
   await dbModels.GaPurchaseOrderItemReceipt.sync({ alter: false });
+  await dbModels.GaPurchaseOrderItemRealization.sync({ alter: false });
   for (const modelName of ["GaPurchaseOrder", "GaPurchaseOrderItem", "InventoryHistory"])
     await addMissingColumns(dbModels, modelName);
 
@@ -168,6 +170,64 @@ async function backfillReceipts() {
   console.log(`[db1/db2] receipts backfilled: ${items.length}`);
 }
 
+// Realizations saved on the old item columns become the item's first realization
+// row; their purchase proof and invoice files move to it.
+async function backfillRealizations() {
+  const columns = await db1.getQueryInterface().describeTable("ga_purchase_order_items");
+  if (!columns.purchase_realization_date) return;
+  const [items] = await db1.query(`
+    SELECT i.id, i.id_ga_purchase_order, i.purchase_realization_date,
+      i.purchase_realization_amount, i.purchase_realization_note,
+      (SELECT p.id_user FROM ga_purchase_order_verification_progress p
+        WHERE p.id_ga_purchase_order_item = i.id
+          AND p.status IN ('purchase realization saved', 'purchase realization updated')
+        ORDER BY p.id DESC LIMIT 1) id_user,
+      o.id_user_request
+    FROM ga_purchase_order_items i
+    JOIN ga_purchase_orders o ON o.id = i.id_ga_purchase_order
+    LEFT JOIN ga_purchase_order_item_realizations r ON r.id_ga_purchase_order_item = i.id
+    WHERE i.purchase_realization_date IS NOT NULL AND r.id IS NULL`);
+  for (const item of items) {
+    const t1 = await db1.transaction();
+    const t2 = await db2.transaction();
+    try {
+      const data = {
+        id_ga_purchase_order: item.id_ga_purchase_order,
+        id_ga_purchase_order_item: item.id,
+        id_user: item.id_user ?? item.id_user_request,
+        purchase_realization_date: item.purchase_realization_date,
+        purchase_realization_amount: item.purchase_realization_amount ?? 0,
+        note: item.purchase_realization_note,
+      };
+      const realization = await models.db1.GaPurchaseOrderItemRealization.create(data, { transaction: t1 });
+      const targets = [[models.db1, t1]];
+      if (await models.db2.GaPurchaseOrderItem.findByPk(item.id, { transaction: t2 })) {
+        await models.db2.GaPurchaseOrderItemRealization.create({ ...data, id: realization.id }, { transaction: t2 });
+        targets.push([models.db2, t2]);
+      }
+      for (const [dbModels, t] of targets)
+        await dbModels.File.update(
+          { fileable_type: "ga_purchase_order_item_realizations", fileable_id: realization.id },
+          {
+            where: {
+              fileable_type: "ga_purchase_order_items",
+              fileable_id: item.id,
+              category: ["files_purchase_proof", "files_invoice"],
+            },
+            transaction: t,
+          },
+        );
+      await t1.commit();
+      await t2.commit();
+    } catch (error) {
+      await t1.rollback();
+      await t2.rollback();
+      throw error;
+    }
+  }
+  console.log(`[db1/db2] realizations backfilled: ${items.length}`);
+}
+
 const run = async () => {
   try {
     for (const [name, dbModels] of [["db1", models.db1], ["db2", models.db2]])
@@ -175,6 +235,7 @@ const run = async () => {
     for (const [name, sequelize] of [["db1", db1], ["db2", db2]])
       await backfillTotals(name, sequelize);
     await backfillReceipts();
+    await backfillRealizations();
     console.log("GA purchase order receiving migration finished");
   } finally {
     await Promise.allSettled([db1.close(), db2.close()]);

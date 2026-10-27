@@ -144,10 +144,10 @@ Untuk setiap array file (`files_product`, `files_attachment`, `file_attachment`,
 Saat GA Staff menekan **Accepted** atau **Returned** pada sebuah item (`PATCH /api/ga-purchase-orders/ga-staff/accept|return/:id/items/:itemId`), `quantity_good` dari goods receipt tersebut otomatis masuk ke inventory dalam transaksi yang sama, **hanya jika** `item_category` = `item` dan `quantity_good` > 0.
 
 - Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, dan `other` yang sama persis, `quantity_good` receipt ditambahkan ke inventory tersebut. Field kosong (`null` atau string kosong) dianggap sama.
-- Jika ada satu saja yang berbeda, dibuat data inventory baru.
+- Jika ada satu saja yang berbeda, dibuat data inventory baru. `received_date` (tanggal penerimaan) inventory baru diisi dari `goods_in_date` goods receipt; inventory yang sudah ada tidak diubah tanggalnya.
 - `asset_category` item GA PO disimpan di inventory baru. Untuk inventory yang sudah ada, `asset_category` hanya diisi jika masih kosong.
 - `files_product` dari item GA PO disalin ke inventory. File dengan `stored_name` yang sudah ada di inventory tersebut tidak disalin ulang.
-- Setiap penambahan dicatat di `histories` (inventory, GA PO, item GA PO, goods receipt, user, quantity). Satu item GA PO bisa menambah stok beberapa kali (sekali per goods receipt).
+- Setiap penambahan dicatat di `histories` (inventory, GA PO, item GA PO, goods receipt, user, quantity, `received_date` = `goods_in_date` goods receipt). History dari stock opname tidak punya `received_date` (`null`). Kolom `received_date` di `inventories`, `inventory_requests`, dan `inventory_histories` dibuat dengan `npm run db:sync-inventory-received-date`; data lama berisi `null`. Satu item GA PO bisa menambah stok beberapa kali (sekali per goods receipt).
 
 Endpoint:
 
@@ -175,12 +175,13 @@ Input stok manual dibuat sebagai request satu barang per request, lalu di-approv
   "asset_category": "asset",
   "quantity_unit": "unit",
   "quantity": 2,
+  "received_date": "2026-10-20",
   "note": "Stok awal",
   "files_product": []
 }
 ```
 
-`item_name`, `quantity_unit`, dan `quantity` (> 0) wajib. `asset_category` opsional (`asset` / `non asset`).
+`item_name`, `quantity_unit`, `quantity` (> 0), dan `received_date` (tanggal penerimaan) wajib. `asset_category` opsional (`asset` / `non asset`).
 
 - `GET /api/inventory-requests` (filter `search`, `status`, `page`, `limit`) dan `GET /api/inventory-requests/:id` menampilkan request, `files_product`, `inventory` (setelah approve), dan `verification_progress`, plus `is_can_approve_reject` dan `action_label` seperti fitur approval lain.
 - `PUT /api/inventory-requests/:id`: hanya pembuat, hanya selama `pending`. Kirim field yang ingin diubah saja. Untuk `files_product`, sertakan `id` file lama yang ingin dipertahankan.

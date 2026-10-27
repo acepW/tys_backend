@@ -23,6 +23,10 @@ module.exports = (sequelize) => {
       size: { type: DataTypes.STRING(255), allowNull: true },
       material: { type: DataTypes.STRING(255), allowNull: true },
       other: { type: DataTypes.TEXT, allowNull: true },
+      purchase_request_category: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
       quantity_unit: { type: DataTypes.STRING(100), allowNull: false },
       quantity_system: {
         type: DataTypes.DECIMAL(15, 2),
@@ -75,6 +79,10 @@ module.exports = (sequelize) => {
     InventoryOpnameItem.belongsTo(models.Inventory, {
       foreignKey: "id_inventory",
       as: "inventory",
+    });
+    InventoryOpnameItem.hasMany(models.InventoryOpnameItemDetail, {
+      foreignKey: "id_inventory_opname_item",
+      as: "details",
     });
   };
   return InventoryOpnameItem;
