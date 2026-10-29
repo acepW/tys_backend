@@ -2,6 +2,7 @@
 // statuses: document status that waits for someone's action (approve/reject or a
 //   process step such as signing or payment) -> default approval_flows.label,
 //   which tells admins what acting at that status means.
+// statusField: document column holding that status, when it is not "status".
 // scopes: document column compared with the approver's own department/division.
 // A scope a feature does not list falls back to "all".
 module.exports = {
@@ -44,10 +45,21 @@ module.exports = {
     statuses: {
       pending: "Submit Invoice",
       "on verification": "Approve / Reject Invoice",
-      approved: "Signing Invoice",
-      signing: "Send Invoice for Payment",
-      "waiting for payment": "Input Payment Invoice",
+      "waiting for payment": "Upload Payment Proof Invoice",
+      "payment verification": "Verify Payment Proof Invoice",
+      "payment proof rejected": "Re-upload Payment Proof Invoice",
+      "revision requested": "Revise Invoice Tax / Reject Revision Request",
+      "waiting for revision": "Approve / Reject Invoice Revision",
     },
+  },
+  // The tax invoice (faktur pajak) runs beside the invoice's payment status, so its
+  // flows are keyed on invoices.tax_invoice_status instead of invoices.status.
+  "invoice tax invoice": {
+    model: "Invoice",
+    label: "Invoice Tax Invoice (FP)",
+    numberField: "invoice_no",
+    statusField: "tax_invoice_status",
+    statuses: { requested: "Upload Tax Invoice (FP)" },
   },
   "debit note": {
     model: "DebitNote",

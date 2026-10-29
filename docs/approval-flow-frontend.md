@@ -46,7 +46,7 @@ Aturan tampilan:
 | `false`                 | ada            | Tanpa tombol. Boleh tampilkan badge, misalnya "Menunggu: Signing Invoice"     |
 | `false`                 | `null`         | Tanpa tombol dan tanpa badge. Dokumen tidak menunggu action, misalnya `paid` |
 
-Tombol yang tepat ditentukan dari **status** dokumen. Contohnya invoice berstatus `on verification` menampilkan tombol Approve dan Reject, sedangkan berstatus `approved` menampilkan tombol Signing.
+Tombol yang tepat ditentukan dari **status** dokumen. Contohnya invoice berstatus `on verification` menampilkan tombol Approve dan Reject, sedangkan berstatus `payment verification` menampilkan tombol Terima dan Tolak bukti bayar. Detail invoice ada di [invoice-frontend.md](invoice-frontend.md).
 
 ## 2. Halaman My Task
 
@@ -166,9 +166,12 @@ Status dokumen berubah, jadi `is_can_approve_reject` dan `action_label` juga iku
 | `contract`             | `sending to customer` | Approve / Reject Contract by Customer            | Approve, Reject   | `PATCH /contracts/approve-customer/:id`, `/reject-customer/:id` |
 | `invoice`              | `pending`             | Submit Invoice                                   | Submit            | `PATCH /invoices/submit/:id`                       |
 | `invoice`              | `on verification`     | Approve / Reject Invoice                         | Approve, Reject   | `PATCH /invoices/approve/:id`, `/reject/:id`       |
-| `invoice`              | `approved`            | Signing Invoice                                  | Signing           | `PATCH /invoices/signing/:id`                      |
-| `invoice`              | `signing`             | Send Invoice for Payment                         | Waiting Payment   | `PATCH /invoices/waiting-for-payment/:id`          |
-| `invoice`              | `waiting for payment` | Input Payment Invoice                            | Input Payment     | `PATCH /invoices/pay/:id`                          |
+| `invoice`              | `waiting for payment` | Upload Payment Proof Invoice                     | Upload Payment    | `PATCH /invoices/upload-payment/:id`               |
+| `invoice`              | `payment verification` | Verify Payment Proof Invoice                    | Accept, Reject    | `PATCH /invoices/payment-accept/:id`, `/payment-reject/:id` |
+| `invoice`              | `payment proof rejected` | Re-upload Payment Proof Invoice               | Upload Payment    | `PATCH /invoices/upload-payment/:id`               |
+| `invoice`              | `revision requested`  | Revise Invoice Tax / Reject Revision Request     | Revise, Reject    | `PATCH /invoices/revise/:id`, `/revision-request-reject/:id` |
+| `invoice`              | `waiting for revision` | Approve / Reject Invoice Revision               | Approve, Reject   | `PATCH /invoices/revision-approve/:id`, `/revision-reject/:id` |
+| `invoice tax invoice`  | `requested` (`tax_invoice_status`) | Upload Tax Invoice (FP)              | Upload FP         | `PATCH /invoices/tax-invoice/:id` (flag: `is_can_upload_tax_invoice`) |
 | `debit note`           | `pending`             | Submit Debit Note                                | Submit            | `PATCH /debit-notes/submit/:id`                    |
 | `debit note`           | `on verification`     | Approve / Reject Debit Note                      | Approve, Reject   | `PATCH /debit-notes/approve/:id`, `/reject/:id`    |
 | `debit note`           | `approved`            | Input Payment Debit Note                         | Input Payment     | `PATCH /debit-notes/paid/:id`                      |

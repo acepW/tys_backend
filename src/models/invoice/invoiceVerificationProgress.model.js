@@ -42,6 +42,16 @@ module.exports = (sequelize) => {
           "approved",
           "signing",
           "waiting for payment",
+          "payment uploaded",
+          "payment accepted",
+          "payment rejected",
+          "tax invoice requested",
+          "tax invoice issued",
+          "revision requested",
+          "revision request rejected",
+          "revised",
+          "revision approved",
+          "revision rejected",
           "paid",
         ),
         allowNull: false,
@@ -90,6 +100,17 @@ module.exports = (sequelize) => {
       as: "user",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
+    });
+
+    // Client chat proof attached to a revision request
+    InvoiceVerificationProgress.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: {
+        fileable_type: "invoice_verification_progress",
+        category: "revision_attachment",
+      },
+      as: "revision_attachment",
     });
   };
 

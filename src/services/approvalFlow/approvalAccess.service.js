@@ -18,6 +18,9 @@ const getTarget = (approvalFor) => {
   return target;
 };
 
+// Document column holding the status a target's flows are keyed on.
+const statusField = (target) => target.statusField || "status";
+
 class ApprovalAccessService {
   // Read from the database, not the JWT, so position changes apply without re-login.
   async getActor(userId) {
@@ -62,7 +65,7 @@ class ApprovalAccessService {
   /** Whether one of the actor's flows covers this document's status and scope. */
   canAct(target, doc, actor, flows) {
     return flows.some((flow) => {
-      if (flow.status !== doc.status) return false;
+      if (flow.status !== doc[statusField(target)]) return false;
       const where = this.scopeWhere(target, flow.scope, actor);
       return where !== null && Object.entries(where).every(([field, value]) => doc[field] === value);
     });
@@ -73,24 +76,31 @@ class ApprovalAccessService {
    * Throws 409 for a status outside `fromStatuses` and 403 for a user who is not an
    * approver; both only log while enforcement is off. A missing document is left to
    * the caller's own 404 handling.
+   * actAs checks the approvers of that status instead of the document's own, for an
+   * optional action open in several statuses to one role (e.g. sales requesting a
+   * tax invoice while AR & AP verifies a payment).
    */
-  async authorize(approvalFor, id, userId, fromStatuses = null) {
+  async authorize(approvalFor, id, userId, fromStatuses = null, actAs = null) {
     const target = getTarget(approvalFor);
+    const field = statusField(target);
     const scopeFields = Object.values(target.scopes || {});
     const doc = await models.db1[target.model].findByPk(id, {
-      attributes: ["id", "status", ...scopeFields],
+      attributes: ["id", field, ...scopeFields],
     });
     if (!doc) return;
+    const status = doc[field];
     const allowed = fromStatuses || Object.keys(target.statuses);
 
     let problem = null;
-    if (!allowed.includes(doc.status)) {
-      problem = [409, `Action is not allowed from status "${doc.status}"`];
+    if (!allowed.includes(status)) {
+      problem = [409, `Action is not allowed from status "${status}"`];
     } else {
       const actor = await this.getActor(userId);
       const flows = await this.getFlowsForPosition(actor?.id_position, approvalFor);
-      if (!this.canAct(target, doc, actor, flows))
-        problem = [403, `You are not allowed to act on ${target.label} with status "${doc.status}"`];
+      const plain = doc.toJSON ? doc.toJSON() : { ...doc };
+      if (actAs) plain[field] = actAs;
+      if (!this.canAct(target, plain, actor, flows))
+        problem = [403, `You are not allowed to act on ${target.label} with status "${plain[field]}"`];
     }
     if (!problem) return;
     if (!isEnforced()) {
@@ -104,7 +114,7 @@ class ApprovalAccessService {
   async canActById(approvalFor, id, userId) {
     const target = getTarget(approvalFor);
     const doc = await models.db1[target.model].findByPk(id, {
-      attributes: ["id", "status", ...Object.values(target.scopes || {})],
+      attributes: ["id", statusField(target), ...Object.values(target.scopes || {})],
     });
     if (!doc) fail(`${target.label} not found`, 404);
     const actor = await this.getActor(userId);
@@ -117,9 +127,17 @@ class ApprovalAccessService {
    * Accepts an array, a { data: [...] } page, or a single document.
    * action_label names the action the document's status waits for, whoever may do it.
    * Failures are logged and leave is_can_approve_reject false so the GET still works.
+   * fields renames both keys, so a second target on the same document (e.g. its tax
+   * invoice) can add its own flag beside the main one.
    */
-  async attachActionFlags(approvalFor, data, userId) {
+  async attachActionFlags(
+    approvalFor,
+    data,
+    userId,
+    fields = { flag: "is_can_approve_reject", label: "action_label" },
+  ) {
     const target = getTarget(approvalFor);
+    const field = statusField(target);
     let actor = null;
     let flows = [];
     let labels = {};
@@ -140,8 +158,8 @@ class ApprovalAccessService {
       const plain = row.toJSON ? row.toJSON() : row;
       return {
         ...plain,
-        is_can_approve_reject: this.canAct(target, plain, actor, flows),
-        action_label: labels[plain.status] ?? target.statuses[plain.status] ?? null,
+        [fields.flag]: this.canAct(target, plain, actor, flows),
+        [fields.label]: labels[plain[field]] ?? target.statuses[plain[field]] ?? null,
       };
     };
     if (Array.isArray(data)) return data.map(decorate);
@@ -154,7 +172,7 @@ class ApprovalAccessService {
     const conditions = flows
       .map((flow) => {
         const where = this.scopeWhere(target, flow.scope, actor);
-        return where && { status: flow.status, ...where };
+        return where && { [statusField(target)]: flow.status, ...where };
       })
       .filter(Boolean);
     if (!conditions.length) return null;
@@ -174,13 +192,14 @@ class ApprovalAccessService {
     const toTask = (key, row) => {
       const target = APPROVAL_TARGETS[key];
       const plain = row.toJSON ? row.toJSON() : row;
-      const flow = flowsFor(key).find((item) => item.status === plain.status);
+      const status = plain[statusField(target)];
+      const flow = flowsFor(key).find((item) => item.status === status);
       return {
         ...plain,
         approval_for: key,
         approval_for_label: target.label,
         document_no: plain[target.numberField] ?? null,
-        action_label: flow?.label ?? target.statuses[plain.status] ?? null,
+        action_label: flow?.label ?? target.statuses[status] ?? null,
         is_can_approve_reject: true,
       };
     };

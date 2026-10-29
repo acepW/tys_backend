@@ -6,7 +6,28 @@ const { Op, fn, col, where } = require("sequelize");
 const debitNoteService = require("../debitNote/debitNote.service");
 const incomingInvoiceService = require("./incomingInvoice.service");
 const taxService = require("../masterTax/tax.service");
-const fileService = require("../file.service");
+const {
+  fail,
+  withTransactions,
+  mirrorCreate,
+  mirrorUpdate,
+  syncFiles,
+} = require("../procurement/shared");
+
+const paymentMethods = ["transfer", "cash"];
+// Invoice statuses from which sales may upload a payment proof.
+const paymentUploadStatuses = ["waiting for payment", "payment proof rejected"];
+// Every status after SPV approval: sales may request the tax invoice in any of them.
+const taxInvoiceRequestStatuses = [
+  "waiting for payment",
+  "payment verification",
+  "payment proof rejected",
+  "revision requested",
+  "waiting for revision",
+  "paid",
+];
+// A revision changes only the PPh; PPN stays so the tax invoice remains valid.
+const revisableTaxFlags = ["tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"];
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
@@ -300,6 +321,12 @@ class InvoiceService extends DualDatabaseService {
                 },
               ],
             },
+            {
+              model: dbModels.File,
+              as: "revision_attachment",
+              required: false,
+              where: { is_active: true },
+            },
           ],
         },
         {
@@ -307,6 +334,30 @@ class InvoiceService extends DualDatabaseService {
           as: "tax_invoice_attachment",
           required: false,
           where: { is_active: true },
+        },
+        {
+          model: dbModels.InvoicePayment,
+          as: "payments",
+          separate: true,
+          order: [["id", "ASC"]],
+          include: [
+            {
+              model: dbModels.User,
+              as: "user_create",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_verify",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.File,
+              as: "payment_proof",
+              required: false,
+              where: { is_active: true },
+            },
+          ],
         },
         {
           model: dbModels.DebitNote,
@@ -1322,20 +1373,30 @@ class InvoiceService extends DualDatabaseService {
 
   /**
    * Approve invoice
+   * SPV FAT Internal approves and uploads the invoice file; sales can then
+   * download it, so the invoice goes straight to waiting for payment.
    * @param {Number} id - Invoice ID
+   * @param {String} file_invoice - Invoice file URL (optional)
    * @param {Number} id_user - User ID who approves
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
-  async approveInvoice(id, note, id_user, isDoubleDatabase = true) {
+  async approveInvoice(
+    id,
+    note,
+    file_invoice,
+    id_user,
+    isDoubleDatabase = true,
+  ) {
     return await this._changeStatusWithProgress(
       id,
-      "approved",
+      "waiting for payment",
       "approved",
       note || "Invoice approved",
       note,
       id_user,
       isDoubleDatabase,
+      file_invoice,
     );
   }
 
@@ -1359,157 +1420,501 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
-   * waiting for payment invoice
+   * Sales uploads a payment proof; AR & AP verifies it next. Proofs are accepted
+   * one at a time and add up until they cover the invoice total (partial payments).
    * @param {Number} id - Invoice ID
-   * @param {Number} id_user - User ID who approves
+   * @param {Object} data - { amount, transfer_date, bank_name, payment_method, note, payment_proof }
+   * @param {Number} idUser - Sales user ID
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
-  async waitingPaymentInvoice(
-    id,
-    note,
-    file_invoice,
-    id_user,
-    isDoubleDatabase = true,
-  ) {
-    return await this._changeStatusWithProgress(
-      id,
-      "waiting for payment",
-      "waiting for payment",
-      note || "Invoice is waiting for payment",
-      note,
-      id_user,
-      isDoubleDatabase,
-      file_invoice,
+  async uploadPayment(id, data, idUser, isDoubleDatabase = true) {
+    const amount = Number(data.amount);
+    if (
+      data.amount == null ||
+      data.amount === "" ||
+      !Number.isInteger(amount) ||
+      amount <= 0
+    )
+      fail("amount must be a positive whole number");
+    if (!data.transfer_date) fail("transfer_date is required");
+    const paymentMethod = data.payment_method || "transfer";
+    if (!paymentMethods.includes(paymentMethod))
+      fail("payment_method must be transfer or cash");
+    const bankName = data.bank_name?.toString().trim() || null;
+    if (paymentMethod === "transfer" && !bankName)
+      fail("bank_name is required for transfer payments");
+    if (!Array.isArray(data.payment_proof) || !data.payment_proof.length)
+      fail("payment_proof must be a non-empty array");
+
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoice(id, t1);
+      if (!paymentUploadStatuses.includes(invoice.status))
+        fail(
+          `Payment proof cannot be uploaded while the invoice is ${invoice.status}`,
+          409,
+        );
+      const remaining =
+        Number(invoice.total) - (await this._acceptedAmount(invoice.id, t1));
+      if (amount > remaining)
+        fail(`amount exceeds the remaining invoice balance (${remaining})`);
+
+      const payment = await mirrorCreate(
+        "InvoicePayment",
+        {
+          id_invoice: invoice.id,
+          amount,
+          transfer_date: data.transfer_date,
+          bank_name: bankName,
+          payment_method: paymentMethod,
+          status: "verification",
+          note: data.note || null,
+          id_user_create: idUser,
+        },
+        t1,
+        t2,
+      );
+      await syncFiles(
+        "invoice_payments",
+        payment.id,
+        "payment_proof",
+        data.payment_proof,
+        idUser,
+        t1,
+        t2,
+      );
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        { status: "payment verification" },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "payment uploaded",
+        data.note || "Payment proof uploaded",
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * AR & AP accepts the payment proof waiting for verification. The invoice is
+   * paid once accepted proofs cover its total; otherwise it waits for the rest.
+   * invoices.payment_amount keeps the accepted total for the invoice report.
+   */
+  async acceptPayment(id, note, idUser, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoice(id, t1);
+      const payment = await this._paymentInVerification(invoice, t1);
+      const accepted =
+        (await this._acceptedAmount(invoice.id, t1)) + Number(payment.amount);
+      const isPaidOff = accepted >= Number(invoice.total);
+      // Any accepted payment makes the proforma final, so AR & AP must issue its
+      // tax invoice if sales has not requested one yet.
+      const requestsTaxInvoice =
+        invoice.tax_ppn && invoice.tax_invoice_status === "none";
+
+      await mirrorUpdate(
+        "InvoicePayment",
+        payment.id,
+        {
+          status: "accepted",
+          verification_note: note || null,
+          id_user_verify: idUser,
+          verified_at: new Date(),
+        },
+        t1,
+        t2,
+      );
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          status: isPaidOff ? "paid" : "waiting for payment",
+          payment_amount: accepted,
+          payment_date: payment.transfer_date,
+          payment_method: payment.payment_method,
+          ...(requestsTaxInvoice && { tax_invoice_status: "requested" }),
+        },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "payment accepted",
+        note ||
+          (isPaidOff
+            ? "Payment accepted, invoice paid off"
+            : "Payment accepted, waiting for the remaining payment"),
+        t1,
+        t2,
+      );
+      if (requestsTaxInvoice)
+        await this._addProgress(
+          invoice.id,
+          idUser,
+          "tax invoice requested",
+          "Tax invoice requested automatically after a payment was accepted",
+          t1,
+          t2,
+        );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * AR & AP rejects the payment proof waiting for verification, with a comment
+   * telling sales what is wrong (e.g. underpayment). Sales uploads a new proof.
+   */
+  async rejectPayment(id, note, idUser, isDoubleDatabase = true) {
+    if (!note?.toString().trim()) fail("note is required for rejection");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoice(id, t1);
+      const payment = await this._paymentInVerification(invoice, t1);
+      await mirrorUpdate(
+        "InvoicePayment",
+        payment.id,
+        {
+          status: "rejected",
+          verification_note: note,
+          id_user_verify: idUser,
+          verified_at: new Date(),
+        },
+        t1,
+        t2,
+      );
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        { status: "payment proof rejected" },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "payment rejected",
+        note,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  async _lockInvoice(id, t1) {
+    const invoice = await models.db1.Invoice.findOne({
+      where: { id, is_active: true },
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+    if (!invoice) fail("Invoice not found", 404);
+    return invoice;
+  }
+
+  async _acceptedAmount(idInvoice, t1) {
+    const total = await models.db1.InvoicePayment.sum("amount", {
+      where: { id_invoice: idInvoice, status: "accepted" },
+      transaction: t1,
+    });
+    return Number(total || 0);
+  }
+
+  async _paymentInVerification(invoice, t1) {
+    if (invoice.status !== "payment verification")
+      fail(
+        `Payment proof cannot be verified while the invoice is ${invoice.status}`,
+        409,
+      );
+    const payment = await models.db1.InvoicePayment.findOne({
+      where: { id_invoice: invoice.id, status: "verification" },
+      order: [["id", "DESC"]],
+      transaction: t1,
+    });
+    if (!payment) fail("No payment proof is waiting for verification", 409);
+    return payment;
+  }
+
+  async _addProgress(idInvoice, idUser, status, note, t1, t2) {
+    return mirrorCreate(
+      "InvoiceVerificationProgress",
+      { id_invoice: idInvoice, id_user: idUser, status, note },
+      t1,
+      t2,
     );
   }
 
   /**
-   * signing for payment invoice
-   * @param {Number} id - Invoice ID
-   * @param {Number} id_user - User ID who signing
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated invoice
+   * Sales requests the tax invoice (faktur pajak) before payment. Only once, and
+   * only for an invoice with PPN; AR & AP then uploads it.
    */
-  async signingPaymentInvoice(id, note, id_user, isDoubleDatabase = true) {
-    return await this._changeStatusWithProgress(
-      id,
-      "signing",
-      "signing",
-      note || "Invoice is signing",
-      note,
-      id_user,
-      isDoubleDatabase,
-    );
+  async requestTaxInvoice(id, note, idUser, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(
+        id,
+        taxInvoiceRequestStatuses,
+        "Tax invoice request",
+        t1,
+      );
+      if (!invoice.tax_ppn)
+        fail("Tax invoice is not needed for an invoice without PPN");
+      if (invoice.tax_invoice_status !== "none")
+        fail(`Tax invoice has already been ${invoice.tax_invoice_status}`, 409);
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        { tax_invoice_status: "requested" },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "tax invoice requested",
+        note || "Tax invoice requested",
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
   }
 
   /**
-   * Pay invoice - change status to "paid off" and add progress
+   * AR & AP uploads the requested tax invoice (faktur pajak): number, date and
+   * attachment files. The invoice status itself does not change.
    * @param {Number} id - Invoice ID
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated invoice
-   */
-  async payInvoice(
-    id,
-    note,
-    payment_date,
-    payment_amount,
-    payment_method,
-    proof_of_payment,
-    payment_for,
-    id_user,
-    isDoubleDatabase = true,
-  ) {
-    return await this._changeStatusWithProgress(
-      id,
-      "paid",
-      "paid",
-      note || "Invoice paid",
-      note,
-      id_user,
-      isDoubleDatabase,
-      null,
-      payment_date,
-      payment_amount,
-      payment_method,
-      proof_of_payment,
-      payment_for,
-    );
-  }
-
-  /**
-   * Upload tax invoice (faktur pajak): number, date and attachment files
-   * @param {Number} id - Invoice ID
-   * @param {Object} data - { tax_invoice_no, tax_invoice_date, tax_invoice_attachment }
+   * @param {Object} data - { tax_invoice_no, tax_invoice_date, tax_invoice_attachment, note }
    * @param {Number} idUser - User ID who uploads
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
   async uploadTaxInvoice(id, data, idUser, isDoubleDatabase = true) {
-    let transaction1 = null;
-    let transaction2 = null;
-
-    try {
-      transaction1 = await db1.transaction();
-      if (isDoubleDatabase) transaction2 = await db2.transaction();
-
-      const existing = await models.db1.Invoice.findByPk(id, {
-        transaction: transaction1,
-        lock: transaction1.LOCK.UPDATE,
-      });
-      if (!existing) {
-        const error = new Error("Invoice not found");
-        error.statusCode = 404;
-        throw error;
-      }
-      if (existing.status !== "paid") {
-        const error = new Error(
-          "Tax invoice can only be uploaded when the invoice status is paid",
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoice(id, t1);
+      if (invoice.tax_invoice_status !== "requested")
+        fail(
+          invoice.tax_invoice_status === "issued"
+            ? "Tax invoice has already been issued"
+            : "Tax invoice can only be uploaded after it is requested",
+          409,
         );
-        error.statusCode = 409;
-        throw error;
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          tax_invoice_no: data.tax_invoice_no,
+          tax_invoice_date: data.tax_invoice_date,
+          tax_invoice_status: "issued",
+        },
+        t1,
+        t2,
+      );
+      await syncFiles(
+        "invoices",
+        invoice.id,
+        "tax_invoice_attachment",
+        data.tax_invoice_attachment,
+        idUser,
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "tax invoice issued",
+        data.note || `Tax invoice ${data.tax_invoice_no} issued`,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * Sales asks AR & AP to fix the invoice tax (e.g. a PPh the client reported
+   * late), with the client's chat as proof. The invoice and tax invoice numbers
+   * stay the same, so only an unpaid invoice can be revised.
+   */
+  async requestRevision(id, data, idUser, isDoubleDatabase = true) {
+    if (!data.note?.toString().trim())
+      fail("note is required to explain the revision");
+    if (
+      !Array.isArray(data.revision_attachment) ||
+      !data.revision_attachment.length
+    )
+      fail("revision_attachment must be a non-empty array");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(
+        id,
+        ["waiting for payment"],
+        "Revision request",
+        t1,
+      );
+      if (await this._acceptedAmount(invoice.id, t1))
+        fail("Invoice cannot be revised after a payment has been accepted", 409);
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        { status: "revision requested" },
+        t1,
+        t2,
+      );
+      const progress = await this._addProgress(
+        invoice.id,
+        idUser,
+        "revision requested",
+        data.note,
+        t1,
+        t2,
+      );
+      await syncFiles(
+        "invoice_verification_progress",
+        progress.id,
+        "revision_attachment",
+        data.revision_attachment,
+        idUser,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /** AR & AP turns down a revision request; sales sees the reason in the note. */
+  async rejectRevisionRequest(id, note, idUser, isDoubleDatabase = true) {
+    if (!note?.toString().trim()) fail("note is required for rejection");
+    return this._move(
+      id,
+      {
+        from: ["revision requested"],
+        to: "waiting for payment",
+        action: "Rejecting the revision request",
+        progress: "revision request rejected",
+        note,
+      },
+      idUser,
+      isDoubleDatabase,
+    );
+  }
+
+  /**
+   * AR & AP changes the PPh flags and recalculates the deductions and total, then
+   * SPV FAT Internal reviews it. PPN is kept as it is, so the tax invoice (FP)
+   * number and amount stay valid.
+   * @param {Object} data - { tax_pph_23, tax_pp_20, tax_pph_4_ayat_2, note }; a flag left out keeps its value
+   */
+  async reviseInvoice(id, data, idUser, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(
+        id,
+        ["revision requested"],
+        "Revision",
+        t1,
+      );
+      const flags = {};
+      for (const key of revisableTaxFlags) {
+        const value = data[key] ?? invoice[key];
+        if (typeof value !== "boolean") fail(`${key} must be a boolean`);
+        flags[key] = value;
       }
+      const { pph, pp_20, pph_4_ayat_2 } = await taxService.calculate(
+        invoice.sub_total,
+        false,
+        flags.tax_pph_23,
+        t1,
+        flags.tax_pp_20,
+        flags.tax_pph_4_ayat_2,
+      );
+      const total =
+        Number(invoice.sub_total) +
+        Number(invoice.ppn) -
+        pph -
+        pp_20 -
+        pph_4_ayat_2;
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          ...flags,
+          pph,
+          pp_20,
+          pph_4_ayat_2,
+          total,
+          status: "waiting for revision",
+        },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "revised",
+        data.note || `Invoice tax revised, total ${total}`,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
 
-      const updateData = {
-        tax_invoice_no: data.tax_invoice_no,
-        tax_invoice_date: data.tax_invoice_date,
-      };
-      await models.db1.Invoice.update(updateData, {
-        where: { id },
-        transaction: transaction1,
-      });
-      if (transaction2) {
-        await models.db2.Invoice.update(updateData, {
-          where: { id },
-          transaction: transaction2,
-        });
-      }
+  /**
+   * SPV FAT Internal approves the revised invoice, optionally with a new invoice
+   * file, and it goes back to waiting for payment.
+   */
+  async approveRevision(id, note, fileInvoice, idUser, isDoubleDatabase = true) {
+    return this._move(
+      id,
+      {
+        from: ["waiting for revision"],
+        to: "waiting for payment",
+        action: "Approving the revision",
+        progress: "revision approved",
+        note: note || "Invoice revision approved",
+        data: fileInvoice !== undefined ? { file_invoice: fileInvoice } : {},
+      },
+      idUser,
+      isDoubleDatabase,
+    );
+  }
 
-      if (data.tax_invoice_attachment !== undefined) {
-        await fileService.syncFiles(
-          "invoices",
-          id,
-          data.tax_invoice_attachment,
-          {
-            category: "tax_invoice_attachment",
-            uploadedBy: idUser,
-            isDoubleDatabase,
-            hardDelete: false,
-          },
-          transaction1,
-          transaction2,
-        );
-      }
+  /** SPV FAT Internal sends the revision back to AR & AP to edit again. */
+  async rejectRevision(id, note, idUser, isDoubleDatabase = true) {
+    if (!note?.toString().trim()) fail("note is required for rejection");
+    return this._move(
+      id,
+      {
+        from: ["waiting for revision"],
+        to: "revision requested",
+        action: "Rejecting the revision",
+        progress: "revision rejected",
+        note,
+      },
+      idUser,
+      isDoubleDatabase,
+    );
+  }
 
-      await transaction1.commit();
-      if (transaction2) await transaction2.commit();
+  // Locks the invoice, checks it is in one of `from`, moves it to `to` and logs progress.
+  async _move(id, { from, to, action, progress, note, data = {} }, idUser, isDoubleDatabase) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(id, from, action, t1);
+      await mirrorUpdate("Invoice", invoice.id, { ...data, status: to }, t1, t2);
+      await this._addProgress(invoice.id, idUser, progress, note, t1, t2);
+    });
+    return this.getById(id, {}, true);
+  }
 
-      return this.getById(id, {}, true);
-    } catch (error) {
-      if (transaction1 && !transaction1.finished) await transaction1.rollback();
-      if (transaction2 && !transaction2.finished) await transaction2.rollback();
-      throw error;
-    }
+  async _lockInvoiceIn(id, statuses, action, t1) {
+    const invoice = await this._lockInvoice(id, t1);
+    if (!statuses.includes(invoice.status))
+      fail(`${action} is not allowed while the invoice is ${invoice.status}`, 409);
+    return invoice;
   }
 
   /**
@@ -1531,11 +1936,6 @@ class InvoiceService extends DualDatabaseService {
     id_user,
     isDoubleDatabase = true,
     file_invoice,
-    payment_date,
-    payment_amount,
-    payment_method,
-    proof_of_payment,
-    payment_for,
   ) {
     let transaction1 = null;
     let transaction2 = null;
@@ -1555,7 +1955,7 @@ class InvoiceService extends DualDatabaseService {
           updateData.note = invoiceNote;
         }
 
-        if (invoiceStatus == "approved") {
+        if (progressStatus == "approved") {
           updateData.id_user_approve = id_user;
         }
 
@@ -1563,16 +1963,8 @@ class InvoiceService extends DualDatabaseService {
           updateData.id_user_reject = id_user;
         }
 
-        if (invoiceStatus == "waiting for payment") {
+        if (file_invoice !== undefined) {
           updateData.file_invoice = file_invoice;
-        }
-
-        if (invoiceStatus == "paid") {
-          updateData.payment_date = payment_date;
-          updateData.payment_amount = payment_amount;
-          updateData.payment_method = payment_method;
-          updateData.proof_of_payment = proof_of_payment;
-          updateData.payment_for = payment_for;
         }
 
         // 1. Update Invoice status in both databases
@@ -1640,12 +2032,16 @@ class InvoiceService extends DualDatabaseService {
           updateData.note = invoiceNote;
         }
 
-        if (invoiceStatus == "approved") {
+        if (progressStatus == "approved") {
           updateData.id_user_approve = id_user;
         }
 
         if (invoiceStatus == "rejected") {
           updateData.id_user_reject = id_user;
+        }
+
+        if (file_invoice !== undefined) {
+          updateData.file_invoice = file_invoice;
         }
 
         const [updatedRows] = await this.Model1.update(updateData, {
@@ -1689,3 +2085,4 @@ class InvoiceService extends DualDatabaseService {
 }
 
 module.exports = new InvoiceService();
+module.exports.taxInvoiceRequestStatuses = taxInvoiceRequestStatuses;

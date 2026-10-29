@@ -10,6 +10,7 @@
     "db:sync-hr": "node scripts/sync-hr-models.js",
     "db:sync-ga-purchase-order": "node scripts/sync-ga-purchase-order-receiving.js",
     "db:sync-inventory-opname": "node scripts/sync-inventory-opname.js",
+    "db:sync-invoice-payments": "node scripts/sync-invoice-payments.js",
     "db:sync-inventory-received-date": "node scripts/sync-inventory-received-date.js",
     "db:sync-leave-request-sick-letter": "node scripts/sync-leave-request-sick-letter.js",
     "db:sync-recruitment": "node scripts/sync-recruitment-models.js",

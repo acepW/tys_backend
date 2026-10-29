@@ -207,6 +207,13 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Tax invoice date (tanggal faktur pajak)",
       },
+      tax_invoice_status: {
+        type: DataTypes.ENUM("none", "requested", "issued"),
+        allowNull: false,
+        defaultValue: "none",
+        comment:
+          "Tax invoice (faktur pajak) progress, separate from status: requested by sales or after a payment is accepted, issued once AR & AP uploads it",
+      },
       note_reject: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -242,9 +249,11 @@ module.exports = (sequelize) => {
           "pending",
           "on verification",
           "rejected",
-          "approved",
-          "signing",
           "waiting for payment",
+          "payment verification",
+          "payment proof rejected",
+          "revision requested",
+          "waiting for revision",
           "paid",
         ),
         allowNull: false,
@@ -404,6 +413,14 @@ module.exports = (sequelize) => {
     Invoice.hasMany(models.InvoiceService, {
       foreignKey: "id_invoice",
       as: "invoice_services",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Invoice has many payment proofs uploaded by sales
+    Invoice.hasMany(models.InvoicePayment, {
+      foreignKey: "id_invoice",
+      as: "payments",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

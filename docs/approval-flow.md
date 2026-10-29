@@ -20,9 +20,12 @@ Transisi status (dari → ke) tetap diatur di kode masing-masing fitur. Tabel in
 | `contract`        | `sending to customer` | Approve / reject oleh customer   | `PATCH /contracts/approve-customer/:id`, `/reject-customer/:id` |
 | `invoice`         | `pending`         | Submit | `PATCH /invoices/submit/:id` |
 | `invoice`         | `on verification` | Approve / reject                     | `PATCH /invoices/approve/:id`, `/reject/:id`                  |
-| `invoice`         | `approved`        | Signing                              | `PATCH /invoices/signing/:id`                                 |
-| `invoice`         | `signing`         | Kirim untuk pembayaran (file invoice) | `PATCH /invoices/waiting-for-payment/:id`                    |
-| `invoice`         | `waiting for payment` | Catat pembayaran                 | `PATCH /invoices/pay/:id`                                     |
+| `invoice`         | `waiting for payment` | Upload bukti bayar (Sales)       | `PATCH /invoices/upload-payment/:id`                          |
+| `invoice`         | `payment verification` | Terima / tolak bukti bayar (AR & AP) | `PATCH /invoices/payment-accept/:id`, `/payment-reject/:id` |
+| `invoice`         | `payment proof rejected` | Upload ulang bukti bayar (Sales) | `PATCH /invoices/upload-payment/:id`                       |
+| `invoice`         | `revision requested` | Revisi PPh / tolak permintaan revisi (AR & AP) | `PATCH /invoices/revise/:id`, `/revision-request-reject/:id` |
+| `invoice`         | `waiting for revision` | Approve / reject revisi (SPV FAT Internal) | `PATCH /invoices/revision-approve/:id`, `/revision-reject/:id` |
+| `invoice tax invoice` | `requested` (kolom `tax_invoice_status`) | Upload faktur pajak (AR & AP) | `PATCH /invoices/tax-invoice/:id` |
 | `debit note`      | `pending`         | Submit | `PATCH /debit-notes/submit/:id` |
 | `debit note`      | `on verification` | Approve / reject                     | `PATCH /debit-notes/approve/:id`, `/reject/:id`               |
 | `debit note`      | `approved`        | Catat pembayaran                     | `PATCH /debit-notes/paid/:id`                                 |
@@ -34,7 +37,11 @@ Transisi status (dari → ke) tetap diatur di kode masing-masing fitur. Tabel in
 
 Scope yang didukung: `division` untuk service pricing, `department` untuk payment request, vendor, dan vendor revision. Fitur lain selalu `all`.
 
-Yang tidak diatur di sini: revisi quotation, karena itu action pembuat dokumen; upload faktur pajak invoice (`paid`), karena opsional dan tidak mengubah status; serta incoming invoice/debit note.
+`invoice tax invoice` membaca kolom `invoices.tax_invoice_status`, bukan `status`, karena faktur pajak berjalan berdampingan dengan status pembayaran invoice. Di `GET /invoices`, flag-nya muncul sebagai `is_can_upload_tax_invoice` dan `tax_invoice_action_label`, di samping `is_can_approve_reject`.
+
+Dua aksi Sales invoice yang bersifat opsional dicek terhadap flow `invoice` / `waiting for payment` (posisi Sales), bukan status invoice saat itu: request faktur pajak (`PATCH /invoices/tax-invoice-request/:id`, terbuka di semua status setelah approve SPV) dan permintaan revisi (`PATCH /invoices/revision-request/:id`).
+
+Yang tidak diatur di sini: revisi quotation, karena itu action pembuat dokumen; serta incoming invoice/debit note.
 
 ## Field `approval_flows`
 

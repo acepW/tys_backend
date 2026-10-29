@@ -100,6 +100,7 @@ const InvoiceModel = require("./invoice/invoice.model");
 const InvoiceServiceModel = require("./invoice/invoiceService.model");
 const InvoiceVerificationProgress = require("./invoice/invoiceVerificationProgress.model");
 const IncomingInvoiceModel = require("./invoice/incomingInvoice.model");
+const InvoicePaymentModel = require("./invoice/invoicePayment.model");
 
 //debit note
 const DebitNoteModel = require("./debitNote/debitNote.model");
@@ -273,6 +274,7 @@ const initializeModels = (sequelize) => {
     InvoiceService: InvoiceServiceModel(sequelize),
     InvoiceVerificationProgress: InvoiceVerificationProgress(sequelize),
     IncomingInvoice: IncomingInvoiceModel(sequelize),
+    InvoicePayment: InvoicePaymentModel(sequelize),
 
     //debit note
     DebitNote: DebitNoteModel(sequelize),

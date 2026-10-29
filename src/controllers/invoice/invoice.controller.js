@@ -3,6 +3,16 @@ const incomingInvoiceService = require("../../services/invoice/incomingInvoice.s
 const { successResponse, errorResponse } = require("../../utils/response");
 const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
 
+// Adds is_can_approve_reject/action_label for the invoice status and
+// is_can_upload_tax_invoice/tax_invoice_action_label for its tax invoice (FP).
+async function attachInvoiceFlags(data, userId) {
+  const withStatusFlags = await approvalAccess.attachActionFlags("invoice", data, userId);
+  return approvalAccess.attachActionFlags("invoice tax invoice", withStatusFlags, userId, {
+    flag: "is_can_upload_tax_invoice",
+    label: "tax_invoice_action_label",
+  });
+}
+
 class InvoiceController {
   /**
    * Get incoming or history invoice sources from Contract and PreOrder.
@@ -75,7 +85,7 @@ class InvoiceController {
 
       return successResponse(
         res,
-        await approvalAccess.attachActionFlags("invoice", invoices, req.user?.id),
+        await attachInvoiceFlags(invoices, req.user?.id),
         "Invoices retrieved successfully",
       );
     } catch (error) {
@@ -100,7 +110,7 @@ class InvoiceController {
 
       return successResponse(
         res,
-        await approvalAccess.attachActionFlags("invoice", invoice, req.user?.id),
+        await attachInvoiceFlags(invoice, req.user?.id),
         "Invoice retrieved successfully",
       );
     } catch (error) {
@@ -289,17 +299,32 @@ class InvoiceController {
 
   /**
    * Update invoice with invoice services (create/update/delete)
+   * Only a pending draft can be edited; after approval the tax goes through the
+   * revision flow. Statuses change only through their own actions.
    */
   async update(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database, invoice_services, ...invoiceData } = req.body;
+      const {
+        is_double_database,
+        invoice_services,
+        status: _status,
+        tax_invoice_status: _taxInvoiceStatus,
+        ...invoiceData
+      } = req.body;
       const isDoubleDatabase = is_double_database !== false;
 
       // Check if invoice exists
       const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
       if (!existing) {
         return errorResponse(res, "Invoice not found", 404);
+      }
+      if (existing.status !== "pending") {
+        return errorResponse(
+          res,
+          "Only a pending invoice can be edited; use the revision request after approval",
+          409,
+        );
       }
 
       // Validate invoice_services
@@ -348,12 +373,12 @@ class InvoiceController {
   }
 
   /**
-   * Approve invoice
+   * Approve invoice (SPV FAT Internal) and upload the invoice file
    */
   async approve(req, res) {
     try {
       const { id } = req.params;
-      const { is_double_database = true, note } = req.body || {};
+      const { is_double_database = true, note, file_invoice } = req.body || {};
       const isDoubleDatabase = is_double_database;
 
       const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
@@ -364,6 +389,7 @@ class InvoiceController {
       const result = await invoiceService.approveInvoice(
         id,
         note,
+        file_invoice,
         req.user.id,
         isDoubleDatabase
       );
@@ -402,107 +428,193 @@ class InvoiceController {
   }
 
   /**
-   * signing invoice
+   * Upload payment proof (sales)
+   * Body: amount, transfer_date, bank_name, payment_method, note, payment_proof (array of files)
    */
-  async signing(req, res) {
+  async uploadPayment(req, res) {
     try {
-      const { id } = req.params;
-      const { is_double_database = true, note } = req.body || {};
-      const isDoubleDatabase = is_double_database;
+      const { is_double_database, ...data } = req.body || {};
 
-      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Invoice not found", 404);
-      }
-
-      const result = await invoiceService.signingPaymentInvoice(
-        id,
-        note,
+      const result = await invoiceService.uploadPayment(
+        req.params.id,
+        data,
         req.user.id,
-        isDoubleDatabase
+        is_double_database !== false,
       );
 
-      return successResponse(res, result, "Invoice signing successfully");
+      return successResponse(res, result, "Payment proof uploaded successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
   /**
-   * waitingForPayment invoice
+   * Accept payment proof (AR & AP)
    */
-  async waitingForPayment(req, res) {
+  async acceptPayment(req, res) {
     try {
-      const { id } = req.params;
-      const { is_double_database = true, note, file_invoice } = req.body || {};
-      const isDoubleDatabase = is_double_database;
+      const { is_double_database, note } = req.body || {};
 
-      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Invoice not found", 404);
-      }
-
-      const result = await invoiceService.waitingPaymentInvoice(
-        id,
+      const result = await invoiceService.acceptPayment(
+        req.params.id,
         note,
         req.user.id,
-        isDoubleDatabase,
-        file_invoice
+        is_double_database !== false,
       );
 
-      return successResponse(
-        res,
-        result,
-        "Invoice waiting for payment successfully"
-      );
+      return successResponse(res, result, "Payment proof accepted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
   /**
-   * Pay invoice
+   * Reject payment proof (AR & AP), note is required
    */
-  async pay(req, res) {
+  async rejectPayment(req, res) {
     try {
-      const { id } = req.params;
-      const {
-        is_double_database = true,
-        note,
-        payment_date,
-        payment_amount,
-        payment_method,
-        proof_of_payment,
-        payment_for,
-      } = req.body || {};
-      const isDoubleDatabase = is_double_database;
+      const { is_double_database, note } = req.body || {};
 
-      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Invoice not found", 404);
-      }
-
-      const result = await invoiceService.payInvoice(
-        id,
+      const result = await invoiceService.rejectPayment(
+        req.params.id,
         note,
-        payment_date,
-        payment_amount,
-        payment_method,
-        proof_of_payment,
-        payment_for,
         req.user.id,
-        isDoubleDatabase
+        is_double_database !== false,
       );
 
-      return successResponse(res, result, "Invoice paid successfully");
+      return successResponse(res, result, "Payment proof rejected successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
   /**
-   * Upload tax invoice (faktur pajak)
-   * Body: tax_invoice_no, tax_invoice_date, tax_invoice_attachment (array of files)
+   * Request tax invoice (sales), once per invoice with PPN
+   */
+  async requestTaxInvoice(req, res) {
+    try {
+      const { is_double_database, note } = req.body || {};
+
+      const result = await invoiceService.requestTaxInvoice(
+        req.params.id,
+        note,
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Tax invoice requested successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Request revision (sales)
+   * Body: note, revision_attachment (array of files, client chat proof)
+   */
+  async requestRevision(req, res) {
+    try {
+      const { is_double_database, note, revision_attachment } = req.body || {};
+
+      const result = await invoiceService.requestRevision(
+        req.params.id,
+        { note, revision_attachment },
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice revision requested successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Reject revision request (AR & AP), note is required
+   */
+  async rejectRevisionRequest(req, res) {
+    try {
+      const { is_double_database, note } = req.body || {};
+
+      const result = await invoiceService.rejectRevisionRequest(
+        req.params.id,
+        note,
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice revision request rejected successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Revise invoice tax (AR & AP)
+   * Body: tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 (booleans), note
+   */
+  async revise(req, res) {
+    try {
+      const { is_double_database, note, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 } =
+        req.body || {};
+
+      const result = await invoiceService.reviseInvoice(
+        req.params.id,
+        { note, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 },
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice revised successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Approve revision (SPV FAT Internal), optionally with a new invoice file
+   */
+  async approveRevision(req, res) {
+    try {
+      const { is_double_database, note, file_invoice } = req.body || {};
+
+      const result = await invoiceService.approveRevision(
+        req.params.id,
+        note,
+        file_invoice,
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice revision approved successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Reject revision (SPV FAT Internal), note is required
+   */
+  async rejectRevision(req, res) {
+    try {
+      const { is_double_database, note } = req.body || {};
+
+      const result = await invoiceService.rejectRevision(
+        req.params.id,
+        note,
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice revision rejected successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Upload tax invoice (faktur pajak), AR & AP after it is requested
+   * Body: tax_invoice_no, tax_invoice_date, tax_invoice_attachment (array of files), note
    */
   async uploadTaxInvoice(req, res) {
     try {
@@ -511,6 +623,7 @@ class InvoiceController {
         tax_invoice_no,
         tax_invoice_date,
         tax_invoice_attachment,
+        note,
       } = req.body || {};
 
       if (!tax_invoice_no?.toString().trim()) {
@@ -532,6 +645,7 @@ class InvoiceController {
           tax_invoice_no: tax_invoice_no.toString().trim(),
           tax_invoice_date,
           tax_invoice_attachment,
+          note,
         },
         req.user.id,
         is_double_database !== false,
