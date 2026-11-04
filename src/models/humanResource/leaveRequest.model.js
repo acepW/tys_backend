@@ -14,6 +14,8 @@ const STATUSES = [
 ];
 // doctor letter = surat keterangan dokter (SKD), referral letter = surat rujukan.
 const SICK_LETTER_STATUSES = ["doctor letter", "referral letter"];
+// Leave type HR settles on at verification; the requested type is kept as is.
+const HR_DECISION_TYPES = ["Sick Leave", "Unpaid Leave", "Annual Leave"];
 
 module.exports = (sequelize) => {
   const LeaveRequest = sequelize.define(
@@ -50,6 +52,21 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Duration in days; defaults to the inclusive day count",
       },
+      start_time: {
+        type: DataTypes.TIME,
+        allowNull: true,
+        comment: "Daily leave start time (HH:mm); sent together with end_time",
+      },
+      end_time: {
+        type: DataTypes.TIME,
+        allowNull: true,
+        comment: "Daily leave end time (HH:mm), after start_time",
+      },
+      total_hours: {
+        type: DataTypes.DECIMAL(6, 2),
+        allowNull: true,
+        comment: "Total leave hours as sent by the frontend (not calculated here)",
+      },
       reason: { type: DataTypes.TEXT, allowNull: false },
       health_facility_name: {
         type: DataTypes.STRING(255),
@@ -68,6 +85,12 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment:
           "Optional letter chosen on create: doctor letter (SKD) or referral letter; a referral letter needs the SKD after the director",
+      },
+      hr_decision_type: {
+        type: DataTypes.ENUM(...HR_DECISION_TYPES),
+        allowNull: true,
+        comment:
+          "Leave type decided by HR at verification; type keeps what was requested",
       },
       status: {
         type: DataTypes.ENUM(...STATUSES),
@@ -122,3 +145,4 @@ module.exports = (sequelize) => {
 module.exports.STAGES = STAGES;
 module.exports.STATUSES = STATUSES;
 module.exports.SICK_LETTER_STATUSES = SICK_LETTER_STATUSES;
+module.exports.HR_DECISION_TYPES = HR_DECISION_TYPES;

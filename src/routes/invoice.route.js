@@ -1,7 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const InvoiceController = require("../controllers/invoice/invoice.controller");
-const { taxInvoiceRequestStatuses } = require("../services/invoice/invoice.service");
+const {
+  taxInvoiceRequestStatuses,
+  editableStatuses,
+  whtUploadStatuses,
+} = require("../services/invoice/invoice.service");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 const { requireApprover } = require("../middleware/approval.middleware");
 
@@ -22,12 +26,13 @@ router.put("/:id", authenticate, InvoiceController.update);
 router.delete("/:id", authenticate, InvoiceController.delete);
 
 //PATCH submit
-router.patch("/submit/:id", authenticate, requireApprover("invoice", ["pending"]), InvoiceController.submit);
+// (also resubmits an invoice SPV rejected for its tax)
+router.patch("/submit/:id", authenticate, requireApprover("invoice", editableStatuses), InvoiceController.submit);
 
-//PATCH approve (with file_invoice); the invoice goes straight to waiting for payment
+//PATCH approve (no file upload); the invoice goes straight to waiting for payment
 router.patch("/approve/:id", authenticate, requireApprover("invoice", ["on verification"]), InvoiceController.approve);
 
-//PATCH reject
+//PATCH reject (reject_type tax -> rejected, back to AR & AP; ct/po cancelled -> cancelled)
 router.patch("/reject/:id", authenticate, requireApprover("invoice", ["on verification"]), InvoiceController.reject);
 
 //PATCH upload payment proof (sales); several accepted proofs may add up to the total
@@ -52,6 +57,28 @@ router.patch(
   InvoiceController.rejectPayment,
 );
 
+//PATCH withholding tax receipt (bukti potong), one per PPh type of a paid-off
+// invoice: sales uploads (checked against the sales flow at "paid waiting wht",
+// since another receipt may be in verification) -> AR & AP accepts or rejects
+router.patch(
+  "/:id/withholding-taxes/:whtId/upload",
+  authenticate,
+  requireApprover("invoice", whtUploadStatuses, "paid waiting wht"),
+  InvoiceController.uploadWithholdingTax,
+);
+router.patch(
+  "/:id/withholding-taxes/:whtId/accept",
+  authenticate,
+  requireApprover("invoice", ["wht verification"]),
+  InvoiceController.acceptWithholdingTax,
+);
+router.patch(
+  "/:id/withholding-taxes/:whtId/reject",
+  authenticate,
+  requireApprover("invoice", ["wht verification"]),
+  InvoiceController.rejectWithholdingTax,
+);
+
 //PATCH request tax invoice (sales), checked against the sales flow at "waiting for
 // payment" because the request stays open while AR & AP verifies a payment
 router.patch(
@@ -61,7 +88,8 @@ router.patch(
   InvoiceController.requestTaxInvoice,
 );
 
-//PATCH tax invoice (faktur pajak), AR & AP once requested
+//PATCH final invoice + tax invoice (faktur pajak; final invoice only without PPN),
+// AR & AP once requested
 router.patch(
   "/tax-invoice/:id",
   authenticate,

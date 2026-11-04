@@ -47,6 +47,12 @@ module.exports = (sequelize) => {
         references: { model: "inventory_opname_items", key: "id" },
         comment: "Opname item whose difference adjusted the stock",
       },
+      id_inventory_movement: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "inventory_movements", key: "id" },
+        comment: "Approved inventory movement that moved the stock out of or into this row",
+      },
       id_user: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -55,7 +61,8 @@ module.exports = (sequelize) => {
       quantity: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
-        comment: "Quantity added to the inventory (negative when an opname reduces it)",
+        comment:
+          "Quantity added to the inventory (negative when an opname or a movement reduces it)",
       },
       received_date: {
         type: DataTypes.DATE,
@@ -94,6 +101,10 @@ module.exports = (sequelize) => {
     InventoryHistory.belongsTo(models.InventoryOpname, {
       foreignKey: "id_inventory_opname",
       as: "inventory_opname",
+    });
+    InventoryHistory.belongsTo(models.InventoryMovement, {
+      foreignKey: "id_inventory_movement",
+      as: "inventory_movement",
     });
     InventoryHistory.belongsTo(models.InventoryRequest, {
       foreignKey: "id_inventory_request",

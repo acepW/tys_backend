@@ -792,18 +792,30 @@ class GaPurchaseOrderService {
   }
 
   // Records a goods receipt for the item's outstanding quantity (quantity minus
-  // good and refunded). Accept means all of it is good; return keeps quantity_good
-  // and ships the rest back to the vendor, to be accepted again or refunded.
-  // Good quantity of item_category "item" goes into inventory.
+  // stocked and refunded). Accept stocks all of it; return ships quantity_returned
+  // back to the vendor, to be accepted again or refunded, and stocks the rest.
+  // quantity_good is only the inspection result kept on the receipt, so a return
+  // may send back more than the bad units. Stocked quantity of item_category
+  // "item" goes into inventory.
   async receiveItem(type, id, itemId, userId, data, isDoubleDatabase) {
     const isReturn = type === "return";
     if (isReturn && !data.note?.trim()) fail("note is required for return");
     if (!data.goods_in_date) fail("goods_in_date is required");
     if (!goodsStatuses.includes(data.goods_status))
       fail(`goods_status must be one of: ${goodsStatuses.join(", ")}`);
-    const quantityGood = parseAmount(data.quantity_good, "quantity_good");
+    // Optional on accept, where it defaults to the outstanding quantity.
+    const quantityGood =
+      isReturn || (data.quantity_good != null && data.quantity_good !== "")
+        ? parseAmount(data.quantity_good, "quantity_good")
+        : null;
+    let quantityReturned = 0;
     let shippingCost = null;
     if (isReturn) {
+      quantityReturned = parseAmount(
+        data.quantity_returned,
+        "quantity_returned",
+        true,
+      );
       if (!data.return_delivery_date) fail("return_delivery_date is required");
       shippingCost = parseAmount(
         data.return_shipping_cost,
@@ -824,15 +836,15 @@ class GaPurchaseOrderService {
       const outstanding = round2(
         item.quantity - item.quantity_good - item.quantity_refunded,
       );
-      if (!isReturn && quantityGood !== outstanding)
+      if (quantityGood > outstanding)
         fail(
-          `quantity_good must equal the outstanding quantity (${outstanding}); use return to send part of it back`,
+          `quantity_good must not exceed the outstanding quantity (${outstanding})`,
         );
-      if (isReturn && quantityGood >= outstanding)
+      if (quantityReturned > outstanding)
         fail(
-          `quantity_good must be less than the outstanding quantity (${outstanding}) when returning`,
+          `quantity_returned must not exceed the outstanding quantity (${outstanding})`,
         );
-      const quantityReturned = round2(outstanding - quantityGood);
+      const quantityStocked = round2(outstanding - quantityReturned);
       const receipt = await mirrorCreate(
         "GaPurchaseOrderItemReceipt",
         {
@@ -841,7 +853,7 @@ class GaPurchaseOrderService {
           id_user: userId,
           type,
           quantity_received: outstanding,
-          quantity_good: quantityGood,
+          quantity_good: quantityGood ?? outstanding,
           quantity_returned: quantityReturned,
           goods_in_date: data.goods_in_date,
           goods_status: data.goods_status,
@@ -868,7 +880,7 @@ class GaPurchaseOrderService {
         item.id,
         {
           receiving_status: isReturn ? "returned" : "accepted",
-          quantity_good: round2(Number(item.quantity_good) + quantityGood),
+          quantity_good: round2(Number(item.quantity_good) + quantityStocked),
           quantity_returned: quantityReturned,
           receiving_note: data.note || null,
           ...(isReturn && { return_count: item.return_count + 1 }),
@@ -876,7 +888,7 @@ class GaPurchaseOrderService {
         t1,
         t2,
       );
-      if (item.item_category === "item" && quantityGood > 0)
+      if (item.item_category === "item" && quantityStocked > 0)
         await inventoryService.addFromGaPurchaseOrderReceipt(
           item.id_ga_purchase_order,
           item.id,

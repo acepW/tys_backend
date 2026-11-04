@@ -22,7 +22,7 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 
 | Aksi         | Method & endpoint                           | Keterangan                                                |
 | ------------ | ------------------------------------------- | --------------------------------------------------------- |
-| List         | `GET /api/inventory-requests`               | Filter: `search` (nama barang), `status`, `page`, `limit` |
+| List         | `GET /api/inventory-requests`               | Filter: `search` (nama barang), `status`, `id_company`, `id_inventory_location`, `page`, `limit` |
 | Detail       | `GET /api/inventory-requests/:id`           |                                                           |
 | Buat request | `POST /api/inventory-requests`              |                                                           |
 | Buat banyak  | `POST /api/inventory-requests/bulk`         | Banyak request sekaligus (maks. 100), lihat bagian 1b     |
@@ -47,6 +47,8 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
   "quantity_unit": "unit",
   "quantity": 2,
   "received_date": "2026-10-20",
+  "id_company": 2,
+  "id_inventory_location": 4,
   "note": "Stok awal gudang",
   "files_product": [
     {
@@ -68,13 +70,15 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 | `quantity_unit`                                       | Ya    | Satuan, misalnya `unit`, `pcs`, `box`                                                                      |
 | `quantity`                                            | Ya    | Angka lebih dari 0                                                                                         |
 | `received_date`                                       | Ya    | Tanggal penerimaan barang, format `YYYY-MM-DD`                                                             |
+| `id_company`                                          | Ya    | Company pemilik stok (`GET /api/companies`)                                                                |
+| `id_inventory_location`                               | Tidak | Lokasi penyimpanan (`GET /api/inventory-locations`). Jika kosong, diisi lokasi default company (`company.inventory_location`). Tampilkan default ini di form saat company dipilih |
 | `brand`, `serial_number`, `size`, `material`, `other` | Tidak | Spesifikasi barang. Dipakai untuk mencocokkan stok (lihat bagian 4)                                        |
 | `purchase_request_category`                           | Tidak | Kategori barang                                                                                            |
 | `asset_category`                                      | Tidak | `asset` atau `non asset`                                                                                   |
 | `note`                                                | Tidak | Catatan pembuat                                                                                            |
 | `files_product`                                       | Tidak | Foto/file produk. Upload dulu lewat endpoint upload (`/api/uploads/...`), lalu kirim hasilnya di array ini |
 
-Tips: sebelum submit, frontend bisa menampilkan stok saat ini dengan `GET /api/inventories/check-stock?item_name=...&brand=...&serial_number=...&size=...&material=...&other=...`. Jika barang belum ada, hasilnya `quantity: 0`.
+Tips: sebelum submit, frontend bisa menampilkan stok saat ini dengan `GET /api/inventories/check-stock?item_name=...&brand=...&serial_number=...&size=...&material=...&other=...&id_company=...&id_inventory_location=...` (`id_company` dan `id_inventory_location` wajib). Jika barang belum ada, hasilnya `quantity: 0`.
 
 Response sukses (`201`) berisi detail request seperti di bagian 2.
 
@@ -129,6 +133,10 @@ Isi `items` dengan array berisi body yang sama seperti bagian 1 (maksimal 100 it
       "status": "pending",
       "id_user_request": 5,
       "id_inventory": null,
+      "id_company": 2,
+      "id_inventory_location": 4,
+      "company": { "id": 2, "company_name": "PT Contoh" },
+      "inventory_location": { "id": 4, "location_code": "GDG-01", "location_name": "Gudang Utama" },
       "user_request": { "id": 5, "name": "Budi", "email": "budi@example.com" },
       "inventory": null,
       "files_product": [],
@@ -219,7 +227,8 @@ Keduanya mengembalikan detail request terbaru.
 
 Yang terjadi saat approve:
 
-- Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, dan `other` yang **sama persis** (kosong dianggap sama), `quantity` request ditambahkan ke inventory tersebut.
+- Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, `other`, `id_company`, dan `id_inventory_location` yang **sama persis** (kosong dianggap sama), `quantity` request ditambahkan ke inventory tersebut. Barang yang sama di company atau lokasi lain menjadi data inventory terpisah.
+- Request lama (dibuat sebelum ada company/lokasi) harus diedit dulu untuk mengisi `id_company` sebelum bisa di-approve.
 - Jika tidak ada yang sama, dibuat data inventory baru dengan `received_date` dari request.
 - `files_product` request disalin ke inventory, dan penambahan stok tercatat di `histories` inventory beserta `received_date` request.
 
@@ -229,6 +238,10 @@ Yang terjadi saat approve:
 | ---- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
 | 400  | `item_name is required`, `quantity_unit is required`, `quantity must be a positive number` | Validasi form                                   |
 | 400  | `received_date must be a valid date`                                                       | `received_date` kosong atau bukan tanggal       |
+| 400  | `id_company is required`                                                                   | Create tanpa company                            |
+| 400  | `id_inventory_location is required: the company has no default inventory location`        | Lokasi kosong dan company belum punya lokasi default |
+| 404  | `Company not found`, `Inventory location not found`                                        | ID company/lokasi tidak ada atau tidak aktif    |
+| 409  | `Inventory request needs id_company and id_inventory_location before approval`             | Approve request lama yang belum punya company/lokasi |
 | 400  | `asset_category must be asset or non asset`                                                | Nilai `asset_category` tidak valid              |
 | 400  | `files_product must be an array`                                                           | `files_product` bukan array                     |
 | 400  | `items must be a non-empty array`, `items can contain at most 100 entries`, `items[i]: ...` | Validasi bulk create                            |

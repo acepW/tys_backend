@@ -136,6 +136,29 @@ async function documentNumbers(
   });
 }
 
+// Escapes LIKE wildcards so a company initial is matched literally.
+const likeLiteral = (value) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+// Next <prefix>-<company initial>-MM-YYYY-0001 number stored in modelName.field.
+// The sequence is per company initial and restarts every year. The "__" month
+// keeps an initial like TYS from also matching numbers of an initial like TYS-A.
+async function nextCompanyNo(modelName, field, prefix, initial, t1) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const last = await models.db1[modelName].findOne({
+    attributes: [field],
+    where: {
+      [field]: { [Op.like]: `${prefix}-${likeLiteral(initial)}-__-${year}-%` },
+    },
+    order: [["id", "DESC"]],
+    transaction: t1,
+    lock: t1.LOCK.UPDATE,
+  });
+  const sequence = last ? Number(last[field].split("-").pop()) + 1 : 1;
+  return `${prefix}-${initial}-${month}-${year}-${String(sequence).padStart(4, "0")}`;
+}
+
 module.exports = {
   models,
   Op,
@@ -147,4 +170,5 @@ module.exports = {
   syncFiles,
   deactivateFiles,
   documentNumbers,
+  nextCompanyNo,
 };

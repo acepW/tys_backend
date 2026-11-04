@@ -1,7 +1,8 @@
 const { DataTypes } = require("sequelize");
 
-// One goods receipt per accept/return of a GA purchase order item. The good
-// quantity goes into inventory; a return also records shipping the rest back.
+// One goods receipt per accept/return of a GA purchase order item. The received
+// quantity minus the returned one goes into inventory; a return also records
+// shipping quantity_returned back.
 module.exports = (sequelize) => {
   const GaPurchaseOrderItemReceipt = sequelize.define(
     "GaPurchaseOrderItemReceipt",
@@ -34,13 +35,13 @@ module.exports = (sequelize) => {
       quantity_good: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
-        comment: "Good quantity, added to inventory for item_category item",
+        comment: "Good quantity found on inspection (history only)",
       },
       quantity_returned: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
-        comment: "Quantity sent back to the vendor",
+        comment: "Quantity sent back to the vendor; the rest is added to inventory for item_category item",
       },
       goods_in_date: {
         type: DataTypes.DATE,

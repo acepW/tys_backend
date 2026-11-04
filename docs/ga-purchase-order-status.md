@@ -49,7 +49,7 @@ Qty item:
 | Field               | Isi                                                            |
 | ------------------- | -------------------------------------------------------------- |
 | `quantity`          | Qty yang dibeli                                                |
-| `quantity_good`     | Total qty baik dari semua goods receipt (yang masuk inventory) |
+| `quantity_good`     | Total qty yang diterima (masuk stok) dari semua goods receipt = jumlah `quantity_received - quantity_returned` |
 | `quantity_returned` | Qty yang sedang dikembalikan ke vendor                         |
 | `quantity_refunded` | Qty yang diselesaikan dengan refund                            |
 
@@ -75,10 +75,14 @@ Qty item:
 Beli 5 unit, datang 3 bagus dan 2 rusak:
 
 1. Simpan purchase realization item.
-2. **Returned** dengan `quantity_good: 3` → 3 unit masuk inventory, `quantity_returned` = 2, status `returned`.
+2. **Returned** dengan `quantity_good: 3`, `quantity_returned: 2` → 5 - 2 = 3 unit masuk inventory, status `returned`.
 3. Pilih salah satu:
-   - Barang pengganti datang → **Accepted** dengan `quantity_good: 2` → 2 unit masuk inventory, status `accepted`. Kalau pengganti masih ada yang rusak, **Returned** lagi dengan qty baiknya.
+   - Barang pengganti datang → **Accepted** → seluruh qty tersisa (2 unit) masuk inventory, status `accepted`. Kalau pengganti masih ada yang rusak, **Returned** lagi dengan `quantity_returned`-nya.
    - Vendor tidak mengganti → **Ajukan refund**, lalu FAT approve → status `refunded`.
+
+Stok masuk ke company GA PO di lokasi default company tersebut (`companies.id_inventory_location`). Kalau company belum punya lokasi default, Accepted/Returned item `item_category` = `item` ditolak (409); isi dulu lokasinya di master company.
+
+Beli 12 unit, 11 bagus tapi semuanya harus dikembalikan: **Returned** dengan `quantity_good: 11`, `quantity_returned: 12` → tidak ada yang masuk inventory, status `returned`. `quantity_good` hanya dicatat sebagai riwayat pemeriksaan di goods receipt; yang masuk inventory selalu qty tersisa dikurangi `quantity_returned`.
 
 ## Endpoint persetujuan order
 
@@ -131,7 +135,7 @@ Beli 5 unit, datang 3 bagus dan 2 rusak:
 }
 ```
 
-**GA Staff Accepted**: semua field wajib kecuali `note`. `quantity_good` harus **sama dengan qty tersisa**; kalau ada yang tidak baik, pakai Returned.
+**GA Staff Accepted**: semua field wajib kecuali `note` dan `quantity_good`. Seluruh qty tersisa masuk inventory. `quantity_good` hanya riwayat (default qty tersisa, tidak boleh melebihi qty tersisa); kalau ada yang harus dikirim balik, pakai Returned.
 
 ```json
 {
@@ -144,11 +148,12 @@ Beli 5 unit, datang 3 bagus dan 2 rusak:
 }
 ```
 
-**GA Staff Returned**: semua field wajib. `quantity_good` boleh 0 dan harus **lebih kecil dari qty tersisa**; sisanya menjadi `quantity_returned`.
+**GA Staff Returned**: semua field wajib. `quantity_returned` harus lebih dari 0 dan **tidak boleh melebihi qty tersisa**; qty tersisa dikurangi `quantity_returned` masuk inventory. `quantity_good` (boleh 0, tidak boleh melebihi qty tersisa) hanya riwayat hasil pemeriksaan, tidak memengaruhi stok.
 
 ```json
 {
   "quantity_good": 3,
+  "quantity_returned": 2,
   "goods_in_date": "2026-10-12",
   "goods_status": "Not Good",
   "note": "2 unit rusak, dikirim balik",
@@ -163,7 +168,8 @@ Beli 5 unit, datang 3 bagus dan 2 rusak:
 
 | Field                         | Isi                                                                                      |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `quantity_good`               | Qty baik pada penerimaan ini; masuk inventory jika `item_category` = `item`              |
+| `quantity_good`               | Qty baik hasil pemeriksaan pada penerimaan ini (riwayat saja)                            |
+| `quantity_returned`           | Qty yang dikirim balik ke vendor (return saja); qty tersisa dikurangi nilai ini masuk inventory jika `item_category` = `item` |
 | `goods_in_date`               | Tanggal barang masuk                                                                     |
 | `goods_status`                | `Good Without Exception`, `Good With Notes`, atau `Not Good`                             |
 | `files_goods_in`              | File barang masuk                                                                        |
@@ -237,7 +243,7 @@ Setiap item (`items[]`):
 
 Setiap purchase realization (`items[].realizations[]`): `purchase_realization_date`, `purchase_realization_amount`, `note`, `user`, dan file `files_purchase_proof`, `files_invoice`.
 
-Setiap goods receipt (`items[].receipts[]`): `type` (`accept` / `return`), `quantity_received` (qty tersisa saat itu), `quantity_good`, `quantity_returned`, `goods_in_date`, `goods_status`, `return_delivery_date`, `return_shipping_cost`, `note`, `user`, dan file `files_goods_in`, `files_goods_receipt`, `files_return_delivery_proof`, `files_return_waybill`.
+Setiap goods receipt (`items[].receipts[]`): `type` (`accept` / `return`), `quantity_received` (qty tersisa saat itu), `quantity_good` (riwayat pemeriksaan), `quantity_returned` (qty dikirim balik; qty masuk inventory = `quantity_received - quantity_returned`), `goods_in_date`, `goods_status`, `return_delivery_date`, `return_shipping_cost`, `note`, `user`, dan file `files_goods_in`, `files_goods_receipt`, `files_return_delivery_proof`, `files_return_waybill`.
 
 Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`, `mime_type`, `size`. `indonesian_name` dan `mandarin_name` opsional. Saat update (refund), sertakan `id` file lama yang ingin dipertahankan. File yang tidak dikirim akan dihapus.
 
@@ -259,7 +265,7 @@ Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`,
 - API belum membatasi role. Frontend yang perlu menampilkan tombol sesuai role user.
 - Saat order `request receiving`, per item:
   - Tampilkan riwayat `realizations[]` dan form tambah purchase realization. Tombol Accepted / Returned baru aktif setelah `realizations[]` tidak kosong.
-  - Accepted / Returned tampil jika `receiving_status` = `pending` atau `returned`. Isi default `quantity_good` dengan qty tersisa.
+  - Accepted / Returned tampil jika `receiving_status` = `pending` atau `returned`. Isi default `quantity_good` dengan qty tersisa. Form Returned juga punya input `quantity_returned` (boleh lebih besar dari qty yang tidak baik).
   - Ajukan refund tampil jika `receiving_status` = `returned`.
   - Approve / Reject refund (FAT) tampil jika `receiving_status` = `refund requested`.
 - Saat order `finished`, form tambah purchase realization tetap ditampilkan per item.

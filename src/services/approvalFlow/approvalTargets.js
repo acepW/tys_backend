@@ -45,21 +45,26 @@ module.exports = {
     statuses: {
       pending: "Submit Invoice",
       "on verification": "Approve / Reject Invoice",
+      rejected: "Revise & Resubmit Invoice",
       "waiting for payment": "Upload Payment Proof Invoice",
       "payment verification": "Verify Payment Proof Invoice",
       "payment proof rejected": "Re-upload Payment Proof Invoice",
       "revision requested": "Revise Invoice Tax / Reject Revision Request",
       "waiting for revision": "Approve / Reject Invoice Revision",
+      "paid waiting wht": "Upload Withholding Tax Receipt",
+      "wht verification": "Verify Withholding Tax Receipt",
+      "wht rejected": "Re-upload Withholding Tax Receipt",
     },
   },
-  // The tax invoice (faktur pajak) runs beside the invoice's payment status, so its
-  // flows are keyed on invoices.tax_invoice_status instead of invoices.status.
+  // The final invoice and tax invoice (faktur pajak) run beside the invoice's
+  // payment status, so their flows are keyed on invoices.tax_invoice_status
+  // instead of invoices.status. An invoice without PPN only needs the final invoice.
   "invoice tax invoice": {
     model: "Invoice",
-    label: "Invoice Tax Invoice (FP)",
+    label: "Invoice Final Invoice & Tax Invoice (FP)",
     numberField: "invoice_no",
     statusField: "tax_invoice_status",
-    statuses: { requested: "Upload Tax Invoice (FP)" },
+    statuses: { requested: "Upload Final Invoice & Tax Invoice (FP)" },
   },
   "debit note": {
     model: "DebitNote",
@@ -114,6 +119,17 @@ module.exports = {
     label: "Inventory Opname",
     numberField: "opname_no",
     statuses: { request: "Approve / Reject Inventory Opname" },
+  },
+  // Stock transfer / allocation between locations; the stock moves when Manager GA
+  // approves.
+  "inventory movement": {
+    model: "InventoryMovement",
+    label: "Inventory Movement",
+    numberField: "movement_no",
+    statuses: {
+      "request spv ga": "Approve / Reject Inventory Movement by SPV GA",
+      "request manager ga": "Approve / Reject Inventory Movement by Manager GA",
+    },
   },
   // Recruitment modules: each document is created pending and approved or rejected.
   // A request (candidate request) has no number; tasks show its id. It is created at

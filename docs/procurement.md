@@ -129,7 +129,7 @@ Pada tahap 5, kasir wajib mengirim data dan bukti pembayaran:
 
 `payment_method` wajib: `petty cash` atau `bank`. `petty_cash_method` (`cash` atau `transfer`) wajib jika `payment_method` = `petty cash`; untuk `bank` nilainya disimpan `null`.
 
-Pada tahap 6, GA Staff memproses **setiap item** secara terpisah: simpan purchase realization dulu, lalu Accepted / Returned dengan goods receipt (`quantity_good` masuk inventory). Qty yang di-return menunggu barang pengganti (Accepted lagi) atau diselesaikan dengan refund yang di-approve FAT SPV/Manager per item. Begitu semua item `accepted` atau `refunded`, status order otomatis menjadi `finished`. Detail body, status item, list item yang di-return (`GET /returned-items`), dan total order (`sub_total`, `ppn`, `pph`, `pp_20`, `pph_4_ayat_2`, `total` = jumlah semua item) ada di [ga-purchase-order-status.md](ga-purchase-order-status.md).
+Pada tahap 6, GA Staff memproses **setiap item** secara terpisah: simpan purchase realization dulu, lalu Accepted / Returned dengan goods receipt (qty tersisa dikurangi `quantity_returned` masuk inventory; `quantity_good` hanya riwayat). Qty yang di-return menunggu barang pengganti (Accepted lagi) atau diselesaikan dengan refund yang di-approve FAT SPV/Manager per item. Begitu semua item `accepted` atau `refunded`, status order otomatis menjadi `finished`. Detail body, status item, list item yang di-return (`GET /returned-items`), dan total order (`sub_total`, `ppn`, `pph`, `pp_20`, `pph_4_ayat_2`, `total` = jumlah semua item) ada di [ga-purchase-order-status.md](ga-purchase-order-status.md).
 
 Aksi per item tercatat di verification progress dengan `id_ga_purchase_order_item` (beserta `ga_purchase_order_item.item_name`).
 
@@ -141,9 +141,10 @@ Untuk setiap array file (`files_product`, `files_attachment`, `file_attachment`,
 
 ## Inventory
 
-Saat GA Staff menekan **Accepted** atau **Returned** pada sebuah item (`PATCH /api/ga-purchase-orders/ga-staff/accept|return/:id/items/:itemId`), `quantity_good` dari goods receipt tersebut otomatis masuk ke inventory dalam transaksi yang sama, **hanya jika** `item_category` = `item` dan `quantity_good` > 0.
+Saat GA Staff menekan **Accepted** atau **Returned** pada sebuah item (`PATCH /api/ga-purchase-orders/ga-staff/accept|return/:id/items/:itemId`), `quantity_received - quantity_returned` dari goods receipt tersebut otomatis masuk ke inventory dalam transaksi yang sama, **hanya jika** `item_category` = `item` dan hasilnya > 0. Accepted selalu memasukkan seluruh qty tersisa. `quantity_good` hanya riwayat pemeriksaan dan tidak memengaruhi stok.
 
-- Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, dan `other` yang sama persis, `quantity_good` receipt ditambahkan ke inventory tersebut. Field kosong (`null` atau string kosong) dianggap sama.
+- Stok masuk ke company GA PO (`id_company`) di **lokasi default company tersebut** (`companies.id_inventory_location`, master `GET /api/inventory-locations`). Jika company belum punya lokasi default, Accepted/Returned ditolak (409) `Company ... has no default inventory location; set it in master company first`.
+- Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, `other`, `id_company`, dan `id_inventory_location` yang sama persis, qty receipt tersebut ditambahkan ke inventory tersebut. Field kosong (`null` atau string kosong) dianggap sama.
 - Jika ada satu saja yang berbeda, dibuat data inventory baru. `received_date` (tanggal penerimaan) inventory baru diisi dari `goods_in_date` goods receipt; inventory yang sudah ada tidak diubah tanggalnya.
 - `asset_category` item GA PO disimpan di inventory baru. Untuk inventory yang sudah ada, `asset_category` hanya diisi jika masih kosong.
 - `files_product` dari item GA PO disalin ke inventory. File dengan `stored_name` yang sudah ada di inventory tersebut tidak disalin ulang.

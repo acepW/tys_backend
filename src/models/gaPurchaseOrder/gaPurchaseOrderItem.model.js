@@ -162,7 +162,7 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
-        comment: "Total good quantity from every goods receipt (added to inventory)",
+        comment: "Total quantity stocked from every goods receipt (received minus returned)",
       },
       quantity_returned: {
         type: DataTypes.DECIMAL(15, 2),

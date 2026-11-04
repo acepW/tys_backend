@@ -1,11 +1,13 @@
 const {
   models,
   Op,
+  fail,
   mirrorCreate,
   mirrorUpdate,
 } = require("../procurement/shared");
 
-// An order item is added to an existing inventory row only when all of these match.
+// Incoming stock is added to an existing inventory row only when all of these
+// and every matchKeys value match.
 const matchFields = [
   "item_name",
   "brand",
@@ -14,34 +16,49 @@ const matchFields = [
   "material",
   "other",
 ];
+const matchKeys = ["id_company", "id_inventory_location"];
 
 const normalize = (value) =>
   (typeof value === "string" ? value.trim() : value) || null;
 
+const normalizeKey = (value) =>
+  value == null || value === "" ? null : Number(value);
+
 function matchWhere(item) {
   return {
-    [Op.and]: matchFields.map((field) => {
-      const value = normalize(item[field]);
-      // Treat empty strings and NULL as the same "not filled" value.
-      return value === null
-        ? { [Op.or]: [{ [field]: null }, { [field]: "" }] }
-        : { [field]: value };
-    }),
+    [Op.and]: [
+      ...matchFields.map((field) => {
+        const value = normalize(item[field]);
+        // Treat empty strings and NULL as the same "not filled" value.
+        return value === null
+          ? { [Op.or]: [{ [field]: null }, { [field]: "" }] }
+          : { [field]: value };
+      }),
+      ...matchKeys.map((key) => ({ [key]: normalizeKey(item[key]) })),
+    ],
   };
 }
 
 class InventoryService {
   includes(withHistories = false) {
     const db = models.db1;
-    const files = {
-      model: db.File,
-      as: "files_product",
-      required: false,
-      where: { is_active: true },
-    };
-    if (!withHistories) return [files];
+    const base = [
+      {
+        model: db.File,
+        as: "files_product",
+        required: false,
+        where: { is_active: true },
+      },
+      { model: db.Company, as: "company", attributes: ["id", "company_name"] },
+      {
+        model: db.InventoryLocation,
+        as: "inventory_location",
+        attributes: ["id", "location_code", "location_name"],
+      },
+    ];
+    if (!withHistories) return base;
     return [
-      files,
+      ...base,
       {
         model: db.InventoryHistory,
         as: "histories",
@@ -58,6 +75,11 @@ class InventoryService {
             model: db.InventoryOpname,
             as: "inventory_opname",
             attributes: ["id", "opname_no"],
+          },
+          {
+            model: db.InventoryMovement,
+            as: "inventory_movement",
+            attributes: ["id", "movement_no", "movement_type"],
           },
         ],
       },
@@ -98,7 +120,8 @@ class InventoryService {
     );
   }
 
-  // Stock of the inventory row matching every matchFields value; 0 when none matches.
+  // Stock of the inventory row matching every matchFields and matchKeys value;
+  // 0 when none matches.
   async checkStock(input) {
     const row = await models.db1.Inventory.findOne({
       attributes: ["id", "quantity", "quantity_unit"],
@@ -111,8 +134,9 @@ class InventoryService {
     };
   }
 
-  // Adds source.quantity to the inventory row matching every matchFields value, or
-  // creates a new row, then records the history and copies the product files.
+  // Adds source.quantity to the inventory row matching every matchFields and
+  // matchKeys value (same item in the same company and location), or creates a
+  // new row, then records the history and copies the product files.
   // source.received_date goes on the history and on a newly created row.
   // history holds the history row's source references and note.
   async addStock(source, history, userId, t1, t2) {
@@ -140,6 +164,9 @@ class InventoryService {
         {
           ...Object.fromEntries(
             matchFields.map((field) => [field, normalize(source[field])]),
+          ),
+          ...Object.fromEntries(
+            matchKeys.map((key) => [key, normalizeKey(source[key])]),
           ),
           purchase_request_category: source.purchase_request_category || null,
           asset_category: source.asset_category || null,
@@ -180,6 +207,12 @@ class InventoryService {
       ],
       transaction: t1,
     });
+    // Requests created before company and location existed must be edited first.
+    if (!request.id_company || !request.id_inventory_location)
+      fail(
+        "Inventory request needs id_company and id_inventory_location before approval",
+        409,
+      );
     return this.addStock(
       request,
       {
@@ -193,8 +226,26 @@ class InventoryService {
   }
 
   // Called inside the GA purchase order transaction when GA staff records a goods
-  // receipt; only the receipt's good quantity is added.
+  // receipt; the received quantity minus what was returned is added (the receipt's
+  // quantity_good is only the inspection result). Stock goes to the order's
+  // company, at that company's default inventory location.
   async addFromGaPurchaseOrderReceipt(orderId, itemId, receipt, userId, t1, t2) {
+    const order = await models.db1.GaPurchaseOrder.findByPk(orderId, {
+      attributes: ["id", "id_company"],
+      include: [
+        {
+          model: models.db1.Company,
+          as: "company",
+          attributes: ["id", "company_name", "id_inventory_location"],
+        },
+      ],
+      transaction: t1,
+    });
+    if (!order.company?.id_inventory_location)
+      fail(
+        `Company ${order.company?.company_name ?? order.id_company} has no default inventory location; set it in master company first`,
+        409,
+      );
     const item = await models.db1.GaPurchaseOrderItem.findOne({
       where: { id: itemId, id_ga_purchase_order: orderId },
       include: [
@@ -210,7 +261,12 @@ class InventoryService {
     return this.addStock(
       {
         ...(item.toJSON ? item.toJSON() : item),
-        quantity: receipt.quantity_good,
+        id_company: order.id_company,
+        id_inventory_location: order.company.id_inventory_location,
+        quantity:
+          Math.round(
+            (Number(receipt.quantity_received) - Number(receipt.quantity_returned)) * 100,
+          ) / 100,
         received_date: receipt.goods_in_date,
       },
       {

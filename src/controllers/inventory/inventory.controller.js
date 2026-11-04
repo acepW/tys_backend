@@ -14,6 +14,11 @@ class InventoryController {
       if (req.query?.purchase_request_category)
         where.purchase_request_category = req.query.purchase_request_category;
       if (req.query?.asset_category) where.asset_category = req.query.asset_category;
+      if (req.query?.id_company) where.id_company = req.query.id_company;
+      if (req.query?.id_inventory_location) where.id_inventory_location = req.query.id_inventory_location;
+      // "none" lists rows that were never moved.
+      if (req.query?.movement_status)
+        where.movement_status = req.query.movement_status === "none" ? null : req.query.movement_status;
       return successResponse(res, await service.getAll(where, Number(req.query?.page) || null, Number(req.query?.limit) || null));
     } catch (error) { return respondError(res, error); }
   }
@@ -22,6 +27,8 @@ class InventoryController {
     try {
       const query = req.query || {};
       if (!query.item_name?.trim()) return errorResponse(res, "item_name is required", 400);
+      if (!query.id_company) return errorResponse(res, "id_company is required", 400);
+      if (!query.id_inventory_location) return errorResponse(res, "id_inventory_location is required", 400);
       return successResponse(res, await service.checkStock(query));
     } catch (error) { return respondError(res, error); }
   }

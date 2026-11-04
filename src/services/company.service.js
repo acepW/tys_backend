@@ -42,6 +42,11 @@ class CompanyService extends DualDatabaseService {
           required: false,
           where: { is_active: true },
         },
+        {
+          model: dbModels.InventoryLocation,
+          as: "inventory_location",
+          attributes: ["id", "location_code", "location_name"],
+        },
       ],
       order: [["createdAt", "DESC"]],
     };
@@ -80,6 +85,11 @@ class CompanyService extends DualDatabaseService {
           model: dbModels.File,
           as: "files",
           where: { is_active: true },
+        },
+        {
+          model: dbModels.InventoryLocation,
+          as: "inventory_location",
+          attributes: ["id", "location_code", "location_name"],
         },
       ],
     };
@@ -169,6 +179,7 @@ class CompanyService extends DualDatabaseService {
       "account_name_idr",
       "account_no_idr",
       "swift_no_idr",
+      "id_inventory_location",
       "is_active",
     ];
 
@@ -193,7 +204,23 @@ class CompanyService extends DualDatabaseService {
       data.is_active = body.is_active !== undefined ? body.is_active : true;
     }
 
+    if (data.id_inventory_location === "") data.id_inventory_location = null;
+
     return data;
+  }
+
+  /**
+   * Fails unless the default inventory location (when filled) is an active master row.
+   * @param {Number|String|null|undefined} id
+   */
+  async _checkInventoryLocation(id) {
+    if (id == null || id === "") return;
+    const location = await models.db1.InventoryLocation.findOne({
+      where: { id, is_active: true },
+    });
+    if (!location) {
+      throw new Error("Inventory location not found");
+    }
   }
 
   /**
@@ -208,6 +235,8 @@ class CompanyService extends DualDatabaseService {
     if (!body.company_name) {
       throw new Error("Company name is required");
     }
+
+    await this._checkInventoryLocation(body.id_inventory_location);
 
     // if (body.email) {
     //   const emailExists = await this.checkEmailExists(
@@ -303,6 +332,8 @@ class CompanyService extends DualDatabaseService {
     if (!existing) {
       throw new Error(`Company with ID ${id} not found`);
     }
+
+    await this._checkInventoryLocation(body.id_inventory_location);
 
     // if (body.email) {
     //   const emailExists = await this.checkEmailExists(

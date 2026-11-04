@@ -104,7 +104,8 @@ class CompanyController {
     } catch (error) {
       const statusCode =
         error.message === "Company name is required" ||
-        error.message === "Email already exists"
+        error.message === "Email already exists" ||
+        error.message === "Inventory location not found"
           ? 400
           : 500;
       return errorResponse(res, error.message, statusCode);
@@ -130,11 +131,13 @@ class CompanyController {
 
       return successResponse(res, company, "Company updated successfully");
     } catch (error) {
-      const statusCode = error.message.includes("not found")
-        ? 404
-        : error.message === "Email already exists"
+      const statusCode =
+        error.message === "Inventory location not found" ||
+        error.message === "Email already exists"
           ? 400
-          : 500;
+          : error.message.includes("not found")
+            ? 404
+            : 500;
       return errorResponse(res, error.message, statusCode);
     }
   }

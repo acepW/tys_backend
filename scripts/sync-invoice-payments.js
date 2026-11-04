@@ -14,7 +14,51 @@
 //      accepted invoice_payments row from invoices.payment_*, so accepted payments
 //      always add up to invoices.payment_amount. The old proof_of_payment link is
 //      kept on the invoice and copied into the row's note.
+//   5. Tahap 4: adds the "cancelled" invoice status, the final invoice / cancel
+//      progress statuses and invoices.reject_type, is_final and final_at (the
+//      final invoice files go to the files table). Existing invoices stay proforma (is_final = false); invoices
+//      already "rejected" can now be edited and resubmitted by AR & AP.
+//   6. Tahap 3: creates invoice_withholding_taxes and replaces the "paid" status
+//      with "paid waiting wht" / "wht verification" / "wht rejected" /
+//      "paid & clear". Invoices already "paid" become "paid & clear" without any
+//      withholding tax receipt (decision 27). Progress rows keep "paid".
+const { DataTypes } = require("sequelize");
 const { models, db1, db2 } = require("../src/models");
+
+// Invoice statuses dropped from the model, and where their invoices move.
+const removedStatuses = {
+  approved: "waiting for payment",
+  signing: "waiting for payment",
+  paid: "paid & clear",
+};
+
+// Moves invoices off removed statuses. The column briefly allows both the old and
+// the new values so the rows can move before the ENUM drops the old ones.
+async function moveRemovedStatuses(name, model) {
+  const queryInterface = model.sequelize.getQueryInterface();
+  const columns = await queryInterface.describeTable("invoices");
+  const type = columns.status.type.toLowerCase();
+  const present = Object.keys(removedStatuses).filter((value) => type.includes(`'${value}'`));
+  if (!present.length) return;
+  const { status } = model.rawAttributes;
+  const column = (values) => ({
+    type: DataTypes.ENUM(...values),
+    allowNull: status.allowNull,
+    defaultValue: status.defaultValue,
+    comment: status.comment,
+  });
+  await queryInterface.changeColumn("invoices", "status", column([...status.values, ...present]));
+  for (const from of present) {
+    const [moved] = await model.sequelize.query(
+      "UPDATE invoices SET status = ? WHERE status = ?",
+      { replacements: [removedStatuses[from], from] },
+    );
+    if (moved.affectedRows)
+      console.log(`[${name}] ${moved.affectedRows} ${from} invoices moved to ${removedStatuses[from]}`);
+  }
+  await queryInterface.changeColumn("invoices", "status", column(status.values));
+  console.log(`[${name}] ~ invoices.status matches the model`);
+}
 
 // Matches the column to the model's ENUM when it lacks `marker` or still has `removed`.
 async function syncStatus(name, model, table, marker, removed = null) {
@@ -34,14 +78,22 @@ async function syncStatus(name, model, table, marker, removed = null) {
 
 async function migrateSchema(name, dbModels) {
   await dbModels.InvoicePayment.sync({ alter: false });
-  const [moved] = await dbModels.Invoice.sequelize.query(`UPDATE invoices
-    SET status = 'waiting for payment' WHERE status IN ('approved', 'signing')`);
-  if (moved.affectedRows)
-    console.log(`[${name}] ${moved.affectedRows} approved/signing invoices moved to waiting for payment`);
-  await syncStatus(name, dbModels.Invoice, "invoices", "waiting for revision", "signing");
+  await dbModels.InvoiceWithholdingTax.sync({ alter: false });
+  await moveRemovedStatuses(name, dbModels.Invoice);
+  await syncStatus(name, dbModels.Invoice, "invoices", "paid & clear");
   await syncStatus(name, dbModels.InvoiceVerificationProgress,
-    "invoice_verification_progress", "revision approved");
+    "invoice_verification_progress", "wht accepted");
   await addTaxInvoiceStatus(name, dbModels.Invoice);
+  for (const column of ["is_final", "final_at", "reject_type"])
+    await addColumn(name, dbModels.Invoice, column);
+}
+
+async function addColumn(name, model, column) {
+  const queryInterface = model.sequelize.getQueryInterface();
+  const columns = await queryInterface.describeTable("invoices");
+  if (columns[column]) return;
+  await queryInterface.addColumn("invoices", column, model.rawAttributes[column]);
+  console.log(`[${name}] + invoices.${column}`);
 }
 
 async function addTaxInvoiceStatus(name, model) {
@@ -60,7 +112,7 @@ async function addTaxInvoiceStatus(name, model) {
     SET tax_invoice_status = 'issued' WHERE tax_invoice_no IS NOT NULL`);
   const [requested] = await model.sequelize.query(`UPDATE invoices
     SET tax_invoice_status = 'requested'
-    WHERE tax_invoice_no IS NULL AND tax_ppn = 1 AND status = 'paid'`);
+    WHERE tax_invoice_no IS NULL AND tax_ppn = 1 AND status = 'paid & clear'`);
   console.log(`[${name}] + invoices.tax_invoice_status (${issued.affectedRows} issued, ${requested.affectedRows} requested)`);
 }
 
@@ -74,7 +126,7 @@ async function backfillPayments() {
       SELECT MAX(id) FROM invoice_verification_progress
       WHERE id_invoice = i.id AND status = 'paid')
     LEFT JOIN invoice_payments ip ON ip.id_invoice = i.id
-    WHERE i.status = 'paid' AND i.payment_amount > 0 AND ip.id IS NULL`);
+    WHERE i.status = 'paid & clear' AND i.payment_amount > 0 AND ip.id IS NULL`);
   for (const invoice of invoices) {
     const t1 = await db1.transaction();
     const t2 = await db2.transaction();

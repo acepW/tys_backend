@@ -21,6 +21,8 @@ const fields = [
   "quantity",
   "received_date",
   "note",
+  "id_company",
+  "id_inventory_location",
 ];
 
 function pick(input) {
@@ -46,6 +48,12 @@ class InventoryRequestService {
         model: db.Inventory,
         as: "inventory",
         attributes: ["id", "item_name", "quantity", "quantity_unit"],
+      },
+      { model: db.Company, as: "company", attributes: ["id", "company_name"] },
+      {
+        model: db.InventoryLocation,
+        as: "inventory_location",
+        attributes: ["id", "location_code", "location_name"],
       },
       {
         model: db.File,
@@ -119,10 +127,46 @@ class InventoryRequestService {
     return request;
   }
 
+  // Checks the company and location the request points to. An empty location
+  // takes the company's default, so an edit sending only a new company also moves
+  // to that company's default location. An edit sending neither keeps both.
+  async resolvePlace(data, current, t1) {
+    if (
+      current &&
+      data.id_company === undefined &&
+      data.id_inventory_location === undefined
+    )
+      return data;
+    const companyId = data.id_company ?? current?.id_company;
+    if (!companyId) fail("id_company is required");
+    const company = await models.db1.Company.findOne({
+      where: { id: companyId, is_active: true },
+      attributes: ["id", "id_inventory_location"],
+      transaction: t1,
+    });
+    if (!company) fail("Company not found", 404);
+    const locationId =
+      data.id_inventory_location == null || data.id_inventory_location === ""
+        ? company.id_inventory_location
+        : data.id_inventory_location;
+    if (!locationId)
+      fail(
+        "id_inventory_location is required: the company has no default inventory location",
+      );
+    const location = await models.db1.InventoryLocation.findOne({
+      where: { id: locationId, is_active: true },
+      attributes: ["id"],
+      transaction: t1,
+    });
+    if (!location) fail("Inventory location not found", 404);
+    return { ...data, id_company: company.id, id_inventory_location: location.id };
+  }
+
   async createOne(input, userId, t1, t2) {
+    const data = await this.resolvePlace(pick(input), null, t1);
     const request = await mirrorCreate(
       "InventoryRequest",
-      { ...pick(input), status: "pending", id_user_request: userId },
+      { ...data, status: "pending", id_user_request: userId },
       t1,
       t2,
     );
@@ -168,7 +212,8 @@ class InventoryRequestService {
       const request = await this.lockPending(id, t1);
       if (request.id_user_request !== userId)
         fail("Only the creator can edit this inventory request", 403);
-      await mirrorUpdate("InventoryRequest", id, pick(input), t1, t2);
+      const data = await this.resolvePlace(pick(input), request, t1);
+      await mirrorUpdate("InventoryRequest", id, data, t1, t2);
       await syncFiles(
         "inventory_requests",
         id,

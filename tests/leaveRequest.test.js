@@ -97,7 +97,8 @@ test("referral letter: after the director the requester uploads the doctor's let
   await service.decide(1, "director", "approve", 9, {}, false);
   assert.equal(request.status, "request doctor letter");
 
-  await assert.rejects(service.verifyHr(1, 9, {}, false), /not allowed from status "request doctor letter"/);
+  await assert.rejects(service.verifyHr(1, 9, { hr_decision_type: "Unpaid Leave" }, false),
+    /not allowed from status "request doctor letter"/);
   await assert.rejects(service.submitDoctorLetter(1, 5, { files_attachment: [] }, false), /doctor's letter/);
   await assert.rejects(service.submitDoctorLetter(1, 8, { files_attachment: [skd] }, false), /Only the creator/);
   await service.submitDoctorLetter(1, 5, { files_attachment: [skd], note: "SKD dari rumah sakit" }, false);
@@ -105,8 +106,13 @@ test("referral letter: after the director the requester uploads the doctor's let
   assert.deepEqual(files.map((file) => [file.fileable_type, file.fileable_id, file.category, file.stored_name, file.indonesian_name, file.uploaded_by]),
     [["leave_requests", 1, "files_attachment", "1-skd.pdf", "skd.pdf", 5]]);
 
-  await service.verifyHr(1, 9, { note: "SKD valid", files_attachment: [skd] }, false);
+  await assert.rejects(service.verifyHr(1, 9, { note: "SKD valid" }, false),
+    /hr_decision_type must be one of: Sick Leave, Unpaid Leave, Annual Leave/);
+  await assert.rejects(service.verifyHr(1, 9, { hr_decision_type: "Sick" }, false), /hr_decision_type must be one of/);
+  await service.verifyHr(1, 9, { note: "SKD valid", hr_decision_type: "Unpaid Leave", files_attachment: [skd] }, false);
   assert.equal(request.status, "approved");
+  // HR's decision is stored beside the requested type, which stays unchanged.
+  assert.deepEqual([request.type, request.hr_decision_type], ["Sick Leave", "Unpaid Leave"]);
   assert.equal(request.sick_letter_status, "referral letter");
   assert.equal(files.length, 1);
   assert.deepEqual(writes.filter(([kind]) => kind === "progress").slice(-2),
@@ -173,5 +179,44 @@ test("leave request create validates the form", async (t) => {
     await controller.create({ body, user: { id: 5 } }, invalid);
     assert.equal(invalid.code, 400);
     assert.match(invalid.body.message, message);
+  }
+});
+
+test("leave request stores the times and total_hours as sent, without counting hours", async (t) => {
+  const originalCreate = models.db1.LeaveRequest.create;
+  t.after(() => { models.db1.LeaveRequest.create = originalCreate; });
+  const created = [];
+  models.db1.LeaveRequest.create = async (data) => { created.push(data); return { id: 1, ...data }; };
+  const request = { id: 1, status: "request supervisor", id_user_request: 5, start_date: "2026-10-14",
+    end_date: "2026-10-14", start_time: "09:00:00", end_time: "11:00:00", total_hours: "2.00" };
+  const writes = mockLeaveRequest(t, request);
+  const body = { id_employee: 3, type: "Izin", start_date: "2026-10-14", end_date: "2026-10-14", reason: "Urusan bank" };
+
+  await service.create({ ...body, start_time: "13:00", end_time: "15:30", total_hours: 2.5 }, 5, false);
+  assert.deepEqual([created[0].start_time, created[0].end_time, created[0].total_hours], ["13:00", "15:30", 2.5]);
+  await service.create({ ...body, start_time: "13:00", end_time: "15:30" }, 5, false);
+  assert.equal(created[1].total_hours, undefined);
+  await assert.rejects(service.create({ ...body, start_time: "13:00" }, 5, false), /must be sent together/);
+  await assert.rejects(service.create({ ...body, start_time: "13:00", end_time: "12:00" }, 5, false),
+    /end_time must be after start_time/);
+
+  // Changing dates or times leaves total_hours alone unless it is sent.
+  await service.update(1, { end_date: "2026-10-15", end_time: "12:00" }, 5, false);
+  assert.deepEqual(writes.at(-2), ["request", { end_date: "2026-10-15", end_time: "12:00", duration: 2 }]);
+  await service.update(1, { total_hours: 6 }, 5, false);
+  assert.equal(request.total_hours, 6);
+  await assert.rejects(service.update(1, { start_time: null }, 5, false), /must be sent together/);
+});
+
+test("leave request controller checks the time format and total_hours", async () => {
+  const body = { id_employee: 3, type: "Izin", start_date: "2026-10-14", end_date: "2026-10-14", reason: "x" };
+  for (const [input, message] of [
+    [{ ...body, start_time: "8:00", end_time: "10:00" }, "start_time must use HH:mm format"],
+    [{ ...body, start_time: "08:00", end_time: "24:00" }, "end_time must use HH:mm format"],
+    [{ ...body, total_hours: 0 }, "total_hours must be a positive number"],
+  ]) {
+    const res = response();
+    await controller.create({ body: input, user: { id: 5 } }, res);
+    assert.deepEqual([res.code, res.body.message], [400, message]);
   }
 });

@@ -12,7 +12,10 @@
     "db:sync-inventory-opname": "node scripts/sync-inventory-opname.js",
     "db:sync-invoice-payments": "node scripts/sync-invoice-payments.js",
     "db:sync-inventory-received-date": "node scripts/sync-inventory-received-date.js",
+    "db:sync-inventory-location": "node scripts/sync-inventory-location.js",
+    "db:sync-inventory-movement": "node scripts/sync-inventory-movement.js",
     "db:sync-leave-request-sick-letter": "node scripts/sync-leave-request-sick-letter.js",
+    "db:sync-leave-request-fields": "node scripts/sync-leave-request-fields.js",
     "db:sync-recruitment": "node scripts/sync-recruitment-models.js",
     "db:setup-approval-flows": "node scripts/setup-approval-flows.js",
     "start": "nodemon server.js"

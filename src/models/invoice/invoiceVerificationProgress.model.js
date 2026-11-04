@@ -47,6 +47,13 @@ module.exports = (sequelize) => {
           "payment rejected",
           "tax invoice requested",
           "tax invoice issued",
+          "final invoice requested",
+          "final invoice issued",
+          "cancelled",
+          "wht uploaded",
+          "wht accepted",
+          "wht rejected",
+          "paid & clear",
           "revision requested",
           "revision request rejected",
           "revised",
@@ -111,6 +118,17 @@ module.exports = (sequelize) => {
         category: "revision_attachment",
       },
       as: "revision_attachment",
+    });
+
+    // Screenshots of what is wrong with a rejected withholding tax receipt
+    InvoiceVerificationProgress.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: {
+        fileable_type: "invoice_verification_progress",
+        category: "wht_reject_attachment",
+      },
+      as: "wht_reject_attachment",
     });
   };
 

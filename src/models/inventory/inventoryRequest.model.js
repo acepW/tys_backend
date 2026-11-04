@@ -44,6 +44,18 @@ module.exports = (sequelize) => {
         references: { model: "inventories", key: "id" },
         comment: "Inventory row the stock was added to on approval",
       },
+      id_company: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "companies", key: "id" },
+        comment: "Company owning the stock; required on create",
+      },
+      id_inventory_location: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "inventory_locations", key: "id" },
+        comment: "Where the stock is stored; defaults to the company's location",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -65,6 +77,14 @@ module.exports = (sequelize) => {
     InventoryRequest.belongsTo(models.Inventory, {
       foreignKey: "id_inventory",
       as: "inventory",
+    });
+    InventoryRequest.belongsTo(models.Company, {
+      foreignKey: "id_company",
+      as: "company",
+    });
+    InventoryRequest.belongsTo(models.InventoryLocation, {
+      foreignKey: "id_inventory_location",
+      as: "inventory_location",
     });
     InventoryRequest.hasMany(models.InventoryRequestVerificationProgress, {
       foreignKey: "id_inventory_request",

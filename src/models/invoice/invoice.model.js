@@ -212,7 +212,24 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: "none",
         comment:
-          "Tax invoice (faktur pajak) progress, separate from status: requested by sales or after a payment is accepted, issued once AR & AP uploads it",
+          "Final invoice and tax invoice (faktur pajak) progress, separate from status: requested by sales or after a payment is accepted (final invoice only without PPN), issued once AR & AP uploads them",
+      },
+      is_final: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: "False while the invoice is a proforma; true once the final invoice is uploaded",
+      },
+      final_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "When the final invoice was uploaded",
+      },
+      reject_type: {
+        type: DataTypes.ENUM("tax", "ct/po cancelled"),
+        allowNull: true,
+        comment:
+          "Reason of the last SPV rejection: tax (back to AR & AP) or ct/po cancelled (invoice cancelled, sales creates a new one)",
       },
       note_reject: {
         type: DataTypes.STRING(500),
@@ -254,11 +271,16 @@ module.exports = (sequelize) => {
           "payment proof rejected",
           "revision requested",
           "waiting for revision",
-          "paid",
+          "paid waiting wht",
+          "wht verification",
+          "wht rejected",
+          "paid & clear",
+          "cancelled",
         ),
         allowNull: false,
         defaultValue: "pending",
-        comment: "Status of Invoice",
+        comment:
+          "Status of Invoice; rejected goes back to AR & AP for the tax, cancelled (CT/PO changed) is final; once paid off it follows the withholding tax receipts until paid & clear",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -425,6 +447,14 @@ module.exports = (sequelize) => {
       onUpdate: "CASCADE",
     });
 
+    // Invoice has one withholding tax receipt (bukti potong) per PPh type
+    Invoice.hasMany(models.InvoiceWithholdingTax, {
+      foreignKey: "id_invoice",
+      as: "withholding_taxes",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     // Invoice has many Invoice Verification Progress
     Invoice.hasMany(models.InvoiceVerificationProgress, {
       foreignKey: "id_invoice",
@@ -447,6 +477,15 @@ module.exports = (sequelize) => {
       constraints: false,
       scope: { fileable_type: "invoices", category: "tax_invoice_attachment" },
       as: "tax_invoice_attachment",
+    });
+
+    // Invoice has many final invoice files AR & AP uploads with the tax invoice;
+    // the invoice number stays the same
+    Invoice.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: { fileable_type: "invoices", category: "file_final_invoice" },
+      as: "file_final_invoice",
     });
 
     // Invoice belongs to Debit Note

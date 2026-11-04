@@ -14,6 +14,7 @@ function respondError(res, error) {
 function validate(body, partial = false) {
   const has = (key) => !partial || body[key] !== undefined;
   if (has("item_name") && !body.item_name?.trim()) return "item_name is required";
+  if (has("id_company") && !body.id_company) return "id_company is required";
   if (has("quantity_unit") && !body.quantity_unit?.trim()) return "quantity_unit is required";
   if (has("quantity")) {
     const quantity = Number(body.quantity);
@@ -34,6 +35,8 @@ class InventoryRequestController {
       const where = {};
       if (req.query?.search) where.item_name = { [Op.like]: `%${req.query.search}%` };
       if (req.query?.status) where.status = req.query.status;
+      if (req.query?.id_company) where.id_company = req.query.id_company;
+      if (req.query?.id_inventory_location) where.id_inventory_location = req.query.id_inventory_location;
       const result = await service.getAll(where, Number(req.query?.page) || null, Number(req.query?.limit) || null);
       return successResponse(res, await approvalAccess.attachActionFlags("inventory request", result, req.user?.id));
     } catch (error) { return respondError(res, error); }

@@ -4,7 +4,7 @@ Semua endpoint berawalan `/api/inventory-opnames` dan butuh login.
 
 ## Konsep singkat
 
-1. User membuat opname. Semua item inventory otomatis masuk list beserta **qty sistem** saat itu (`quantity_system`).
+1. User membuat opname untuk satu **company** dan satu **lokasi**. Semua item inventory company dan lokasi tersebut otomatis masuk list beserta **qty sistem** saat itu (`quantity_system`). Inventory company/lokasi lain tidak ikut.
 2. User mengisi `quantity_actual`, `input_status`, dan `note` per item. Bisa disimpan banyak item sekaligus.
 3. Setelah semua item tersimpan, user klik **Request**.
 4. Approver meng-approve atau me-reject setiap item (bisa banyak sekaligus). Item yang di-reject diperbaiki user lalu disimpan lagi, dan langsung bisa di-review ulang tanpa request ulang.
@@ -12,7 +12,7 @@ Semua endpoint berawalan `/api/inventory-opnames` dan butuh login.
 
 Karena qty inventory diubah lewat selisih, barang yang masuk selama opname (misalnya dari GA PO) tidak hilang. Contoh: qty sistem 10, aktual 7 (selisih -3); selama opname masuk 2 unit sehingga stok jadi 12; setelah approve stok menjadi 12 - 3 = 9.
 
-Hanya boleh ada **satu opname terbuka** (`pending` / `request`) dalam satu waktu. Opname `pending` yang salah dibuat bisa dibatalkan oleh pembuatnya.
+Hanya boleh ada **satu opname terbuka** (`pending` / `request`) per company dan lokasi dalam satu waktu; company/lokasi lain tetap bisa di-opname bersamaan. Opname `pending` yang salah dibuat bisa dibatalkan oleh pembuatnya.
 
 ## Status
 
@@ -54,14 +54,27 @@ Selain itu setiap item punya `input_status`: teks bebas yang diisi user, misalny
 `POST /api/inventory-opnames`
 
 ```json
-{ "opname_date": "2026-10-20", "note": "Opname akhir bulan (opsional)" }
+{
+  "id_company": 2,
+  "id_inventory_location": 4,
+  "opname_date": "2026-10-20",
+  "note": "Opname akhir bulan (opsional)"
+}
 ```
 
-Semua field opsional; `opname_date` default hari ini. `opname_no` dibuat otomatis dengan format `OPN-MM-YYYY-0001` (nomor urut di-reset setiap tahun). `id_user_opname` adalah user yang login. Response (`201`) berisi detail opname seperti di bagian 2.
+| Field                   | Wajib | Isi                                                                                       |
+| ----------------------- | ----- | ----------------------------------------------------------------------------------------- |
+| `id_company`            | Ya    | Company yang di-opname (`GET /api/companies`)                                              |
+| `id_inventory_location` | Tidak | Lokasi yang di-opname (`GET /api/inventory-locations`). Jika kosong, lokasi default company |
+| `opname_date`           | Tidak | Default hari ini                                                                           |
+| `note`                  | Tidak | Catatan                                                                                    |
+
+`opname_no` dibuat otomatis dengan format `SO-<initial_company>-MM-YYYY-0001`, misalnya `SO-TYS-11-2026-0001`. Bulan dan tahun diambil dari tanggal tiket dibuat. Nomor urut dihitung per inisial company (semua lokasi company itu memakai urutan yang sama) dan di-reset setiap tahun. Company wajib punya `initial_company`. Opname lama tetap memakai nomor `OPN-...`. `id_user_opname` adalah user yang login. Response (`201`) berisi detail opname seperti di bagian 2.
 
 ## 2. List dan detail
 
-- `GET /api/inventory-opnames?search=OPN-10&status=pending&page=1&limit=10`: `search` mencari `opname_no`. Response tidak berisi item.
+- `GET /api/inventory-opnames?search=SO-TYS&status=pending&id_company=2&id_inventory_location=4&page=1&limit=10`: `search` mencari `opname_no`; `id_company` dan `id_inventory_location` opsional. Response tidak berisi item.
+- List dan detail berisi `id_company`, `id_inventory_location`, `company: { id, company_name, initial_company }`, dan `inventory_location: { id, location_code, location_name }`.
 - `GET /api/inventory-opnames/:id`: detail beserta `user_opname`, semua `items` (urut nama barang), dan `verification_progress`.
 - `GET /api/inventory-opnames/:id/items?search=kursi&status=reject&page=1&limit=50`: item saja dengan pagination, untuk opname yang itemnya banyak. `search` mencari nama barang. Bisa juga difilter dengan `purchase_request_category`.
 
@@ -158,13 +171,18 @@ Progress dicatat per aksi tiket, **bukan per item**, karena satu opname berisi s
 | 400  | `items must be a non-empty array`, `items[i]: ...`                                        | Validasi simpan/review                          |
 | 403  | `Only the creator can ...`                                                                | Simpan/request/batal oleh selain pembuat        |
 | 404  | `Inventory opname not found`, `Inventory opname items not found: ...`                     | ID salah                                        |
-| 409  | `Inventory opname OPN-... is still pending; finish it before creating a new one`         | Masih ada opname terbuka                        |
-| 409  | `There is no inventory to count`                                                          | Inventory kosong                                |
+| 400  | `id_company is required`                                                                  | Buat opname tanpa company                       |
+| 400  | `id_inventory_location is required: the company has no default inventory location`       | Lokasi kosong dan company belum punya default   |
+| 404  | `Company not found`, `Inventory location not found`                                       | Company/lokasi tidak ada atau tidak aktif       |
+| 409  | `Company ... has no initial_company`                                                      | Inisial company kosong (untuk nomor opname)     |
+| 409  | `Inventory opname SO-... is still pending; finish it before creating a new one`          | Masih ada opname terbuka di company & lokasi ini |
+| 409  | `There is no inventory to count in this company and location`                             | Inventory company & lokasi ini kosong           |
 | 409  | `Item ... cannot be edited while it is ...` / `... cannot be reviewed while it is ...`    | Status item tidak sesuai                        |
 | 409  | `N items have not been saved yet` / `N items have not been approved yet`                  | Request / approve tiket terlalu cepat           |
 | 409  | `Stock of ... would become negative (...)`                                                | Approve membuat stok minus                      |
 
 ## Setup
 
+- Kolom `id_company` dan `id_inventory_location` di `inventory_opnames` dibuat dengan `npm run db:sync-inventory-location`.
 - Migrasi database (sekali per environment): `npm run db:sync-inventory-opname`. Jalankan lagi untuk membuat tabel rincian status item `inventory_opname_item_details` dan kolom `purchase_request_category` di item opname (item opname lama diisi dari inventory-nya).
 - Approver diatur lewat approval flow dengan `approval_for` = `inventory opname` dan status `request`. `npm run db:setup-approval-flows [nama_posisi]` membuat flow default jika belum ada. Selama `APPROVAL_ENFORCE` belum `true`, review dan approve oleh siapa pun tetap berhasil.

@@ -59,6 +59,8 @@ class InventoryOpnameController {
       const where = {};
       if (req.query?.search) where.opname_no = { [Op.like]: `%${req.query.search}%` };
       if (req.query?.status) where.status = req.query.status;
+      if (req.query?.id_company) where.id_company = req.query.id_company;
+      if (req.query?.id_inventory_location) where.id_inventory_location = req.query.id_inventory_location;
       const result = await service.getAll(where, ...page(req));
       return successResponse(res, await approvalAccess.attachActionFlags("inventory opname", result, req.user?.id));
     } catch (error) { return respondError(res, error); }
@@ -86,6 +88,7 @@ class InventoryOpnameController {
   async create(req, res) {
     try {
       const body = req.body || {};
+      if (!body.id_company) return errorResponse(res, "id_company is required", 400);
       return successResponse(res, await service.create(body, req.user.id,
         body.is_double_database !== false), "Inventory opname created", 201);
     } catch (error) { return respondError(res, error); }

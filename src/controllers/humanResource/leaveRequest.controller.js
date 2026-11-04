@@ -11,6 +11,9 @@ const OPTIONAL_TEXT = {
   doctor_name: 255,
 };
 
+// HH:mm, optionally with seconds.
+const TIME_FORMAT = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
 function respondError(res, error) {
   return errorResponse(res, error.message, error.statusCode || 500);
 }
@@ -35,6 +38,13 @@ function validate(body, partial = false) {
     const duration = Number(body.duration);
     if (body.duration === "" || !Number.isFinite(duration) || duration <= 0)
       return "duration must be a positive number";
+  }
+  for (const field of ["start_time", "end_time"])
+    if (body[field] != null && !TIME_FORMAT.test(body[field])) return `${field} must use HH:mm format`;
+  if (body.total_hours !== undefined && body.total_hours !== null) {
+    const hours = Number(body.total_hours);
+    if (body.total_hours === "" || !Number.isFinite(hours) || hours <= 0)
+      return "total_hours must be a positive number";
   }
   if (has("reason") && !String(body.reason ?? "").trim()) return "reason is required";
   for (const [field, max] of Object.entries(OPTIONAL_TEXT)) {

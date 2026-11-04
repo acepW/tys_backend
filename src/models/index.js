@@ -101,6 +101,7 @@ const InvoiceServiceModel = require("./invoice/invoiceService.model");
 const InvoiceVerificationProgress = require("./invoice/invoiceVerificationProgress.model");
 const IncomingInvoiceModel = require("./invoice/incomingInvoice.model");
 const InvoicePaymentModel = require("./invoice/invoicePayment.model");
+const InvoiceWithholdingTaxModel = require("./invoice/invoiceWithholdingTax.model");
 
 //debit note
 const DebitNoteModel = require("./debitNote/debitNote.model");
@@ -125,6 +126,9 @@ const GaPurchaseOrderItemRealizationModel = require("./gaPurchaseOrder/gaPurchas
 
 //inventory
 const InventoryModel = require("./inventory/inventory.model");
+const InventoryLocationModel = require("./inventory/inventoryLocation.model");
+const InventoryMovementModel = require("./inventory/inventoryMovement.model");
+const InventoryMovementVerificationProgressModel = require("./inventory/inventoryMovementVerificationProgress.model");
 const InventoryHistoryModel = require("./inventory/inventoryHistory.model");
 const InventoryRequestModel = require("./inventory/inventoryRequest.model");
 const InventoryRequestVerificationProgressModel = require("./inventory/inventoryRequestVerificationProgress.model");
@@ -275,6 +279,7 @@ const initializeModels = (sequelize) => {
     InvoiceVerificationProgress: InvoiceVerificationProgress(sequelize),
     IncomingInvoice: IncomingInvoiceModel(sequelize),
     InvoicePayment: InvoicePaymentModel(sequelize),
+    InvoiceWithholdingTax: InvoiceWithholdingTaxModel(sequelize),
 
     //debit note
     DebitNote: DebitNoteModel(sequelize),
@@ -301,6 +306,9 @@ const initializeModels = (sequelize) => {
 
     //inventory
     Inventory: InventoryModel(sequelize),
+    InventoryLocation: InventoryLocationModel(sequelize),
+    InventoryMovement: InventoryMovementModel(sequelize),
+    InventoryMovementVerificationProgress: InventoryMovementVerificationProgressModel(sequelize),
     InventoryHistory: InventoryHistoryModel(sequelize),
     InventoryRequest: InventoryRequestModel(sequelize),
     InventoryRequestVerificationProgress: InventoryRequestVerificationProgressModel(sequelize),
@@ -425,6 +433,7 @@ const syncProcurementModels = async () => {
     "GaPurchaseOrderVerificationProgress",
     "GaPurchaseOrderItemReceipt",
     "GaPurchaseOrderItemRealization",
+    "InventoryLocation",
     "Inventory",
     "InventoryRequest",
     "InventoryRequestVerificationProgress",
@@ -432,6 +441,8 @@ const syncProcurementModels = async () => {
     "InventoryOpnameItem",
     "InventoryOpnameItemDetail",
     "InventoryOpnameVerificationProgress",
+    "InventoryMovement",
+    "InventoryMovementVerificationProgress",
     "InventoryHistory",
   ];
   for (const modelName of order) {

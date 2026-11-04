@@ -254,7 +254,7 @@ const realizationBody = { purchase_realization_date: "2026-10-10", purchase_real
 const acceptBody = { goods_in_date: "2026-10-12", goods_status: "Good With Notes", note: "Dus penyok" };
 const returnBody = {
   goods_in_date: "2026-10-12", goods_status: "Not Good", note: "2 unit rusak",
-  return_delivery_date: "2026-10-13", return_shipping_cost: 25000,
+  return_delivery_date: "2026-10-13", return_shipping_cost: 25000, quantity_good: 3, quantity_returned: 2,
 };
 const allFiles = { files_purchase_proof: 1, files_invoice: 1, files_goods_in: 1, files_goods_receipt: 1,
   files_return_delivery_proof: 1, files_return_waybill: 1, files_refund_proof: 1 };
@@ -269,7 +269,7 @@ function mockInventory(t) {
   t.after(() => { inventoryService.addFromGaPurchaseOrderReceipt = original; });
   const calls = [];
   inventoryService.addFromGaPurchaseOrderReceipt = async (orderId, itemId, receipt) => {
-    calls.push([itemId, receipt.type, receipt.quantity_good]);
+    calls.push([itemId, receipt.type, receipt.quantity_received - receipt.quantity_returned]);
   };
   return calls;
 }
@@ -311,19 +311,26 @@ test("GA staff return needs a note, the return shipment data and its files", asy
   const items = [receivingItemRow(11)];
   mockGaOrder(t, order, { ...allFiles, files_return_waybill: 0 }, items);
   await assert.rejects(gaOrderService.returnItem(1, 11, 5, {}, false), /note is required for return/);
-  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3, return_delivery_date: "" }, false),
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, return_delivery_date: "" }, false),
     /return_delivery_date is required/);
-  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3, return_shipping_cost: -1 }, false),
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, return_shipping_cost: -1 }, false),
     /return_shipping_cost/);
-  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 5 }, false),
-    /less than the outstanding quantity \(5\)/);
-  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3 }, false),
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_returned: 0 }, false),
+    /quantity_returned must be a positive number/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: "" }, false),
+    /quantity_good must be a non-negative number/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_returned: 6 }, false),
+    /quantity_returned must not exceed the outstanding quantity \(5\)/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 6 }, false),
+    /quantity_good must not exceed the outstanding quantity \(5\)/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, returnBody, false),
     /files_return_waybill is required/);
   await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, goods_status: "Good" }, false),
     /goods_status must be one of/);
-  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, acceptBody, false), /quantity_good/);
+  await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 6 }, false),
+    /quantity_good must not exceed the outstanding quantity \(5\)/);
   assert.equal(items[0].receiving_status, "pending");
-  await assert.rejects(gaOrderService.returnItem(1, 99, 5, { ...returnBody, quantity_good: 3 }, false), /item not found/);
+  await assert.rejects(gaOrderService.returnItem(1, 99, 5, returnBody, false), /item not found/);
 });
 
 test("Partial return stocks the good quantity; the replacement is accepted later and finishes the order", async (t) => {
@@ -332,7 +339,7 @@ test("Partial return stocks the good quantity; the replacement is accepted later
   const writes = mockGaOrder(t, order, allFiles, items);
   const inventoryCalls = mockInventory(t);
 
-  await gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 3 }, false);
+  await gaOrderService.returnItem(1, 11, 5, returnBody, false);
   assert.equal(items[0].receiving_status, "returned");
   assert.equal(items[0].quantity_good, 3);
   assert.equal(items[0].quantity_returned, 2);
@@ -340,15 +347,15 @@ test("Partial return stocks the good quantity; the replacement is accepted later
   assert.equal(order.status, "request receiving");
 
   await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 3 }, false),
-    /equal the outstanding quantity \(2\)/);
+    /must not exceed the outstanding quantity \(2\)/);
   await gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 2 }, false);
   assert.equal(items[0].receiving_status, "accepted");
   assert.equal(items[0].quantity_good, 5);
   assert.equal(items[0].quantity_returned, 0);
   await assert.rejects(gaOrderService.acceptItem(1, 11, 5, { ...acceptBody, quantity_good: 0 }, false), /already been accepted/);
-  await assert.rejects(gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 0 }, false), /already been accepted/);
+  await assert.rejects(gaOrderService.returnItem(1, 11, 5, returnBody, false), /already been accepted/);
 
-  await gaOrderService.acceptItem(1, 12, 5, { ...acceptBody, quantity_good: 1 }, false);
+  await gaOrderService.acceptItem(1, 12, 5, acceptBody, false);
   assert.equal(order.status, "finished");
   assert.deepEqual(writes.filter(([kind]) => kind === "receipt").map(([, ...rest]) => rest),
     [["return", 5, 3, 2, 25000], ["accept", 2, 2, 0, null], ["accept", 1, 1, 0, null]]);
@@ -356,6 +363,33 @@ test("Partial return stocks the good quantity; the replacement is accepted later
   assert.deepEqual(progressOf(writes),
     [["goods returned", 11], ["goods accepted", 11], ["goods accepted", 12], ["finished", null]]);
   await assert.rejects(gaOrderService.acceptItem(1, 12, 5, { ...acceptBody, quantity_good: 1 }, false), /awaits receiving/);
+});
+
+test("Return stocks the received quantity minus quantity_returned; quantity_good is only recorded", async (t) => {
+  const order = { status: "request receiving" };
+  const items = [receivingItemRow(11, { quantity: "12.00" })];
+  const writes = mockGaOrder(t, order, allFiles, items);
+  const inventoryCalls = mockInventory(t);
+
+  // 11 inspected good, but all 12 go back to the vendor: nothing is stocked.
+  await gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 11, quantity_returned: 12 }, false);
+  assert.equal(items[0].quantity_good, 0);
+  assert.equal(items[0].quantity_returned, 12);
+  assert.deepEqual(inventoryCalls, []);
+
+  // The replacement comes in with 1 bad unit; 4 go back, 8 are stocked.
+  await gaOrderService.returnItem(1, 11, 5, { ...returnBody, quantity_good: 11, quantity_returned: 4 }, false);
+  assert.equal(items[0].quantity_good, 8);
+  assert.equal(items[0].quantity_returned, 4);
+  assert.equal(items[0].return_count, 2);
+
+  await gaOrderService.acceptItem(1, 11, 5, acceptBody, false);
+  assert.equal(items[0].quantity_good, 12);
+  assert.equal(items[0].quantity_returned, 0);
+  assert.equal(order.status, "finished");
+  assert.deepEqual(writes.filter(([kind]) => kind === "receipt").map(([, ...rest]) => rest),
+    [["return", 12, 11, 12, 25000], ["return", 12, 11, 4, 25000], ["accept", 4, 4, 0, null]]);
+  assert.deepEqual(inventoryCalls, [[11, "return", 8], [11, "accept", 4]]);
 });
 
 test("Returned quantity can be refunded after FAT approval, which finishes the order", async (t) => {
@@ -459,6 +493,7 @@ test("Returned item search matches the item name or the GA purchase order number
 
 test("Accepted goods add quantity to a matching inventory row or create a new one", async (t) => {
   const originals = {
+    orderFindByPk: models.db1.GaPurchaseOrder.findByPk,
     itemFindOne: models.db1.GaPurchaseOrderItem.findOne,
     findOne: models.db1.Inventory.findOne,
     invUpdate: models.db1.Inventory.update,
@@ -468,6 +503,7 @@ test("Accepted goods add quantity to a matching inventory row or create a new on
     fileCreate: models.db1.File.create,
   };
   t.after(() => {
+    models.db1.GaPurchaseOrder.findByPk = originals.orderFindByPk;
     models.db1.GaPurchaseOrderItem.findOne = originals.itemFindOne;
     models.db1.Inventory.findOne = originals.findOne;
     models.db1.Inventory.update = originals.invUpdate;
@@ -483,6 +519,8 @@ test("Accepted goods add quantity to a matching inventory row or create a new on
     { id: 22, item_name: "Printer", brand: "Canon", serial_number: null, size: null, material: null, other: null,
       quantity_unit: "unit", quantity: "1.00", purchase_request_category: "Office", asset_category: "non asset", files_product: [] },
   ];
+  const company = { id: 2, company_name: "PT Tys", id_inventory_location: 4 };
+  models.db1.GaPurchaseOrder.findByPk = async () => ({ id: 1, id_company: 2, company });
   models.db1.GaPurchaseOrderItem.findOne = async ({ where }) => items.find((item) => item.id === where.id);
   const wheres = [];
   models.db1.Inventory.findOne = async ({ where }) => {
@@ -492,7 +530,9 @@ test("Accepted goods add quantity to a matching inventory row or create a new on
   const writes = [];
   models.db1.Inventory.update = async (data, { where }) => { writes.push(["update", where.id, data.quantity, data.asset_category]); return [1]; };
   models.db1.Inventory.create = async (data) => {
-    writes.push(["create", data.brand, data.quantity, data.asset_category, data.received_date]); return { id: 8 };
+    writes.push(["create", data.brand, data.quantity, data.asset_category, data.received_date,
+      data.id_company, data.id_inventory_location]);
+    return { id: 8 };
   };
   models.db1.InventoryHistory.create = async (data) => {
     writes.push(["history", data.id_inventory, data.id_ga_purchase_order_item, data.id_ga_purchase_order_item_receipt,
@@ -504,16 +544,25 @@ test("Accepted goods add quantity to a matching inventory row or create a new on
 
   const t1 = { LOCK: { UPDATE: "UPDATE" } };
   await inventoryService.addFromGaPurchaseOrderReceipt(1, 21,
-    { id: 31, type: "return", quantity_good: 2, goods_in_date: "2026-10-12" }, 5, t1);
+    { id: 31, type: "return", quantity_received: "5.00", quantity_good: "4.00", quantity_returned: "3.00",
+      goods_in_date: "2026-10-12" }, 5, t1);
   await inventoryService.addFromGaPurchaseOrderReceipt(1, 22,
-    { id: 32, type: "accept", quantity_good: 1, goods_in_date: "2026-10-14" }, 5, t1);
+    { id: 32, type: "accept", quantity_received: 1, quantity_good: 1, quantity_returned: 0, goods_in_date: "2026-10-14" },
+    5, t1);
 
   assert.deepEqual(wheres[0][Op.and].slice(0, 3), [{ item_name: "Printer" }, { brand: "HP" }, { serial_number: "M404dn" }]);
   assert.deepEqual(wheres[0][Op.and][3], { [Op.or]: [{ size: null }, { size: "" }] });
+  // Same company and the company's default location are part of the match.
+  assert.deepEqual(wheres[0][Op.and].slice(6), [{ id_company: 2 }, { id_inventory_location: 4 }]);
   assert.deepEqual(writes, [
     ["update", 7, 5, "asset"], ["history", 7, 21, 31, 2, "2026-10-12"], ["file", 7, "b.png"],
-    ["create", "Canon", 1, "non asset", "2026-10-14"], ["history", 8, 22, 32, 1, "2026-10-14"],
+    ["create", "Canon", 1, "non asset", "2026-10-14", 2, 4], ["history", 8, 22, 32, 1, "2026-10-14"],
   ]);
+
+  company.id_inventory_location = null;
+  await assert.rejects(inventoryService.addFromGaPurchaseOrderReceipt(1, 22,
+    { id: 33, type: "accept", quantity_received: 1, quantity_returned: 0, goods_in_date: "2026-10-15" }, 5, t1),
+    /PT Tys has no default inventory location/);
 });
 
 test("GA order candidate query includes only GA-approved unprocessed items", async (t) => {
@@ -550,10 +599,11 @@ test("Inventory stock check matches every field and returns 0 when nothing match
   t.after(() => { models.db1.Inventory.findOne = findOne; });
   let where;
   models.db1.Inventory.findOne = async (options) => { where = options.where; return null; };
-  assert.deepEqual(await inventoryService.checkStock({ item_name: "Printer", brand: "HP" }),
-    { id_inventory: null, quantity: 0, quantity_unit: null });
+  assert.deepEqual(await inventoryService.checkStock({ item_name: "Printer", brand: "HP", id_company: "2",
+    id_inventory_location: "4" }), { id_inventory: null, quantity: 0, quantity_unit: null });
   assert.deepEqual(where[Op.and].slice(0, 2), [{ item_name: "Printer" }, { brand: "HP" }]);
   assert.deepEqual(where[Op.and][2], { [Op.or]: [{ serial_number: null }, { serial_number: "" }] });
+  assert.deepEqual(where[Op.and].slice(6), [{ id_company: 2 }, { id_inventory_location: 4 }]);
 
   models.db1.Inventory.findOne = async () => ({ id: 7, quantity: "3.00", quantity_unit: "unit" });
   assert.deepEqual(await inventoryService.checkStock({ item_name: "Printer", brand: "HP" }),
@@ -587,6 +637,20 @@ function mockInventoryRequest(t, request) {
   inventoryService.addFromInventoryRequest = async (id) => { writes.push(["stock", id]); return 7; };
   inventoryRequestService.getById = async () => request;
   return writes;
+}
+
+// Active companies 2 and 3 (default locations 4 and 6) and active locations 4 to 6.
+function mockPlaces(t) {
+  const originals = { company: models.db1.Company.findOne, location: models.db1.InventoryLocation.findOne };
+  t.after(() => {
+    models.db1.Company.findOne = originals.company;
+    models.db1.InventoryLocation.findOne = originals.location;
+  });
+  const companies = { 2: { id: 2, id_inventory_location: 4 }, 3: { id: 3, id_inventory_location: 6 } };
+  models.db1.Company.findOne = async ({ where }) => companies[where.id] || null;
+  models.db1.InventoryLocation.findOne = async ({ where }) =>
+    [4, 5, 6].includes(Number(where.id)) ? { id: Number(where.id) } : null;
+  return { companies };
 }
 
 test("Approving an inventory request adds stock once and links the inventory row", async (t) => {
@@ -632,6 +696,7 @@ test("Bulk create makes one pending request per item in one transaction", async 
     models.db1.InventoryRequest.findAll = originals.findAll;
     models.db1.InventoryRequestVerificationProgress.create = originals.progress;
   });
+  mockPlaces(t);
   let transactions = 0;
   let rolledBack = false;
   db1.transaction = async () => {
@@ -653,21 +718,44 @@ test("Bulk create makes one pending request per item in one transaction", async 
   };
 
   const result = await inventoryRequestService.createMany([
-    { item_name: "Kursi", quantity_unit: "unit", quantity: 2, received_date: "2026-10-20", status: "approve" },
-    { item_name: "Meja", quantity_unit: "unit", quantity: 1, received_date: "2026-10-21" },
+    { item_name: "Kursi", quantity_unit: "unit", quantity: 2, received_date: "2026-10-20", status: "approve", id_company: 2 },
+    { item_name: "Meja", quantity_unit: "unit", quantity: 1, received_date: "2026-10-21", id_company: 2,
+      id_inventory_location: 5 },
   ], 5, false);
   assert.equal(transactions, 1);
-  assert.deepEqual(created.map((data) => [data.item_name, data.status, data.id_user_request, data.received_date]),
-    [["Kursi", "pending", 5, "2026-10-20"], ["Meja", "pending", 5, "2026-10-21"]]);
+  assert.deepEqual(created.map((data) => [data.item_name, data.status, data.id_user_request, data.received_date,
+    data.id_company, data.id_inventory_location]),
+    [["Kursi", "pending", 5, "2026-10-20", 2, 4], ["Meja", "pending", 5, "2026-10-21", 2, 5]]);
   assert.deepEqual(progress, [41, 42]);
   assert.deepEqual(findWhere.id, [41, 42]);
   assert.deepEqual(result.map((row) => row.id), [41, 42]);
 
   await assert.rejects(inventoryRequestService.createMany([
-    { item_name: "Lemari", quantity_unit: "unit", quantity: 1 },
-    { item_name: "Gagal", quantity_unit: "unit", quantity: 1 },
+    { item_name: "Lemari", quantity_unit: "unit", quantity: 1, id_company: 2 },
+    { item_name: "Gagal", quantity_unit: "unit", quantity: 1, id_company: 2 },
   ], 5, false), /insert failed/);
   assert.equal(rolledBack, true);
+});
+
+test("Inventory request location defaults to the company's location and is checked against the master", async (t) => {
+  const request = { id: 6, status: "pending", id_user_request: 5, id_company: 2, id_inventory_location: 5 };
+  const writes = mockInventoryRequest(t, request);
+  const places = mockPlaces(t);
+
+  await inventoryRequestService.update(6, { quantity: 2 }, 5, false);
+  assert.deepEqual(writes.at(-2), ["request", { quantity: 2 }]);
+  await inventoryRequestService.update(6, { id_company: 3 }, 5, false);
+  assert.deepEqual(writes.at(-2), ["request", { id_company: 3, id_inventory_location: 6 }]);
+  await inventoryRequestService.update(6, { id_inventory_location: 4 }, 5, false);
+  assert.deepEqual(writes.at(-2), ["request", { id_company: 3, id_inventory_location: 4 }]);
+
+  await assert.rejects(inventoryRequestService.update(6, { id_company: 99 }, 5, false), /Company not found/);
+  await assert.rejects(inventoryRequestService.update(6, { id_inventory_location: 99 }, 5, false),
+    /Inventory location not found/);
+  places.companies[3].id_inventory_location = null;
+  await assert.rejects(inventoryRequestService.update(6, { id_company: 3 }, 5, false),
+    /company has no default inventory location/);
+  await assert.rejects(inventoryRequestService.create({ item_name: "Kursi" }, 5, false), /id_company is required/);
 });
 
 test("Inventory request create requires a valid received_date; edit only checks it when sent", async (t) => {
@@ -681,7 +769,9 @@ test("Inventory request create requires a valid received_date; edit only checks 
     await controller[method]({ body, params: { id: 1 }, user: { id: 5 } }, res);
     return [res.code, res.payload.message];
   };
-  const body = { item_name: "Kursi", quantity_unit: "unit", quantity: 2 };
+  const body = { item_name: "Kursi", quantity_unit: "unit", quantity: 2, id_company: 2 };
+  assert.deepEqual(await call("create", { ...body, id_company: undefined, received_date: "2026-10-20" }),
+    [400, "id_company is required"]);
   assert.deepEqual(await call("create", body), [400, "received_date must be a valid date"]);
   assert.deepEqual(await call("create", { ...body, received_date: "bukan tanggal" }), [400, "received_date must be a valid date"]);
   assert.equal((await call("create", { ...body, received_date: "2026-10-20" }))[0], 201);
@@ -702,14 +792,24 @@ test("Approved inventory request stock carries its received_date to the new inve
     models.db1.Inventory.create = originals.create;
     models.db1.InventoryHistory.create = originals.history;
   });
-  models.db1.InventoryRequest.findByPk = async () => ({ id: 3, item_name: "Kursi", quantity_unit: "unit",
-    quantity: "2.00", received_date: "2026-10-20", note: null, files_product: [] });
-  models.db1.Inventory.findOne = async () => null;
+  const request = { id: 3, item_name: "Kursi", quantity_unit: "unit", quantity: "2.00", received_date: "2026-10-20",
+    note: null, files_product: [], id_company: 2, id_inventory_location: 4 };
+  models.db1.InventoryRequest.findByPk = async () => request;
+  let where;
+  models.db1.Inventory.findOne = async (options) => { where = options.where; return null; };
   const writes = [];
-  models.db1.Inventory.create = async (data) => { writes.push(["create", data.received_date]); return { id: 9 }; };
+  models.db1.Inventory.create = async (data) => {
+    writes.push(["create", data.received_date, data.id_company, data.id_inventory_location]); return { id: 9 };
+  };
   models.db1.InventoryHistory.create = async (data) => {
     writes.push(["history", data.id_inventory_request, data.received_date]); return {};
   };
-  assert.equal(await inventoryService.addFromInventoryRequest(3, 5, { LOCK: { UPDATE: "UPDATE" } }), 9);
-  assert.deepEqual(writes, [["create", "2026-10-20"], ["history", 3, "2026-10-20"]]);
+  const t1 = { LOCK: { UPDATE: "UPDATE" } };
+  assert.equal(await inventoryService.addFromInventoryRequest(3, 5, t1), 9);
+  assert.deepEqual(where[Op.and].slice(6), [{ id_company: 2 }, { id_inventory_location: 4 }]);
+  assert.deepEqual(writes, [["create", "2026-10-20", 2, 4], ["history", 3, "2026-10-20"]]);
+
+  // Requests created before company and location existed must be edited first.
+  request.id_inventory_location = null;
+  await assert.rejects(inventoryService.addFromInventoryRequest(3, 5, t1), /needs id_company and id_inventory_location/);
 });

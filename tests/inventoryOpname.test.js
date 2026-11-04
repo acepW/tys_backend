@@ -7,14 +7,23 @@ const { models, db1 } = require("../src/models");
 // In-memory stand-in for the opname, inventory and history tables (DB1 only).
 function mockStore(t, inventories) {
   const db = models.db1;
-  const store = { opnames: [], items: [], details: [], histories: [], progress: [], inventories };
+  const store = { opnames: [], items: [], details: [], histories: [], progress: [], inventories,
+    companies: {
+      2: { id: 2, company_name: "PT Tys", initial_company: "TYS", id_inventory_location: 4 },
+      3: { id: 3, company_name: "PT Tys Abadi", initial_company: "TYS-A", id_inventory_location: 4 },
+    } };
   const replace = [
     [db1, "transaction", async () => ({ LOCK: { UPDATE: "UPDATE" }, commit: async () => {}, rollback: async () => {} })],
     [db.InventoryOpname, "findOne", async ({ where }) => {
       if (where.id !== undefined) return store.opnames.find((row) => row.id === Number(where.id) && row.is_active) || null;
-      if (where.status) return store.opnames.find((row) => where.status.includes(row.status) && row.is_active) || null;
-      return store.opnames.at(-1) || null;
+      if (where.status) return store.opnames.find((row) => where.status.includes(row.status) && row.is_active &&
+        row.id_company === where.id_company && row.id_inventory_location === where.id_inventory_location) || null;
+      // Opname number lookup: LIKE pattern with "_" and "%" wildcards.
+      const pattern = new RegExp("^" + where.opname_no[Op.like].replace(/_/g, ".").replace(/%/g, ".*") + "$");
+      return store.opnames.filter((row) => pattern.test(row.opname_no)).at(-1) || null;
     }],
+    [db.Company, "findOne", async ({ where }) => store.companies[where.id] || null],
+    [db.InventoryLocation, "findOne", async ({ where }) => [4, 5].includes(Number(where.id)) ? { id: Number(where.id) } : null],
     [db.InventoryOpname, "create", async (data) => {
       const row = { id: store.opnames.length + 1, is_active: true, ...data };
       store.opnames.push(row);
@@ -24,7 +33,8 @@ function mockStore(t, inventories) {
       Object.assign(store.opnames.find((row) => row.id === where.id), data);
       return [1];
     }],
-    [db.Inventory, "findAll", async () => store.inventories],
+    [db.Inventory, "findAll", async ({ where }) => store.inventories.filter((row) =>
+      row.id_company === where.id_company && row.id_inventory_location === where.id_inventory_location)],
     [db.Inventory, "findByPk", async (id) => store.inventories.find((row) => row.id === id) || null],
     [db.Inventory, "update", async (data, { where }) => {
       Object.assign(store.inventories.find((row) => row.id === where.id), data);
@@ -69,32 +79,63 @@ function mockStore(t, inventories) {
 
 const inventoryRows = () => [
   { id: 1, item_name: "Kursi", brand: null, serial_number: null, size: null, material: null, other: null,
-    purchase_request_category: "Furniture", quantity_unit: "unit", quantity: "10.00" },
+    purchase_request_category: "Furniture", quantity_unit: "unit", quantity: "10.00", id_company: 2, id_inventory_location: 4 },
   { id: 2, item_name: "Meja", brand: "Olympic", serial_number: null, size: null, material: null, other: null,
-    purchase_request_category: null, quantity_unit: "unit", quantity: "4.00" },
+    purchase_request_category: null, quantity_unit: "unit", quantity: "4.00", id_company: 2, id_inventory_location: 4 },
+  // Another location and another company: never part of an opname of company 2 at location 4.
+  { id: 3, item_name: "Lemari", brand: null, serial_number: null, size: null, material: null, other: null,
+    purchase_request_category: null, quantity_unit: "unit", quantity: "1.00", id_company: 2, id_inventory_location: 5 },
+  { id: 4, item_name: "Rak", brand: null, serial_number: null, size: null, material: null, other: null,
+    purchase_request_category: null, quantity_unit: "unit", quantity: "6.00", id_company: 3, id_inventory_location: 4 },
 ];
+const place = { id_company: 2, id_inventory_location: 4 };
 
 test("Creating an opname copies every inventory row as a pending item with an automatic number", async (t) => {
   const store = mockStore(t, inventoryRows());
-  const opname = await opnameService.create({ opname_date: "2026-10-20", note: "Opname Oktober" }, 5, false);
+  const opname = await opnameService.create({ ...place, opname_date: "2026-10-20", note: "Opname Oktober" }, 5, false);
   const year = new Date().getFullYear();
   const month = String(new Date().getMonth() + 1).padStart(2, "0");
-  assert.equal(opname.opname_no, `OPN-${month}-${year}-0001`);
+  assert.equal(opname.opname_no, `SO-TYS-${month}-${year}-0001`);
   assert.equal(opname.status, "pending");
   assert.equal(opname.id_user_opname, 5);
   assert.deepEqual(store.items.map((item) =>
     [item.id_inventory, item.item_name, item.purchase_request_category, item.quantity_system, item.status]),
   [[1, "Kursi", "Furniture", "10.00", "pending"], [2, "Meja", null, "4.00", "pending"]]);
-  await assert.rejects(opnameService.create({}, 5, false), /is still pending; finish it/);
+  await assert.rejects(opnameService.create(place, 5, false), /is still pending; finish it/);
 
   await opnameService.cancel(1, 5, false);
-  const next = await opnameService.create({}, 5, false);
-  assert.equal(next.opname_no, `OPN-${month}-${year}-0002`);
+  const next = await opnameService.create(place, 5, false);
+  assert.equal(next.opname_no, `SO-TYS-${month}-${year}-0002`);
+
+  // Another location of the same company can be counted while this one is open,
+  // and shares the company's sequence. Company TYS-A has its own sequence.
+  const other = await opnameService.create({ id_company: 2, id_inventory_location: 5 }, 5, false);
+  assert.equal(other.opname_no, `SO-TYS-${month}-${year}-0003`);
+  assert.deepEqual(store.items.filter((item) => item.id_inventory_opname === other.id).map((item) => item.id_inventory), [3]);
+  // An empty location takes the company's default (location 4).
+  const abadi = await opnameService.create({ id_company: 3 }, 5, false);
+  assert.equal(abadi.opname_no, `SO-TYS-A-${month}-${year}-0001`);
+  assert.deepEqual([abadi.id_company, abadi.id_inventory_location], [3, 4]);
+  assert.deepEqual(store.items.filter((item) => item.id_inventory_opname === abadi.id).map((item) => item.id_inventory), [4]);
+});
+
+test("Opname creation checks the company and location", async (t) => {
+  const store = mockStore(t, inventoryRows());
+  await assert.rejects(opnameService.create({}, 5, false), /id_company is required/);
+  await assert.rejects(opnameService.create({ id_company: 99 }, 5, false), /Company not found/);
+  await assert.rejects(opnameService.create({ id_company: 2, id_inventory_location: 99 }, 5, false),
+    /Inventory location not found/);
+  await assert.rejects(opnameService.create({ id_company: 3, id_inventory_location: 5 }, 5, false),
+    /no inventory to count in this company and location/);
+  store.companies[3].id_inventory_location = null;
+  await assert.rejects(opnameService.create({ id_company: 3 }, 5, false), /company has no default inventory location/);
+  store.companies[2].initial_company = " ";
+  await assert.rejects(opnameService.create(place, 5, false), /PT Tys has no initial_company/);
 });
 
 test("Opname flow: save counts, request, review items, correct a rejection, approve and adjust stock", async (t) => {
   const store = mockStore(t, inventoryRows());
-  await opnameService.create({}, 5, false);
+  await opnameService.create(place, 5, false);
   const [kursi, meja] = store.items.map((item) => item.id);
 
   await assert.rejects(opnameService.saveItems(1, [{ id: kursi, quantity_actual: 8 }], 9, false), /Only the creator/);
@@ -141,7 +182,7 @@ test("Opname flow: save counts, request, review items, correct a rejection, appr
 
 test("Opname approval refuses to make stock negative", async (t) => {
   const store = mockStore(t, inventoryRows());
-  await opnameService.create({}, 5, false);
+  await opnameService.create(place, 5, false);
   await opnameService.saveItems(1, store.items.map((item) => ({ id: item.id, quantity_actual: 0 })), 5, false);
   await opnameService.request(1, 5, null, false);
   await opnameService.reviewItems(1, store.items.map((item) => ({ id: item.id, decision: "approve" })), 7, false);
@@ -151,7 +192,7 @@ test("Opname approval refuses to make stock negative", async (t) => {
 
 test("Opname item status details are optional, replaced when sent and kept when left out", async (t) => {
   const store = mockStore(t, inventoryRows());
-  await opnameService.create({}, 5, false);
+  await opnameService.create(place, 5, false);
   const [kursi, meja] = store.items.map((item) => item.id);
   const details = (itemId) => store.details.filter((row) => row.id_inventory_opname_item === itemId)
     .map((row) => [row.quantity, row.input_status, row.note]);

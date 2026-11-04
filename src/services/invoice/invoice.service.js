@@ -6,6 +6,7 @@ const { Op, fn, col, where } = require("sequelize");
 const debitNoteService = require("../debitNote/debitNote.service");
 const incomingInvoiceService = require("./incomingInvoice.service");
 const taxService = require("../masterTax/tax.service");
+const { WHT_CHECKLIST } = require("../../models/invoice/invoiceWithholdingTax.model");
 const {
   fail,
   withTransactions,
@@ -15,6 +16,27 @@ const {
 } = require("../procurement/shared");
 
 const paymentMethods = ["transfer", "cash"];
+// Invoice statuses once it is paid off: they follow its withholding tax receipts.
+const whtInvoiceStatuses = [
+  "paid waiting wht",
+  "wht verification",
+  "wht rejected",
+  "paid & clear",
+];
+// Invoice statuses in which sales may upload a withholding tax receipt.
+const whtUploadStatuses = ["paid waiting wht", "wht verification", "wht rejected"];
+// Invoice PPh column and tax master code per withholding tax type.
+const whtSources = {
+  pph_23: { flag: "tax_pph_23", amount: "pph", code: "PPH_23", label: "PPh 23" },
+  pph_4_ayat_2: {
+    flag: "tax_pph_4_ayat_2",
+    amount: "pph_4_ayat_2",
+    code: "PPH_4_AYAT_2",
+    label: "PPh 4(2)",
+  },
+};
+// Tax period (masa pajak) of a withholding tax receipt.
+const taxPeriodFormat = /^(0[1-9]|1[0-2])-\d{4}$/;
 // Invoice statuses from which sales may upload a payment proof.
 const paymentUploadStatuses = ["waiting for payment", "payment proof rejected"];
 // Every status after SPV approval: sales may request the tax invoice in any of them.
@@ -24,10 +46,15 @@ const taxInvoiceRequestStatuses = [
   "payment proof rejected",
   "revision requested",
   "waiting for revision",
-  "paid",
+  ...whtInvoiceStatuses,
 ];
 // A revision changes only the PPh; PPN stays so the tax invoice remains valid.
 const revisableTaxFlags = ["tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"];
+// AR & AP edits and submits a draft, and an invoice SPV rejected for its tax.
+const editableStatuses = ["pending", "rejected"];
+// SPV rejection reasons: tax goes back to AR & AP; ct/po cancelled ends the
+// invoice and sales creates a new one from the changed CT/PO.
+const rejectTypes = ["tax", "ct/po cancelled"];
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
@@ -327,11 +354,23 @@ class InvoiceService extends DualDatabaseService {
               required: false,
               where: { is_active: true },
             },
+            {
+              model: dbModels.File,
+              as: "wht_reject_attachment",
+              required: false,
+              where: { is_active: true },
+            },
           ],
         },
         {
           model: dbModels.File,
           as: "tax_invoice_attachment",
+          required: false,
+          where: { is_active: true },
+        },
+        {
+          model: dbModels.File,
+          as: "file_final_invoice",
           required: false,
           where: { is_active: true },
         },
@@ -354,6 +393,30 @@ class InvoiceService extends DualDatabaseService {
             {
               model: dbModels.File,
               as: "payment_proof",
+              required: false,
+              where: { is_active: true },
+            },
+          ],
+        },
+        {
+          model: dbModels.InvoiceWithholdingTax,
+          as: "withholding_taxes",
+          separate: true,
+          order: [["id", "ASC"]],
+          include: [
+            {
+              model: dbModels.User,
+              as: "user_upload",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.User,
+              as: "user_verify",
+              attributes: ["id", "name", "email"],
+            },
+            {
+              model: dbModels.File,
+              as: "withholding_tax_receipt",
               required: false,
               where: { is_active: true },
             },
@@ -1360,63 +1423,103 @@ class InvoiceService extends DualDatabaseService {
    * @returns {Object} Updated invoice
    */
   async submitInvoice(id, note, id_user, isDoubleDatabase = true) {
-    return await this._changeStatusWithProgress(
-      id,
-      "on verification",
-      "submitted",
-      note || "Invoice submitted",
-      note,
-      id_user,
-      isDoubleDatabase,
-    );
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(id, editableStatuses, "Submit", t1);
+      const isResubmit = invoice.status === "rejected";
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        { status: "on verification", ...(note && { note }) },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        id_user,
+        "submitted",
+        note ||
+          (isResubmit
+            ? "Invoice resubmitted after tax revision"
+            : "Invoice submitted"),
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
   }
 
   /**
    * Approve invoice
-   * SPV FAT Internal approves and uploads the invoice file; sales can then
-   * download it, so the invoice goes straight to waiting for payment.
+   * SPV FAT Internal approves the proforma; nothing is uploaded. Sales can then
+   * open it, so the invoice goes straight to waiting for payment.
    * @param {Number} id - Invoice ID
-   * @param {String} file_invoice - Invoice file URL (optional)
+   * @param {String} note - Approval note (optional)
    * @param {Number} id_user - User ID who approves
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
-  async approveInvoice(
-    id,
-    note,
-    file_invoice,
-    id_user,
-    isDoubleDatabase = true,
-  ) {
-    return await this._changeStatusWithProgress(
-      id,
-      "waiting for payment",
-      "approved",
-      note || "Invoice approved",
-      note,
-      id_user,
-      isDoubleDatabase,
-      file_invoice,
-    );
+  async approveInvoice(id, note, id_user, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(id, ["on verification"], "Approve", t1);
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          status: "waiting for payment",
+          id_user_approve: id_user,
+          ...(note && { note }),
+        },
+        t1,
+        t2,
+      );
+      await this._addProgress(invoice.id, id_user, "approved", note || "Invoice approved", t1, t2);
+    });
+    return this.getById(id, {}, true);
   }
 
   /**
-   * Reject invoice
+   * Reject invoice (SPV FAT Internal)
+   * tax: wrong PPh/PPN, the invoice goes back to AR & AP (rejected) to fix and
+   * submit again. ct/po cancelled: the CT/PO was changed or cancelled, so the
+   * invoice is cancelled for good and sales creates a new one.
    * @param {Number} id - Invoice ID
+   * @param {String} note - Rejection note
    * @param {Number} id_user - User ID who rejects
    * @param {Boolean} isDoubleDatabase
+   * @param {String} rejectType - "tax" (default) or "ct/po cancelled"
    * @returns {Object} Updated invoice
    */
-  async rejectInvoice(id, note, id_user, isDoubleDatabase = true) {
-    return await this._changeStatusWithProgress(
-      id,
-      "rejected",
-      "rejected",
-      note || "Invoice rejected",
-      note,
-      id_user,
-      isDoubleDatabase,
-    );
+  async rejectInvoice(id, note, id_user, isDoubleDatabase = true, rejectType = "tax") {
+    if (!rejectTypes.includes(rejectType))
+      fail(`reject_type must be one of: ${rejectTypes.join(", ")}`);
+    const isCancelled = rejectType === "ct/po cancelled";
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(id, ["on verification"], "Reject", t1);
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          status: isCancelled ? "cancelled" : "rejected",
+          reject_type: rejectType,
+          id_user_reject: id_user,
+          ...(note && { note }),
+        },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        id_user,
+        isCancelled ? "cancelled" : "rejected",
+        note ||
+          (isCancelled
+            ? "Invoice rejected: CT/PO changed or cancelled"
+            : "Invoice rejected: tax needs revision"),
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
   }
 
   /**
@@ -1514,10 +1617,16 @@ class InvoiceService extends DualDatabaseService {
       const accepted =
         (await this._acceptedAmount(invoice.id, t1)) + Number(payment.amount);
       const isPaidOff = accepted >= Number(invoice.total);
-      // Any accepted payment makes the proforma final, so AR & AP must issue its
-      // tax invoice if sales has not requested one yet.
-      const requestsTaxInvoice =
-        invoice.tax_ppn && invoice.tax_invoice_status === "none";
+      // Any accepted payment makes the proforma final, so AR & AP must issue the
+      // final invoice (with its tax invoice when the invoice has PPN) if sales
+      // has not requested it yet.
+      const requestsTaxInvoice = invoice.tax_invoice_status === "none";
+      // Paid off with PPh 23 / PPh 4(2): sales must collect the withholding tax
+      // receipts before the invoice is clear.
+      const withholdingTaxes = isPaidOff
+        ? await this._createWithholdingTaxes(invoice, t1, t2)
+        : [];
+      const paidStatus = withholdingTaxes.length ? "paid waiting wht" : "paid & clear";
 
       await mirrorUpdate(
         "InvoicePayment",
@@ -1535,7 +1644,7 @@ class InvoiceService extends DualDatabaseService {
         "Invoice",
         invoice.id,
         {
-          status: isPaidOff ? "paid" : "waiting for payment",
+          status: isPaidOff ? paidStatus : "waiting for payment",
           payment_amount: accepted,
           payment_date: payment.transfer_date,
           payment_method: payment.payment_method,
@@ -1549,18 +1658,33 @@ class InvoiceService extends DualDatabaseService {
         idUser,
         "payment accepted",
         note ||
-          (isPaidOff
-            ? "Payment accepted, invoice paid off"
-            : "Payment accepted, waiting for the remaining payment"),
+          (!isPaidOff
+            ? "Payment accepted, waiting for the remaining payment"
+            : withholdingTaxes.length
+              ? `Payment accepted, invoice paid off; waiting for the withholding tax receipt (${withholdingTaxes
+                  .map((tax) => whtSources[tax.tax_type].label)
+                  .join(", ")})`
+              : "Payment accepted, invoice paid off"),
         t1,
         t2,
       );
+      if (isPaidOff && !withholdingTaxes.length)
+        await this._addProgress(
+          invoice.id,
+          idUser,
+          "paid & clear",
+          "Invoice paid off without withholding tax",
+          t1,
+          t2,
+        );
       if (requestsTaxInvoice)
         await this._addProgress(
           invoice.id,
           idUser,
-          "tax invoice requested",
-          "Tax invoice requested automatically after a payment was accepted",
+          invoice.tax_ppn ? "tax invoice requested" : "final invoice requested",
+          invoice.tax_ppn
+            ? "Final invoice and tax invoice requested automatically after a payment was accepted"
+            : "Final invoice requested automatically after a payment was accepted",
           t1,
           t2,
         );
@@ -1686,31 +1810,44 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
-   * AR & AP uploads the requested tax invoice (faktur pajak): number, date and
-   * attachment files. The invoice status itself does not change.
+   * AR & AP issues the final invoice (file_final_invoice files) and, for an
+   * invoice with PPN, the requested tax invoice (faktur pajak): number, date and
+   * attachment files. The proforma becomes final; the invoice number and status
+   * stay the same.
    * @param {Number} id - Invoice ID
-   * @param {Object} data - { tax_invoice_no, tax_invoice_date, tax_invoice_attachment, note }
+   * @param {Object} data - { file_final_invoice, tax_invoice_no, tax_invoice_date, tax_invoice_attachment, note }
    * @param {Number} idUser - User ID who uploads
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated invoice
    */
   async uploadTaxInvoice(id, data, idUser, isDoubleDatabase = true) {
+    if (!Array.isArray(data.file_final_invoice) || !data.file_final_invoice.length)
+      fail("file_final_invoice must be a non-empty array");
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const invoice = await this._lockInvoice(id, t1);
       if (invoice.tax_invoice_status !== "requested")
         fail(
           invoice.tax_invoice_status === "issued"
-            ? "Tax invoice has already been issued"
-            : "Tax invoice can only be uploaded after it is requested",
+            ? "Final invoice and tax invoice have already been issued"
+            : "Final invoice and tax invoice can only be uploaded after they are requested",
           409,
         );
+      if (invoice.tax_ppn) {
+        if (!data.tax_invoice_no?.toString().trim())
+          fail("tax_invoice_no is required");
+        if (!data.tax_invoice_date) fail("tax_invoice_date is required");
+      }
       await mirrorUpdate(
         "Invoice",
         invoice.id,
         {
-          tax_invoice_no: data.tax_invoice_no,
-          tax_invoice_date: data.tax_invoice_date,
+          ...(invoice.tax_ppn && {
+            tax_invoice_no: data.tax_invoice_no.toString().trim(),
+            tax_invoice_date: data.tax_invoice_date,
+          }),
           tax_invoice_status: "issued",
+          is_final: true,
+          final_at: new Date(),
         },
         t1,
         t2,
@@ -1718,17 +1855,30 @@ class InvoiceService extends DualDatabaseService {
       await syncFiles(
         "invoices",
         invoice.id,
-        "tax_invoice_attachment",
-        data.tax_invoice_attachment,
+        "file_final_invoice",
+        data.file_final_invoice,
         idUser,
         t1,
         t2,
       );
+      if (invoice.tax_ppn)
+        await syncFiles(
+          "invoices",
+          invoice.id,
+          "tax_invoice_attachment",
+          data.tax_invoice_attachment,
+          idUser,
+          t1,
+          t2,
+        );
       await this._addProgress(
         invoice.id,
         idUser,
-        "tax invoice issued",
-        data.note || `Tax invoice ${data.tax_invoice_no} issued`,
+        invoice.tax_ppn ? "tax invoice issued" : "final invoice issued",
+        data.note ||
+          (invoice.tax_ppn
+            ? `Final invoice and tax invoice ${data.tax_invoice_no.toString().trim()} issued`
+            : "Final invoice issued"),
         t1,
         t2,
       );
@@ -1864,10 +2014,10 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
-   * SPV FAT Internal approves the revised invoice, optionally with a new invoice
-   * file, and it goes back to waiting for payment.
+   * SPV FAT Internal approves the revised invoice (no file is uploaded), and it
+   * goes back to waiting for payment.
    */
-  async approveRevision(id, note, fileInvoice, idUser, isDoubleDatabase = true) {
+  async approveRevision(id, note, idUser, isDoubleDatabase = true) {
     return this._move(
       id,
       {
@@ -1876,7 +2026,6 @@ class InvoiceService extends DualDatabaseService {
         action: "Approving the revision",
         progress: "revision approved",
         note: note || "Invoice revision approved",
-        data: fileInvoice !== undefined ? { file_invoice: fileInvoice } : {},
       },
       idUser,
       isDoubleDatabase,
@@ -1901,6 +2050,256 @@ class InvoiceService extends DualDatabaseService {
   }
 
   // Locks the invoice, checks it is in one of `from`, moves it to `to` and logs progress.
+  /**
+   * Sales uploads the withholding tax receipt (bukti potong) of one PPh type,
+   * new or after a rejection; AR & AP verifies it next.
+   * @param {Object} data - { withholding_tax_receipt (files), note }
+   */
+  async uploadWithholdingTax(id, whtId, data, idUser, isDoubleDatabase = true) {
+    if (
+      !Array.isArray(data.withholding_tax_receipt) ||
+      !data.withholding_tax_receipt.length
+    )
+      fail("withholding_tax_receipt must be a non-empty array");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const { invoice, taxes, tax } = await this._lockWithholdingTax(
+        id,
+        whtId,
+        whtUploadStatuses,
+        ["waiting", "rejected"],
+        "uploaded",
+        t1,
+      );
+      await mirrorUpdate(
+        "InvoiceWithholdingTax",
+        tax.id,
+        {
+          status: "verification",
+          note: data.note || null,
+          id_user_upload: idUser,
+          uploaded_at: new Date(),
+        },
+        t1,
+        t2,
+      );
+      await syncFiles(
+        "invoice_withholding_taxes",
+        tax.id,
+        "withholding_tax_receipt",
+        data.withholding_tax_receipt,
+        idUser,
+        t1,
+        t2,
+      );
+      await this._settleWithholdingTaxes(invoice, taxes, tax, "verification", t1, t2);
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "wht uploaded",
+        data.note || `${whtSources[tax.tax_type].label} withholding tax receipt uploaded`,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * AR & AP accepts a withholding tax receipt once every checklist item passes,
+   * filling its number, tax period (MM-YYYY) and date. The invoice is paid &
+   * clear when every receipt is.
+   * @param {Object} data - { checklist, receipt_no, tax_period, receipt_date, note }
+   */
+  async acceptWithholdingTax(id, whtId, data, idUser, isDoubleDatabase = true) {
+    const checklist = data.checklist;
+    if (!checklist || typeof checklist !== "object" || Array.isArray(checklist))
+      fail("checklist must be an object");
+    const unchecked = WHT_CHECKLIST.filter((item) => checklist[item] !== true);
+    if (unchecked.length)
+      fail(
+        `Every checklist item must be checked to accept; reject the receipt instead (unchecked: ${unchecked.join(", ")})`,
+      );
+    if (!data.receipt_no?.toString().trim()) fail("receipt_no is required");
+    if (!taxPeriodFormat.test(data.tax_period ?? ""))
+      fail("tax_period must use MM-YYYY format");
+    if (!data.receipt_date || Number.isNaN(Date.parse(data.receipt_date)))
+      fail("receipt_date must be a valid date");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const { invoice, taxes, tax } = await this._lockWithholdingTax(
+        id,
+        whtId,
+        ["wht verification"],
+        ["verification"],
+        "accepted",
+        t1,
+      );
+      await mirrorUpdate(
+        "InvoiceWithholdingTax",
+        tax.id,
+        {
+          status: "clear",
+          receipt_no: data.receipt_no.toString().trim(),
+          tax_period: data.tax_period,
+          receipt_date: data.receipt_date,
+          checklist: Object.fromEntries(WHT_CHECKLIST.map((item) => [item, true])),
+          id_user_verify: idUser,
+          verified_at: new Date(),
+        },
+        t1,
+        t2,
+      );
+      const status = await this._settleWithholdingTaxes(invoice, taxes, tax, "clear", t1, t2);
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "wht accepted",
+        data.note ||
+          `${whtSources[tax.tax_type].label} withholding tax receipt ${data.receipt_no.toString().trim()} accepted`,
+        t1,
+        t2,
+      );
+      if (status === "paid & clear")
+        await this._addProgress(
+          invoice.id,
+          idUser,
+          "paid & clear",
+          "Every withholding tax receipt is clear",
+          t1,
+          t2,
+        );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * AR & AP rejects a withholding tax receipt with a comment and at least one
+   * screenshot of the problem; sales asks the client for a corrected one.
+   * @param {Object} data - { note, wht_reject_attachment (files), checklist }
+   */
+  async rejectWithholdingTax(id, whtId, data, idUser, isDoubleDatabase = true) {
+    if (!data.note?.toString().trim()) fail("note is required for rejection");
+    if (
+      !Array.isArray(data.wht_reject_attachment) ||
+      !data.wht_reject_attachment.length
+    )
+      fail("wht_reject_attachment must be a non-empty array");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const { invoice, taxes, tax } = await this._lockWithholdingTax(
+        id,
+        whtId,
+        ["wht verification"],
+        ["verification"],
+        "rejected",
+        t1,
+      );
+      await mirrorUpdate(
+        "InvoiceWithholdingTax",
+        tax.id,
+        {
+          status: "rejected",
+          note_reject: data.note,
+          // The checklist AR & AP filled in, if any, shows which items failed.
+          ...(data.checklist &&
+            typeof data.checklist === "object" && {
+              checklist: Object.fromEntries(
+                WHT_CHECKLIST.map((item) => [item, data.checklist[item] === true]),
+              ),
+            }),
+          id_user_verify: idUser,
+          verified_at: new Date(),
+        },
+        t1,
+        t2,
+      );
+      await this._settleWithholdingTaxes(invoice, taxes, tax, "rejected", t1, t2);
+      const progress = await this._addProgress(
+        invoice.id,
+        idUser,
+        "wht rejected",
+        `${whtSources[tax.tax_type].label}: ${data.note}`,
+        t1,
+        t2,
+      );
+      await syncFiles(
+        "invoice_verification_progress",
+        progress.id,
+        "wht_reject_attachment",
+        data.wht_reject_attachment,
+        idUser,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  // One withholding tax row per PPh type the paid-off invoice withholds. DPP and
+  // amount come from the invoice, the rate from the active tax master.
+  async _createWithholdingTaxes(invoice, t1, t2) {
+    const types = Object.entries(whtSources)
+      .filter(([, source]) => invoice[source.flag] && Number(invoice[source.amount]) > 0)
+      .map(([type]) => type);
+    if (!types.length) return [];
+    const rates = await taxService.getActiveRates(
+      types.map((type) => whtSources[type].code),
+      t1,
+    );
+    const created = [];
+    for (const type of types)
+      created.push(
+        await mirrorCreate(
+          "InvoiceWithholdingTax",
+          {
+            id_invoice: invoice.id,
+            tax_type: type,
+            dpp: invoice.sub_total,
+            rate: rates[whtSources[type].code],
+            amount: invoice[whtSources[type].amount],
+            status: "waiting",
+          },
+          t1,
+          t2,
+        ),
+      );
+    return created;
+  }
+
+  // Locks the invoice and its withholding taxes; whtId must be one of them and in
+  // one of taxStatuses.
+  async _lockWithholdingTax(id, whtId, invoiceStatuses, taxStatuses, action, t1) {
+    const invoice = await this._lockInvoiceIn(
+      id,
+      invoiceStatuses,
+      `Withholding tax receipt ${action}`,
+      t1,
+    );
+    const taxes = await models.db1.InvoiceWithholdingTax.findAll({
+      where: { id_invoice: invoice.id },
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+    const tax = taxes.find((row) => row.id === Number(whtId));
+    if (!tax) fail("Withholding tax not found", 404);
+    if (!taxStatuses.includes(tax.status))
+      fail(`Withholding tax receipt cannot be ${action} while it is ${tax.status}`, 409);
+    return { invoice, taxes, tax };
+  }
+
+  // Sets the invoice status from every receipt, with `tax` now at `taxStatus`:
+  // any in verification, then any rejected, then all clear, else waiting.
+  async _settleWithholdingTaxes(invoice, taxes, tax, taxStatus, t1, t2) {
+    const statuses = taxes.map((row) => (row.id === tax.id ? taxStatus : row.status));
+    const status = statuses.includes("verification")
+      ? "wht verification"
+      : statuses.includes("rejected")
+        ? "wht rejected"
+        : statuses.every((value) => value === "clear")
+          ? "paid & clear"
+          : "paid waiting wht";
+    await mirrorUpdate("Invoice", invoice.id, { status }, t1, t2);
+    return status;
+  }
+
   async _move(id, { from, to, action, progress, note, data = {} }, idUser, isDoubleDatabase) {
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const invoice = await this._lockInvoiceIn(id, from, action, t1);
@@ -1916,173 +2315,10 @@ class InvoiceService extends DualDatabaseService {
       fail(`${action} is not allowed while the invoice is ${invoice.status}`, 409);
     return invoice;
   }
-
-  /**
-   * Internal method to change invoice status and add verification progress
-   * @param {Number} id - Invoice ID
-   * @param {String} invoiceStatus - New invoice status
-   * @param {String} progressStatus - Verification progress status
-   * @param {String} progressNote - Note for progress
-   * @param {String} invoiceNote - Note to update in invoice (optional)
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated invoice
-   */
-  async _changeStatusWithProgress(
-    id,
-    invoiceStatus,
-    progressStatus,
-    progressNote,
-    invoiceNote = null,
-    id_user,
-    isDoubleDatabase = true,
-    file_invoice,
-  ) {
-    let transaction1 = null;
-    let transaction2 = null;
-
-    try {
-      if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
-
-        console.log(
-          `🔄 Changing Contract ID ${id} status to "${invoiceStatus}"...`,
-        );
-
-        // Prepare update data
-        const updateData = { status: invoiceStatus };
-        if (invoiceNote) {
-          updateData.note = invoiceNote;
-        }
-
-        if (progressStatus == "approved") {
-          updateData.id_user_approve = id_user;
-        }
-
-        if (invoiceStatus == "rejected") {
-          updateData.id_user_reject = id_user;
-        }
-
-        if (file_invoice !== undefined) {
-          updateData.file_invoice = file_invoice;
-        }
-
-        // 1. Update Invoice status in both databases
-        const [updatedRows1] = await this.Model1.update(updateData, {
-          where: { id },
-          transaction: transaction1,
-        });
-
-        const [updatedRows2] = await this.Model2.update(updateData, {
-          where: { id },
-          transaction: transaction2,
-        });
-
-        if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Contract with ID ${id} not found`);
-        }
-
-        console.log(`✅ Updated Contract status in both databases`);
-
-        // 2. Create InvoiceVerificationProgress
-        const progressData = {
-          id_invoice: id,
-          id_user: id_user,
-          status: progressStatus,
-          note: progressNote,
-        };
-
-        const progress1 = await models.db1.InvoiceVerificationProgress.create(
-          progressData,
-          { transaction: transaction1 },
-        );
-
-        const progressDataWithId = {
-          ...progressData,
-          id: progress1.id,
-        };
-        await models.db2.InvoiceVerificationProgress.create(
-          progressDataWithId,
-          {
-            transaction: transaction2,
-          },
-        );
-
-        console.log(
-          `✅ Created ContractVerificationProgress with status "${progressStatus}"`,
-        );
-
-        // Commit both transactions
-        await transaction1.commit();
-        await transaction2.commit();
-        console.log(
-          `✅ Contract status successfully changed to "${invoiceStatus}"`,
-        );
-
-        // Get updated contract
-        const updated = await this.getById(id, {}, isDoubleDatabase);
-
-        return updated;
-      } else {
-        // Single database (DB1 only)
-        transaction1 = await db1.transaction();
-
-        const updateData = { status: invoiceStatus };
-        if (invoiceNote) {
-          updateData.note = invoiceNote;
-        }
-
-        if (progressStatus == "approved") {
-          updateData.id_user_approve = id_user;
-        }
-
-        if (invoiceStatus == "rejected") {
-          updateData.id_user_reject = id_user;
-        }
-
-        if (file_invoice !== undefined) {
-          updateData.file_invoice = file_invoice;
-        }
-
-        const [updatedRows] = await this.Model1.update(updateData, {
-          where: { id },
-          transaction: transaction1,
-        });
-
-        if (updatedRows === 0) {
-          throw new Error(`Contract with ID ${id} not found`);
-        }
-
-        const progressData = {
-          id_invoice: id,
-          id_user: id_user,
-          status: progressStatus,
-          note: progressNote,
-        };
-
-        await models.db1.InvoiceVerificationProgress.create(progressData, {
-          transaction: transaction1,
-        });
-
-        await transaction1.commit();
-        console.log(
-          `✅ Contract status changed to "${invoiceStatus}" in DB1 only`,
-        );
-
-        const updated = await this.getById(id, {}, isDoubleDatabase);
-
-        return updated;
-      }
-    } catch (error) {
-      console.error(`❌ Error changing Contract status:`, error.message);
-
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
-
-      throw new Error(`Failed to change Contract status: ${error.message}`);
-    }
-  }
 }
 
 module.exports = new InvoiceService();
 module.exports.taxInvoiceRequestStatuses = taxInvoiceRequestStatuses;
+module.exports.editableStatuses = editableStatuses;
+module.exports.rejectTypes = rejectTypes;
+module.exports.whtUploadStatuses = whtUploadStatuses;

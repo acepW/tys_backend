@@ -6,7 +6,10 @@ const {
   mirrorUpdate,
   syncFiles,
 } = require("../procurement/shared");
-const { STAGES } = require("../../models/humanResource/leaveRequest.model");
+const {
+  STAGES,
+  HR_DECISION_TYPES,
+} = require("../../models/humanResource/leaveRequest.model");
 
 const FIELDS = [
   "id_employee",
@@ -14,6 +17,9 @@ const FIELDS = [
   "start_date",
   "end_date",
   "duration",
+  "start_time",
+  "end_time",
+  "total_hours",
   "reason",
   "health_facility_name",
   "clinic_phone",
@@ -48,6 +54,20 @@ function dayCount(startDate, endDate) {
   const start = Date.parse(`${startDate}T00:00:00Z`);
   const end = Date.parse(`${endDate}T00:00:00Z`);
   return Math.round((end - start) / 86400000) + 1;
+}
+
+// Minutes since midnight of an HH:mm or HH:mm:ss time.
+function minutesOf(time) {
+  const [hours, minutes, seconds = 0] = String(time).split(":").map(Number);
+  return hours * 60 + minutes + seconds / 60;
+}
+
+// start_time and end_time are optional but go together, with end_time later.
+function checkTimes(startTime, endTime) {
+  if ((startTime == null) !== (endTime == null))
+    fail("start_time and end_time must be sent together");
+  if (startTime != null && minutesOf(endTime) <= minutesOf(startTime))
+    fail("end_time must be after start_time");
 }
 
 class LeaveRequestService {
@@ -152,6 +172,7 @@ class LeaveRequestService {
     const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const data = pick(input);
       data.duration ??= dayCount(data.start_date, data.end_date);
+      checkTimes(data.start_time, data.end_time);
       const request = await mirrorCreate(
         "LeaveRequest",
         {
@@ -187,6 +208,10 @@ class LeaveRequestService {
         (data.start_date !== undefined || data.end_date !== undefined)
       )
         data.duration = dayCount(startDate, endDate);
+      const startTime =
+        data.start_time !== undefined ? data.start_time : request.start_time;
+      const endTime = data.end_time !== undefined ? data.end_time : request.end_time;
+      checkTimes(startTime, endTime);
       if (data.id_employee !== undefined)
         data.id_department = await this.employeeDepartment(data.id_employee, t1);
       await mirrorUpdate("LeaveRequest", id, data, t1, t2);
@@ -276,13 +301,23 @@ class LeaveRequestService {
   }
 
   // Admin/SPV HR verifies the doctor's letter the requester uploaded; nothing is
-  // uploaded here. The request becomes approved.
+  // uploaded here. HR also records the leave type it settles on
+  // (hr_decision_type), since it can differ from the requested type, which is
+  // kept. The request becomes approved.
   async verifyHr(id, userId, data = {}, isDoubleDatabase = true) {
+    if (!HR_DECISION_TYPES.includes(data.hr_decision_type))
+      fail(`hr_decision_type must be one of: ${HR_DECISION_TYPES.join(", ")}`);
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const request = await this.lock(id, t1);
       if (request.status !== "request verification hr")
         fail(`Action is not allowed from status "${request.status}"`, 409);
-      await mirrorUpdate("LeaveRequest", id, { status: "approved" }, t1, t2);
+      await mirrorUpdate(
+        "LeaveRequest",
+        id,
+        { status: "approved", hr_decision_type: data.hr_decision_type },
+        t1,
+        t2,
+      );
       await this.addProgress(id, userId, "verified hr", data.note, t1, t2);
     });
     return this.getById(id);

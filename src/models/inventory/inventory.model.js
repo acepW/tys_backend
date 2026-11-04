@@ -51,15 +51,44 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Date the stock that created this row was received (tanggal penerimaan)",
       },
+      id_company: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "companies", key: "id" },
+        comment: "Company owning the stock; NULL for rows created before it existed",
+      },
+      id_inventory_location: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "inventory_locations", key: "id" },
+        comment: "Where the stock is stored; NULL for rows created before it existed",
+      },
+      movement_status: {
+        type: DataTypes.ENUM("stock transfer", "stock allocation"),
+        allowNull: true,
+        comment:
+          "Type of the last approved inventory movement into or out of this row; NULL when never moved",
+      },
     },
     {
       tableName: "inventories",
       timestamps: true,
       underscored: true,
-      indexes: [{ fields: ["item_name"] }],
+      indexes: [
+        { fields: ["item_name"] },
+        { fields: ["id_company", "id_inventory_location"] },
+      ],
     },
   );
   Inventory.associate = (models) => {
+    Inventory.belongsTo(models.Company, {
+      foreignKey: "id_company",
+      as: "company",
+    });
+    Inventory.belongsTo(models.InventoryLocation, {
+      foreignKey: "id_inventory_location",
+      as: "inventory_location",
+    });
     Inventory.hasMany(models.InventoryHistory, {
       foreignKey: "id_inventory",
       as: "histories",

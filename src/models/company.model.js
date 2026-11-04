@@ -205,6 +205,13 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "SWIFT code for IDR transactions",
       },
+      id_inventory_location: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "inventory_locations", key: "id" },
+        comment:
+          "Default inventory location; GA purchase order stock goes here",
+      },
 
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -237,6 +244,12 @@ module.exports = (sequelize) => {
   Company.associate = (models) => {
     // Contoh: Company dapat memiliki relasi dengan Order, Invoice, dll
     // Company.hasMany(models.Order, { ... });
+
+    // Company default inventory location
+    Company.belongsTo(models.InventoryLocation, {
+      foreignKey: "id_inventory_location",
+      as: "inventory_location",
+    });
 
     // Company has many File
     Company.hasMany(models.File, {

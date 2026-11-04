@@ -92,6 +92,9 @@ Contoh: request berstatus `request spv hr` di-approve lewat `PATCH /api/leave-re
   "start_date": "2026-10-14",
   "end_date": "2026-10-16",
   "duration": 3,
+  "start_time": "08:00",
+  "end_time": "17:00",
+  "total_hours": 27,
   "reason": "Demam tinggi, disarankan istirahat oleh dokter",
   "health_facility_name": "Klinik Sehat Sentosa",
   "clinic_phone": "021-5551234",
@@ -117,6 +120,9 @@ Contoh: request berstatus `request spv hr` di-approve lewat `PATCH /api/leave-re
 | `start_date`           | Ya    | Tanggal Mulai              | Format `YYYY-MM-DD`                                           |
 | `end_date`             | Ya    | Tanggal Selesai            | Format `YYYY-MM-DD`, tidak boleh sebelum `start_date`         |
 | `duration`             | Tidak | Durasi (hari)              | Angka > 0, boleh desimal (`0.5`). Jika kosong, dihitung otomatis dari tanggal (inklusif): 14–16 Okt = 3 |
+| `start_time`           | Tidak | Jam Mulai                  | Format `HH:mm`. Dikirim bersama `end_time`                    |
+| `end_time`             | Tidak | Jam Selesai                | Format `HH:mm`, harus setelah `start_time` (di hari yang sama) |
+| `total_hours`          | Tidak | Total Jam                  | Angka > 0. **Dihitung frontend**; backend menyimpan apa adanya dan tidak menghitung ulang |
 | `reason`               | Ya    | Alasan                     |                                                               |
 | `health_facility_name` | Tidak | Nama Fasilitas Kesehatan   | Maks. 255 karakter                                            |
 | `clinic_phone`         | Tidak | No. Telp Klinik            | **String**, maks. 50 karakter (jangan kirim sebagai angka)    |
@@ -129,6 +135,7 @@ Tips form:
 
 - Data klinik dan dokter biasanya hanya relevan untuk izin sakit. Frontend boleh menyembunyikan field tersebut untuk jenis izin lain. Backend tidak mewajibkannya.
 - Hitung dan tampilkan durasi otomatis saat tanggal dipilih. Kirim `duration` hanya jika user mengubahnya, misalnya setengah hari.
+- Jam bersifat opsional, misalnya untuk izin beberapa jam. Frontend menghitung total jam dan mengirimnya di `total_hours`; backend tidak menghitungnya.
 
 Response sukses (`201`) berisi detail request seperti di bagian 2.
 
@@ -152,12 +159,16 @@ Response sukses (`201`) berisi detail request seperti di bagian 2.
       "start_date": "2026-10-14",
       "end_date": "2026-10-16",
       "duration": "3.0",
+      "start_time": "08:00:00",
+      "end_time": "17:00:00",
+      "total_hours": "27.00",
       "reason": "Demam tinggi, disarankan istirahat oleh dokter",
       "health_facility_name": "Klinik Sehat Sentosa",
       "clinic_phone": "021-5551234",
       "clinic_address": "Jl. Merdeka No. 10, Jakarta",
       "doctor_name": "dr. Andi Wijaya",
       "sick_letter_status": "doctor letter",
+      "hr_decision_type": null,
       "status": "request hr",
       "is_active": true,
       "createdAt": "2026-10-14T02:00:00.000Z",
@@ -189,6 +200,8 @@ Catatan field:
 
 - `duration` dikirim sebagai string desimal (`"3.0"`). Ubah ke angka sebelum ditampilkan.
 - `start_date` dan `end_date` berformat `YYYY-MM-DD` tanpa jam.
+- `hr_decision_type` terisi saat HR verify (alur surat rujukan); selain itu `null`.
+- `start_time` dan `end_time` dikembalikan dengan detik (`"08:00:00"`); `total_hours` berupa string desimal (`"27.00"`). Ketiganya `null` jika tanpa jam.
 - Isi objek `department` mengikuti tabel department. Contoh di atas hanya ilustrasi.
 
 ## 3. Aturan tombol
@@ -227,6 +240,7 @@ Kirim **hanya field yang diubah**. Field yang tidak dikirim tetap seperti semula
 ```
 
 - Jika `start_date` atau `end_date` diubah tanpa mengirim `duration`, durasi dihitung ulang otomatis (contoh di atas menjadi 4).
+- `total_hours` tidak dihitung ulang saat jam atau tanggal diubah. Kirim `total_hours` baru bersama perubahan jam/tanggal. Kirim `start_time: null` dan `end_time: null` (keduanya) untuk menghapus jam.
 - `files_attachment`: jika array dikirim, isinya **menggantikan** daftar lama. Sertakan `{ "id": ... }` untuk file lama yang ingin dipertahankan; file lama yang tidak disertakan akan dihapus. Jika `files_attachment` tidak dikirim, file tidak berubah.
 - `status` dan `id_user_request` tidak bisa diubah lewat endpoint ini.
 
@@ -289,9 +303,15 @@ PATCH /api/leave-requests/verification-hr/verify/12
 ```
 
 ```json
-{ "note": "SKD valid (opsional)" }
+{ "hr_decision_type": "Unpaid Leave", "note": "SKD valid (opsional)" }
 ```
 
+| Field              | Wajib | Label di form    | Keterangan                                                   |
+| ------------------ | ----- | ---------------- | ------------------------------------------------------------ |
+| `hr_decision_type` | Ya    | HR Decision Type | `Sick Leave`, `Unpaid Leave`, atau `Annual Leave`            |
+| `note`             | Tidak | Catatan          |                                                              |
+
+- HR menentukan jenis izin yang sebenarnya di `hr_decision_type`, karena bisa berbeda dari yang diajukan. `type` (jenis yang diajukan) **tidak diubah**. Tampilkan keduanya di detail.
 - Hanya verifikasi, **tidak ada upload**. `files_attachment` yang dikirim ke endpoint ini diabaikan.
 - Status menjadi `approved`.
 
@@ -303,10 +323,14 @@ PATCH /api/leave-requests/verification-hr/verify/12
 | 400  | `start_date must use YYYY-MM-DD format`, `end_date must use YYYY-MM-DD format` | Format tanggal salah         |
 | 400  | `end_date must not be before start_date`                      | Tanggal selesai sebelum tanggal mulai                   |
 | 400  | `duration must be a positive number`                          | Durasi 0, negatif, atau bukan angka                     |
+| 400  | `start_time must use HH:mm format`, `end_time must use HH:mm format` | Format jam salah                                 |
+| 400  | `start_time and end_time must be sent together`, `end_time must be after start_time` | Jam tidak lengkap atau terbalik |
+| 400  | `total_hours must be a positive number`                       | Total jam 0, negatif, atau bukan angka                  |
 | 400  | `type must not exceed 100 characters`, `<field> must not exceed <n> characters`, `<field> must be a string` | Field teks tidak valid |
 | 400  | `files_attachment must be an array`                           | `files_attachment` bukan array                          |
 | 400  | `Employee <id> not found`                                     | `id_employee` tidak ada                                 |
 | 400  | `note is required for rejection`                              | Reject tanpa note                                       |
+| 400  | `hr_decision_type must be one of: Sick Leave, Unpaid Leave, Annual Leave` | Verify tanpa / dengan nilai HR Decision Type yang salah |
 | 400  | `sick_letter_status must be one of: doctor letter, referral letter` | Nilai `sick_letter_status` tidak valid saat create/edit |
 | 400  | `files_attachment must contain the doctor's letter (SKD)`, `files_attachment[i] must have original_name, stored_name and url` | Upload SKD tanpa file |
 | 403  | `Only the creator can edit this leave request`                | Edit oleh user selain pembuat                           |
@@ -319,4 +343,4 @@ Pesan error ada di field `message` pada response.
 
 ## Migrasi database
 
-Jalankan sekali setelah deploy: `npm run db:sync-leave-request-sick-letter` (aman dijalankan ulang). Script ini menambah status `request doctor letter`, mengganti nilai lama `sick_letter_status` (`attached` → `doctor letter`, `not attached` → `referral letter`), dan mengembalikan request yang masih `request verification hr` dari alur lama ke `request doctor letter`, karena SKD-nya belum pernah di-upload.
+Jalankan sekali setelah deploy: `npm run db:sync-leave-request-fields` untuk menambah kolom `start_time`, `end_time`, `total_hours`, dan `hr_decision_type` (request lama berisi `null`), dan `npm run db:sync-leave-request-sick-letter` (aman dijalankan ulang). Script ini menambah status `request doctor letter`, mengganti nilai lama `sick_letter_status` (`attached` → `doctor letter`, `not attached` → `referral letter`), dan mengembalikan request yang masih `request verification hr` dari alur lama ke `request doctor letter`, karena SKD-nya belum pernah di-upload.
