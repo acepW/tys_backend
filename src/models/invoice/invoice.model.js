@@ -137,6 +137,13 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "No of Invoice",
       },
+      proforma_invoice_no: {
+        type: DataTypes.VIRTUAL(DataTypes.STRING, ["invoice_no"]),
+        get() {
+          const invoiceNo = this.getDataValue("invoice_no");
+          return invoiceNo ? `PRO-${invoiceNo}` : null;
+        },
+      },
       tax_ppn: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,

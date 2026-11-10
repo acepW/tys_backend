@@ -1832,18 +1832,20 @@ class InvoiceService extends DualDatabaseService {
             : "Final invoice and tax invoice can only be uploaded after they are requested",
           409,
         );
+      // A re-upload after a revision keeps the existing tax invoice unless sent again.
+      const taxInvoiceNo = (data.tax_invoice_no || invoice.tax_invoice_no)?.toString().trim();
+      const taxInvoiceDate = data.tax_invoice_date || invoice.tax_invoice_date;
       if (invoice.tax_ppn) {
-        if (!data.tax_invoice_no?.toString().trim())
-          fail("tax_invoice_no is required");
-        if (!data.tax_invoice_date) fail("tax_invoice_date is required");
+        if (!taxInvoiceNo) fail("tax_invoice_no is required");
+        if (!taxInvoiceDate) fail("tax_invoice_date is required");
       }
       await mirrorUpdate(
         "Invoice",
         invoice.id,
         {
           ...(invoice.tax_ppn && {
-            tax_invoice_no: data.tax_invoice_no.toString().trim(),
-            tax_invoice_date: data.tax_invoice_date,
+            tax_invoice_no: taxInvoiceNo,
+            tax_invoice_date: taxInvoiceDate,
           }),
           tax_invoice_status: "issued",
           is_final: true,
@@ -1877,7 +1879,7 @@ class InvoiceService extends DualDatabaseService {
         invoice.tax_ppn ? "tax invoice issued" : "final invoice issued",
         data.note ||
           (invoice.tax_ppn
-            ? `Final invoice and tax invoice ${data.tax_invoice_no.toString().trim()} issued`
+            ? `Final invoice and tax invoice ${taxInvoiceNo} issued`
             : "Final invoice issued"),
         t1,
         t2,
@@ -2015,21 +2017,46 @@ class InvoiceService extends DualDatabaseService {
 
   /**
    * SPV FAT Internal approves the revised invoice (no file is uploaded), and it
-   * goes back to waiting for payment.
+   * goes back to waiting for payment. A final invoice already issued shows the old
+   * total, so AR & AP must upload it again; the tax invoice (PPN) stays valid.
    */
   async approveRevision(id, note, idUser, isDoubleDatabase = true) {
-    return this._move(
-      id,
-      {
-        from: ["waiting for revision"],
-        to: "waiting for payment",
-        action: "Approving the revision",
-        progress: "revision approved",
-        note: note || "Invoice revision approved",
-      },
-      idUser,
-      isDoubleDatabase,
-    );
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(
+        id,
+        ["waiting for revision"],
+        "Approving the revision",
+        t1,
+      );
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          status: "waiting for payment",
+          ...(invoice.is_final && { tax_invoice_status: "requested" }),
+        },
+        t1,
+        t2,
+      );
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "revision approved",
+        note || "Invoice revision approved",
+        t1,
+        t2,
+      );
+      if (invoice.is_final)
+        await this._addProgress(
+          invoice.id,
+          idUser,
+          "final invoice requested",
+          "Final invoice must be uploaded again after the revision",
+          t1,
+          t2,
+        );
+    });
+    return this.getById(id, {}, true);
   }
 
   /** SPV FAT Internal sends the revision back to AR & AP to edit again. */

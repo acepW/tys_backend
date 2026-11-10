@@ -66,6 +66,7 @@ none ─Sales request FP (1x) / bukti bayar pertama diterima─► requested ─
 - Sales bisa request FP **satu kali**, kapan pun setelah invoice di-approve SPV (termasuk saat bukti bayar sedang dicek), selama `tax_invoice_status === "none"`. Final Invoice ikut diterbitkan saat itu, walaupun belum ada pembayaran.
 - Kalau belum di-request, `tax_invoice_status` otomatis menjadi `requested` saat bukti bayar pertama **diterima** AR & AP. Ini berlaku untuk invoice ber-PPN (Final Invoice + FP) maupun tanpa PPN (Final Invoice saja).
 - Mengubah `status` tidak mengubah `tax_invoice_status`, dan sebaliknya.
+- Pengecualian (sejak 2026-11-10): kalau SPV meng-approve revisi PPh pada invoice yang sudah Final, `tax_invoice_status` kembali menjadi `requested` sementara `is_final` tetap `true`, karena total pada file Final Invoice sudah berubah. AR & AP meng-upload ulang Final Invoice; FP tetap berlaku. Selama masa ini tombol yang tampil adalah Upload, bukan Download.
 
 ### Bayar sebagian
 
@@ -235,6 +236,8 @@ Hasil: invoice berstatus `pending`.
 
 ## 2. List dan detail
 
+`proforma_invoice_no` adalah `invoice_no` dengan awalan `PRO-`. Nilainya dihitung otomatis di response dan selalu mengikuti `invoice_no`, jadi tidak perlu dikirim saat create atau update.
+
 `GET /api/invoices/:id` (potongan field yang relevan untuk alur ini):
 
 ```json
@@ -245,6 +248,7 @@ Hasil: invoice berstatus `pending`.
   "data": {
     "id": 21,
     "invoice_no": "INV-TYSCG-2026-0005",
+    "proforma_invoice_no": "PRO-INV-TYSCG-2026-0005",
     "status": "waiting for payment",
     "tax_ppn": true,
     "tax_pph_23": true,
@@ -502,14 +506,14 @@ PATCH /api/invoices/tax-invoice/21
 | Field                    | Wajib | Label di form        |
 | ------------------------ | ----- | -------------------- |
 | `file_final_invoice`     | Ya    | File Final Invoice, array file minimal 1 |
-| `tax_invoice_no`         | Ya, kalau `tax_ppn` | Nomor Faktur Pajak   |
-| `tax_invoice_date`       | Ya, kalau `tax_ppn` | Tanggal Faktur Pajak |
+| `tax_invoice_no`         | Ya, kalau `tax_ppn`. Saat upload ulang setelah revisi boleh dikosongkan (memakai nomor lama) | Nomor Faktur Pajak   |
+| `tax_invoice_date`       | Ya, kalau `tax_ppn`. Saat upload ulang setelah revisi boleh dikosongkan (memakai tanggal lama) | Tanggal Faktur Pajak |
 | `tax_invoice_attachment` | Tidak | File Faktur Pajak (sebaiknya diwajibkan di form untuk invoice ber-PPN) |
 | `note`                   | Tidak | Catatan              |
 
 Untuk invoice tanpa PPN, cukup kirim `file_final_invoice` (dan `note`); field FP diabaikan.
 
-Hasil: `tax_invoice_status` menjadi `issued`, `is_final` menjadi `true`, dan `final_at` terisi. Setelah itu Final Invoice dan FP tidak bisa di-upload ulang. Sales cukup melihat dan men-download-nya; dokumen yang terbit tidak masuk My Task Sales.
+Hasil: `tax_invoice_status` menjadi `issued`, `is_final` menjadi `true`, dan `final_at` terisi. ~~Setelah itu Final Invoice dan FP tidak bisa di-upload ulang.~~ *(Diubah 2026-11-10: upload ulang terbuka lagi kalau revisi PPh di-approve SPV setelah Final terbit. Di luar kondisi itu tetap tidak bisa. Saat upload ulang, field FP yang tidak dikirim memakai data lama; jangan kirim `tax_invoice_attachment: []` karena akan mengosongkan file FP.)* Sales cukup melihat dan men-download-nya; dokumen yang terbit tidak masuk My Task Sales.
 
 ## 9. Revisi tax
 

@@ -28,6 +28,7 @@ Penomoran poin mengikuti dokumen kebutuhan. Perbarui kolom **Status** setiap kal
 | 2     | Request Faktur Pajak (FP) dan Revision Request                                        | Selesai (2026-10-29)        |
 | 3     | Bukti potong PPh (Withholding Tax), status `paid & clear`                             | Selesai (2026-11-04)        |
 | 4     | Bagian awal alur: hapus signing, dua jenis reject SPV (pajak / CT/PO), Final Invoice  | Selesai (hapus signing 2026-10-29; reject dan Final Invoice 2026-11-04), kecuali blokir approve CT/PO (2d, menunggu alur pembatalan) |
+| 5     | Cancel dan konversi Proforma Invoice (poin 6–6.3)                                     | Ditahan, menunggu jawaban tim FAT (lihat Pertanyaan terbuka) |
 | -     | Alur pembatalan invoice dan seluruh report                                            | Ditunda                     |
 
 ## Alur saat ini (setelah Tahap 1–2 dan hapus signing)
@@ -102,11 +103,11 @@ FP / Final Invoice: tax_invoice_status requested ─AR&AP upload FP + file_final
 | 4.2   | Sesuai + tanpa PPh, masuk Account Receivable List                                     | PAID & CLEAR                            | 1, 3  | Selesai           | Lunas tanpa PPh 23 / PPh 4(2) langsung `paid & clear`. Status `paid` dihapus. List-nya sendiri report (ditunda). |
 | 4.3   | Tidak sesuai, AR&AP beri komentar, masuk ke My Task Sales                             | Payment Proof Rejected                  | 1     | Selesai           | Komentar wajib, disimpan di `invoice_payments.verification_note`.                                         |
 | 4.3.1 | Sales upload ulang bukti bayar                                                        | Payment Verification                    | 1     | Selesai           | Bukti yang ditolak tetap tersimpan sebagai riwayat; upload ulang membuat baris baru.                      |
-| 5     | Cancellation request karena perubahan CT/PO (tombol aktif setelah addendum/pembatalan) | -                                      | -     | Ditunda           |                                                                                                           |
-| 6     | Cancellation request untuk invoice yang belum bayar dan belum request FP              | Invoice cancellation Requested          | -     | Ditunda           |                                                                                                           |
-| 6.1   | AR&AP approve pembatalan                                                              | Approved by AR & AP                     | -     | Ditunda           |                                                                                                           |
-| 6.2   | SPV FAT Internal approve pembatalan                                                   | Approved by SPV FAT INT                 | -     | Ditunda           |                                                                                                           |
-| 6.3   | Direktur approve pembatalan                                                           | Approved by Direktur                    | -     | Ditunda           |                                                                                                           |
+| 5     | Cancellation request karena perubahan CT/PO (tombol aktif setelah addendum/pembatalan) | -                                      | -     | Ditunda           | Dilepas dulu (keputusan 38).                                                                                                           |
+| 6     | Cancellation request untuk invoice yang belum bayar dan belum request FP              | Invoice cancellation Requested          | 5     | Belum             | Backend: pengajuan cancel atau konversi. Keputusan 38–48.                                                                                                           |
+| 6.1   | AR&AP approve pembatalan                                                              | Approved by AR & AP                     | 5     | Belum             | Keputusan 40, 44.                                                                                                           |
+| 6.2   | SPV FAT Internal approve pembatalan                                                   | Approved by SPV FAT INT                 | 5     | Belum             | Keputusan 40, 44.                                                                                                           |
+| 6.3   | Direktur approve pembatalan                                                           | Approved by Direktur                    | 5     | Belum             | Keputusan 40, 41, 44, 46.                                                                                                           |
 
 ## Progres per poin: Tahapan Cancel Invoice yang Sudah Bayar / Terbit FP
 
@@ -181,6 +182,29 @@ Semua report ditunda. Data yang dibutuhkan report invoice penjualan (pembayaran,
 30. Invoice dengan PPh 23 dan PPh 4(2) sekaligus butuh dua upload terpisah, masing-masing diverifikasi sendiri. (2026-11-04)
 31. Invoice lama yang `paid` langsung `paid & clear` tanpa menagih bukti potong, walaupun punya PPh. (2026-11-04)
 
+### Hasil pengecekan dengan dokumen "Kebutuhan Sistem - FAT Internal (2)" (2026-11-10)
+
+32. Revisi PPh yang di-approve SPV setelah Final terbit membuat `tax_invoice_status` kembali `requested`. AR & AP wajib upload ulang Final Invoice karena totalnya berubah; `is_final` tetap `true` dan FP tetap berlaku. Ini keputusan tambahan, PDF hanya menyebut nomor invoice dan FP tidak berubah.
+33. `APPROVAL_ENFORCE` sengaja tetap `false` karena frontend belum menjalankannya, dan posisi Developer memang sementara. Keduanya bukan temuan.
+34. Report invoice (poin 2 "masuk AR Report") dilewati sampai ada perintah. Report yang ada belum memfilter status invoice, dan nilai debit note di dalamnya selalu 0.
+35. Blokir approve saat CT/PO batal tetap ditunda (2d). ~~Contract dan PO belum punya status batal atau addendum.~~ *(Dikoreksi 2026-11-10: Contract dan PO belum punya status batal. Fungsi adendum sudah ada di Contract, belum ada di PO.)*
+36. Poin 1: create menghasilkan `pending` dan butuh `submit` terpisah agar sampai ke SPV. Dibiarkan dulu.
+37. Aturan PDF yang masuk alur pembatalan (ditunda) dan belum dirinci di tabel progres: pengembalian 50% dengan opsi A/B/C di poin 6, tiga kondisi pembatalan invoice yang sudah bayar, dan Credit Note (2.1, 7A.1).
+
+### Tahap 5: Cancel dan konversi Proforma Invoice, poin 6–6.3 (2026-11-10)
+
+38. Poin 5 dilepas dulu. Tombol cancel dibuka tanpa syarat addendum atau pembatalan CT/PO; syarat itu menyusul bersama pekerjaan CT/PO. CT/PO adalah Contract atau Pre Order.
+39. Pembagian kerja poin 6: frontend menangani peringatan (A) serta tombol konversi (B) dan Continue Cancel (C). Backend menangani pengajuan, approval, dan perubahan nilai. Frontend hanya mengirim jenis permintaan (cancel atau konversi), bukan nominal.
+40. Cancel dan konversi sama-sama melewati AR & AP, SPV FAT Internal, lalu Direktur (6.1–6.3). Nilai invoice baru berubah setelah Direktur approve. *(Perlu konfirmasi tim FAT: PDF menulis persetujuan Direktur hanya di opsi C.)*
+41. Konversi: `sub_total` dikali 50%, lalu PPN, PPh, dan `total` dihitung ulang dengan tarif master aktif.
+42. Rincian jasa di `invoice_service` tidak ikut berubah saat konversi. Opsi ikut berubah (rincian 50%, selisih pembulatan masuk ke baris terakhir) disimpan dalam keadaan nonaktif untuk jaga-jaga. Selama nonaktif, jumlah rincian tidak sama dengan `sub_total` invoice yang dikonversi.
+43. Alasan dan bukti wajib untuk cancel maupun konversi. *(Perlu konfirmasi tim FAT: PDF menyebut bukti hanya di opsi C.)*
+44. AR & AP, SPV, atau Direktur boleh menolak dengan catatan wajib; invoice kembali ke `waiting for payment`.
+45. Syarat pengajuan: status `waiting for payment`, belum pernah ada bukti bayar di-upload, dan `tax_invoice_status` masih `none`.
+46. Cancel yang di-approve Direktur membuat status `cancelled`; item incoming tetap terpakai, sama seperti 2c.
+47. Debit note yang terhubung tidak ikut batal atau berubah.
+48. Nilai termin di Contract atau PO tidak ikut berubah saat konversi; penyesuaiannya menyusul bersama pekerjaan CT/PO.
+
 ## Pertanyaan terbuka
 
 ### Tahap 4
@@ -202,10 +226,27 @@ Semua report ditunda. Data yang dibutuhkan report invoice penjualan (pembayaran,
    - **2g. Invoice tanpa PPN**: invoice ini tidak butuh FP. Setelah bukti bayar pertama diterima, muncul tugas "Upload Final Invoice" di My Task AR & AP lewat endpoint yang sama tanpa field FP.
    - **2h. Request FP sebelum bayar (3.1)**: Final Invoice tetap diterbitkan saat itu juga, mengikuti 3.1.1, walaupun belum ada pembayaran.
 
+### Tahap 5 (ditahan, menunggu jawaban tim FAT)
+
+Pengerjaan kode Tahap 5 ditahan sejak 2026-11-10 sampai pertanyaan di bawah terjawab.
+
+Tafsiran sementara poin 6: Sales klik satu tombol CANCEL dan mengisi alasan, lalu muncul peringatan (A) bahwa invoice dikonversi menjadi 50%. Kalau klien menerima, Sales klik konversi (B), dan ini jalur normal. Kalau klien tetap tidak mengikuti ketentuan, Sales klik Continue Cancel (C), yaitu batal penuh dengan alasan, bukti, dan persetujuan Direktur.
+
+Pertanyaan untuk tim FAT:
+
+1. Kalau Proforma Invoice yang belum dibayar di-cancel, apakah normalnya invoice menjadi 50% dan klien tetap wajib membayar 50% itu? Kalimat "dana yang dapat dikembalikan/dialihkan 50%" membingungkan karena belum ada dana yang masuk.
+2. Apakah konversi (B) juga perlu persetujuan Direktur, atau hanya batal penuh (C)? Jawaban ini menentukan keputusan 40.
+3. Setelah konversi, apakah nomor invoice tetap, atau dibuat invoice baru? PDF menyebut "pembukaan inv konversi".
+4. Apakah bukti wajib untuk konversi (B), atau hanya untuk batal penuh (C)? PDF mewajibkan alasan untuk semua cancel, tetapi bukti hanya disebut di opsi C. Jawaban ini menentukan keputusan 43.
+
+Catatan yang bergantung pada jawaban di atas:
+
+- **Status invoice setelah konversi 50% di-approve Direktur.** Usulan: kembali ke `waiting for payment` agar sisa 50% bisa ditagih. Alternatif: `cancelled`, atau invoice lama `cancelled` dan dibuat invoice baru bernilai 50%. Usulan lain yang terkait masih menunggu keputusan ini: nomor invoice tetap, tetap Proforma, konversi hanya sekali, dan nilai awal serta waktu konversi disimpan di kolom baru.
+
 ### Alur pembatalan (ditunda)
 
-4. Poin 5: data addendum/pembatalan CT/PO apa yang dipakai untuk mengaktifkan tombol cancel?
-5. Poin 6: apakah pembatalan invoice yang belum bayar juga membatalkan debit note yang terhubung?
+4. Poin 5: data addendum/pembatalan CT/PO apa yang dipakai untuk mengaktifkan tombol cancel? *(Dilepas dulu, lihat keputusan 38.)*
+5. ~~Poin 6: apakah pembatalan invoice yang belum bayar juga membatalkan debit note yang terhubung?~~ Terjawab 2026-11-10: tidak ikut batal (keputusan 47).
 
 ### Report (ditunda)
 
@@ -315,7 +356,7 @@ Untuk sementara **semua flow invoice memakai posisi Developer**. Setelah testing
 
 Flow `approved` (id 16) dan `signing` (id 17) dinonaktifkan pada 2026-10-29 karena signing dihapus.
 
-Tahap 3 dan Tahap 4 (bukti potong, reject, dan Final Invoice, 2026-11-04) **belum dijalankan** di database:
+Tahap 3 dan Tahap 4 (bukti potong, reject, dan Final Invoice, 2026-11-04) ~~**belum dijalankan** di database~~ *(diperbarui 2026-11-10: kolom dan tabel pada langkah 1 sudah ada di kedua database; langkah 2–4 dikerjakan 2026-11-10, sementara posisi Developer)*:
 
 1. `npm run db:sync-invoice-payments`: membuat tabel `invoice_withholding_taxes`, mengganti status `paid` dengan `paid waiting wht` / `wht verification` / `wht rejected` / `paid & clear` (invoice lama `paid` menjadi `paid & clear`), menambah status `cancelled`, status progress `final invoice requested` / `final invoice issued` / `cancelled`, dan kolom `reject_type`, `is_final`, `final_at` (file Final Invoice disimpan di tabel `files`). Invoice lama tetap Proforma (`is_final = false`). Invoice yang sudah `rejected` dari alur lama ikut bisa diedit dan di-submit ulang oleh AR & AP.
 2. Approval flow: tambah flow `invoice` / `rejected` (label "Revise & Resubmit Invoice", posisi AR & AP; sementara Developer). `npm run db:setup-approval-flows` membuatnya kalau belum ada.

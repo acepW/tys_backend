@@ -9,6 +9,15 @@ const { models, db1 } = require("../src/models");
 
 const proof = [{ original_name: "proof.pdf", stored_name: "a.pdf", url: "/files/a.pdf", mime_type: "application/pdf", size: 1 }];
 
+test("proforma number is the invoice number with a PRO- prefix and is never stored", () => {
+  const { Invoice } = models.db1;
+  const invoice = Invoice.build({ invoice_no: "004/INV/TYSCG/XI/2026", proforma_invoice_no: "ignored" });
+  assert.equal(invoice.toJSON().proforma_invoice_no, "PRO-004/INV/TYSCG/XI/2026");
+  invoice.invoice_no = "005/INV/TYSCG/XI/2026";
+  assert.equal(invoice.toJSON().proforma_invoice_no, "PRO-005/INV/TYSCG/XI/2026");
+  assert.equal(Invoice.tableAttributes.proforma_invoice_no, undefined);
+});
+
 // Single-database run (isDoubleDatabase = false) against in-memory rows.
 function mockDb(t, { invoice, payments = [], withholdingTaxes = [] }) {
   const { Invoice, InvoicePayment, InvoiceVerificationProgress, InvoiceWithholdingTax } = models.db1;
@@ -315,6 +324,21 @@ test("SPV rejects a revision back to AR & AP, then approves it without a file", 
   assert.equal(state.invoice.status, "waiting for payment");
   assert.equal(state.invoice.file_invoice, undefined);
   assert.deepEqual(state.progress.map((row) => row.status), ["revision rejected", "revision approved"]);
+});
+
+test("a revision approved after the final invoice was issued asks AR & AP to upload it again", async (t) => {
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "waiting for revision", is_final: true,
+    tax_invoice_status: "issued", tax_invoice_no: "010.000-26.00000001", tax_invoice_date: "2026-10-30" }) });
+  await invoiceService.approveRevision(1, null, 8, false);
+  assert.deepEqual([state.invoice.status, state.invoice.tax_invoice_status, state.invoice.is_final],
+    ["waiting for payment", "requested", true]);
+  assert.deepEqual(state.progress.map((row) => row.status), ["revision approved", "final invoice requested"]);
+
+  await invoiceService.uploadTaxInvoice(1, { file_final_invoice: proof }, 7, false);
+  assert.deepEqual([state.invoice.tax_invoice_status, state.invoice.tax_invoice_no, state.invoice.tax_invoice_date],
+    ["issued", "010.000-26.00000001", "2026-10-30"]);
+  assert.deepEqual(state.files, [{ type: "invoices", id: 1, category: "file_final_invoice" }]);
+  assert.equal(state.progress.at(-1).note, "Final invoice and tax invoice 010.000-26.00000001 issued");
 });
 
 test("AR & AP rejects an invalid revision request", async (t) => {
