@@ -37,6 +37,8 @@ Transisi status (dari → ke) tetap diatur di kode masing-masing fitur. Tabel in
 
 Scope yang didukung: `division` untuk service pricing, `department` untuk payment request, vendor, dan vendor revision. Fitur lain selalu `all`.
 
+Payment request `top up petty cash` tidak melewati Director. Setelah Manager FAT approve, status dokumen langsung menjadi `approve director` sehingga berikutnya menunggu Cashier, sedangkan `verification_progress` mencatat `approve manager fat`.
+
 `invoice tax invoice` membaca kolom `invoices.tax_invoice_status`, bukan `status`, karena faktur pajak berjalan berdampingan dengan status pembayaran invoice. Di `GET /invoices`, flag-nya muncul sebagai `is_can_upload_tax_invoice` dan `tax_invoice_action_label`, di samping `is_can_approve_reject`.
 
 Dua aksi Sales invoice yang bersifat opsional dicek terhadap flow `invoice` / `waiting for payment` (posisi Sales), bukan status invoice saat itu: request faktur pajak (`PATCH /invoices/tax-invoice-request/:id`, terbuka di semua status setelah approve SPV) dan permintaan revisi (`PATCH /invoices/revision-request/:id`).

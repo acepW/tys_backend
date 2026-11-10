@@ -21,11 +21,13 @@ router.get("/:id", authenticate, PaymentRequestController.getById);
 router.post("/", authenticate, PaymentRequestController.create);
 router.post("/expenses", authenticate, PaymentRequestController.createExpense);
 router.post("/pjt", authenticate, PaymentRequestController.createPjt);
+router.post("/top-up-petty-cash", authenticate, PaymentRequestController.createTopUpPettyCash);
 
 // Update each form through its own endpoint.
 router.put("/:id", authenticate, PaymentRequestController.update);
 router.put("/:id/expenses", authenticate, PaymentRequestController.updateExpense);
 router.put("/:id/pjt", authenticate, PaymentRequestController.updatePjt);
+router.put("/:id/top-up-petty-cash", authenticate, PaymentRequestController.updateTopUpPettyCash);
 
 // PUT file list
 router.put("/:id/files", authenticate, PaymentRequestController.updateFiles);

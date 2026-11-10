@@ -15,6 +15,9 @@ const EDITABLE_FIELDS = [
 ];
 
 const PJT_TYPES = ["internal", "external"];
+const TOP_UP_PETTY_CASH = "top up petty cash";
+const MISROUTED_TOP_UP = "top up petty cash must use the top-up-petty-cash endpoint";
+const EXPENSES_ONLY = "expenses are only supported for expense payment requests";
 
 function editableData(body) {
   const data = {};
@@ -79,6 +82,11 @@ function validateExpenses(expenses) {
     if (item.files !== undefined && !Array.isArray(item.files)) return `expenses[${i}].files must be an array`;
   }
   return null;
+}
+
+// The top-up type is only valid through its own endpoint.
+function isMisroutedTopUp(body, format) {
+  return body.payment_type === TOP_UP_PETTY_CASH && format !== TOP_UP_PETTY_CASH;
 }
 
 function validateServices(services) {
@@ -253,6 +261,7 @@ class PaymentRequestController {
       if (!paymentRequestData.payment_type) {
         return errorResponse(res, "payment_type is required", 400);
       }
+      if (isMisroutedTopUp(paymentRequestData, format)) return errorResponse(res, MISROUTED_TOP_UP, 400);
 
       if (
         paymentRequestData.top_up_petty_cash !== undefined &&
@@ -346,14 +355,30 @@ class PaymentRequestController {
   }
 
   async createExpense(req, res) {
+    return PaymentRequestController.prototype.createExpenseForm(req, res, "expense");
+  }
+
+  /**
+   * Create top up petty cash: same body and rules as expense, without
+   * expense items. payment_type is set by the endpoint.
+   */
+  async createTopUpPettyCash(req, res) {
+    return PaymentRequestController.prototype.createExpenseForm(req, res, TOP_UP_PETTY_CASH);
+  }
+
+  async createExpenseForm(req, res, format) {
     try {
+      const isTopUp = format === TOP_UP_PETTY_CASH;
       const { is_double_database, files = [], expenses, services = [], ...body } = req.body || {};
       if (!Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
-      const expenseError = validateExpenses(expenses);
+      if (isMisroutedTopUp(body, format)) return errorResponse(res, MISROUTED_TOP_UP, 400);
+      if (isTopUp && expenses !== undefined) return errorResponse(res, EXPENSES_ONLY, 400);
+      const expenseError = isTopUp ? null : validateExpenses(expenses);
       if (expenseError) return errorResponse(res, expenseError, 400);
       const serviceError = validateServices(services);
       if (serviceError) return errorResponse(res, serviceError, 400);
       const data = editableData(body);
+      if (isTopUp) data.payment_type = TOP_UP_PETTY_CASH;
       data.total_payment_request = body.total_payment_request ?? body.total_payment;
       for (const field of [
         "payment_request_no", "payment_type", "priority", "cost_bearer", "id_company",
@@ -365,11 +390,11 @@ class PaymentRequestController {
       const amountError = validateAmounts(data);
       if (amountError) return errorResponse(res, amountError, 400);
       Object.assign(data, {
-        request_format: "expense",
+        request_format: format,
         id_user_request: req.user.id,
         id_department_request: req.user.id_department,
         status: "pending",
-        top_up_petty_cash: 0,
+        top_up_petty_cash: isTopUp ? Number(data.total_payment_request) : 0,
         sub_total_payment: body.sub_total_payment ?? 0,
         tax_ppn: body.tax_ppn ?? false,
         tax_pph_23: body.tax_pph_23 ?? false,
@@ -385,7 +410,12 @@ class PaymentRequestController {
       const result = await paymentRequestService.createWithRelations(
         data, files, req.user.id, is_double_database !== false, expenses, services,
       );
-      return successResponse(res, result, "Expense payment request created successfully", 201);
+      return successResponse(
+        res,
+        result,
+        isTopUp ? "Top up petty cash payment request created successfully" : "Expense payment request created successfully",
+        201,
+      );
     } catch (error) {
       return errorResponse(res, error.message, error.statusCode || 500);
     }
@@ -403,6 +433,10 @@ class PaymentRequestController {
     return PaymentRequestController.prototype.updateByFormat(req, res, "pjt");
   }
 
+  async updateTopUpPettyCash(req, res) {
+    return PaymentRequestController.prototype.updateByFormat(req, res, TOP_UP_PETTY_CASH);
+  }
+
   async updateByFormat(req, res, format) {
     try {
       const { is_double_database, files, expenses, services, ...body } = req.body || {};
@@ -410,7 +444,8 @@ class PaymentRequestController {
       if (files !== undefined && !Array.isArray(files)) return errorResponse(res, "files must be an array", 400);
       const serviceError = validateServices(services);
       if (serviceError) return errorResponse(res, serviceError, 400);
-      if (format !== "expense" && expenses !== undefined) return errorResponse(res, "expenses are only supported for expense payment requests", 400);
+      if (isMisroutedTopUp(body, format)) return errorResponse(res, MISROUTED_TOP_UP, 400);
+      if (format !== "expense" && expenses !== undefined) return errorResponse(res, EXPENSES_ONLY, 400);
       if (format === "expense" && expenses !== undefined) {
         const expenseError = validateExpenses(expenses);
         if (expenseError) return errorResponse(res, expenseError, 400);
@@ -419,7 +454,12 @@ class PaymentRequestController {
       if (!existing) return errorResponse(res, "Payment request not found", 404);
       if (existing.request_format !== format) return errorResponse(res, "Payment request format does not match endpoint", 400);
       const data = editableData(body);
-      if (format === "expense" && body.total_payment !== undefined) data.total_payment_request = body.total_payment;
+      const isTopUp = format === TOP_UP_PETTY_CASH;
+      if ((format === "expense" || isTopUp) && body.total_payment !== undefined) data.total_payment_request = body.total_payment;
+      if (isTopUp) {
+        data.payment_type = TOP_UP_PETTY_CASH;
+        data.top_up_petty_cash = Number(data.total_payment_request ?? existing.total_payment_request);
+      }
       if (format === "pjt") {
         const pjt = await pjtData(body, true);
         if (pjt.error) return errorResponse(res, pjt.error, 400);
@@ -517,7 +557,6 @@ class PaymentRequestController {
         id,
         note,
         req.user.id,
-        existing.cost_bearer,
         isDoubleDatabase
       );
 

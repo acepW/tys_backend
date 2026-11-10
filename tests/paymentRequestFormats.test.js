@@ -54,6 +54,121 @@ test("expense create maps the requested amount and keeps expense items separate"
   assert.deepEqual(args[4], baseExpense.expenses);
 });
 
+const TOP_UP = "top up petty cash";
+const { expenses: _items, payment_type: _type, ...baseTopUp } = baseExpense;
+
+test("top up petty cash create has its own format and takes no expense items", async (t) => {
+  const original = service.createWithRelations;
+  t.after(() => { service.createWithRelations = original; });
+  let args;
+  service.createWithRelations = async (...values) => { args = values; return { id: 1 }; };
+  const user = { id: 7, id_department: 8 };
+
+  const res = response();
+  await controller.createTopUpPettyCash({ body: { ...baseTopUp, payment_type: "vendor" }, user }, res);
+  assert.equal(res.code, 201);
+  assert.equal(args[0].request_format, TOP_UP);
+  assert.equal(args[0].payment_type, TOP_UP);
+  assert.equal(args[0].top_up_petty_cash, 110);
+  assert.deepEqual(args[4], undefined);
+
+  const withItems = response();
+  await controller.createTopUpPettyCash({ body: { ...baseTopUp, expenses: baseExpense.expenses }, user }, withItems);
+  assert.equal(withItems.code, 400);
+  assert.match(withItems.body.message, /only supported for expense/);
+
+  const { bank_name, ...missingBank } = baseTopUp;
+  const incomplete = response();
+  await controller.createTopUpPettyCash({ body: missingBank, user }, incomplete);
+  assert.equal(incomplete.code, 400);
+  assert.match(incomplete.body.message, /bank_name is required/);
+
+  for (const create of [controller.createExpense, controller.create, controller.createPjt]) {
+    const misrouted = response();
+    await create({ body: { ...baseStandard, ...baseExpense, payment_type: TOP_UP }, user }, misrouted);
+    assert.equal(misrouted.code, 400);
+    assert.match(misrouted.body.message, /top-up-petty-cash endpoint/);
+  }
+});
+
+test("top up petty cash update keeps the amount in step and rejects other formats", async (t) => {
+  const originalFind = service.findById;
+  const originalUpdate = service.updateWithRelations;
+  t.after(() => { service.findById = originalFind; service.updateWithRelations = originalUpdate; });
+  let existing = { request_format: TOP_UP, payment_type: TOP_UP, total_payment_request: "110.00" };
+  service.findById = async () => existing;
+  let args;
+  service.updateWithRelations = async (...values) => { args = values; return { id: 1 }; };
+  const update = async (body, method = controller.updateTopUpPettyCash) => {
+    const res = response();
+    await method({ params: { id: 1 }, body, user: { id: 7 } }, res);
+    return res;
+  };
+
+  assert.equal((await update({ total_payment: 250, payment_type: "vendor" })).code, 200);
+  assert.equal(args[1].top_up_petty_cash, 250);
+  assert.equal(args[1].total_payment_request, 250);
+  assert.equal(args[1].payment_type, TOP_UP);
+  assert.equal(args[3], undefined);
+  assert.equal((await update({ description: "Updated" })).code, 200);
+  assert.equal(args[1].top_up_petty_cash, 110);
+  assert.equal((await update({ expenses: [] })).code, 400);
+
+  existing = { request_format: "expense", payment_type: "others", total_payment_request: "110.00" };
+  assert.equal((await update({ description: "Updated" })).code, 400);
+  assert.equal((await update({ payment_type: TOP_UP }, controller.updateExpense)).code, 400);
+});
+
+test("top up petty cash goes from manager FAT straight to the cashier", async (t) => {
+  const { db1 } = require("../src/models");
+  const progress = models.db1.PaymentRequestVerificationProgress;
+  const originals = {
+    getById: service.getById, update: service.Model1.update, create: progress.create, transaction: db1.transaction,
+  };
+  t.after(() => {
+    service.getById = originals.getById;
+    service.Model1.update = originals.update;
+    progress.create = originals.create;
+    db1.transaction = originals.transaction;
+  });
+  let paymentType = TOP_UP;
+  let updated;
+  let logged;
+  service.getById = async () => ({ payment_type: paymentType, cost_bearer: "company" });
+  service.Model1.update = async (values) => { updated = values; return [1]; };
+  progress.create = async (values) => { logged = values; return values; };
+  db1.transaction = async () => ({ commit: async () => {}, rollback: async () => {} });
+  const approve = (role) => service.approvePaymentRequest(role, 1, undefined, 7, false);
+
+  await approve("manager fat");
+  assert.equal(updated.status, "approve director");
+  assert.equal(logged.status, "approve manager fat");
+  assert.equal(logged.note, "Payment request approve manager fat");
+
+  await approve("fat");
+  assert.equal(updated.status, "approve fat");
+  assert.equal(logged.status, "approve fat");
+
+  paymentType = "others";
+  await approve("manager fat");
+  assert.equal(updated.status, "approve manager fat");
+  assert.equal(logged.status, "approve manager fat");
+});
+
+test("approve keeps both databases in sync when cost_bearer is empty", async (t) => {
+  const originalFind = service.findById;
+  const originalApprove = service.approvePaymentRequest;
+  t.after(() => { service.findById = originalFind; service.approvePaymentRequest = originalApprove; });
+  service.findById = async () => ({ id: 1, cost_bearer: null });
+  let args;
+  service.approvePaymentRequest = async (...values) => { args = values; return { id: 1 }; };
+
+  const res = response();
+  await controller.approve({ params: { id: 1 }, body: { role: "fat" }, user: { id: 7 } }, res);
+  assert.equal(res.code, 200);
+  assert.deepEqual(args, ["fat", 1, undefined, 7, true]);
+});
+
 test("expense create rejects incomplete expense items", async () => {
   const res = response();
   await controller.createExpense({

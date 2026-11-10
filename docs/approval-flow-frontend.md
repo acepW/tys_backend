@@ -190,6 +190,7 @@ Catatan:
 - Body request setiap endpoint action **tidak berubah** dari sebelumnya. Payment request tetap mengirim `role` di body approve/reject seperti biasa.
 - Status yang tidak ada di tabel tidak menunggu action, misalnya `rejected`, `paid`, `approve by customer`, dan `continue_to_debit_note`.
 - Fitur `purchase order` memakai endpoint `/pre-orders`.
+- Payment request `top up petty cash` tidak melewati Director: setelah Manager FAT approve, `status` langsung menjadi `approve director`, jadi action berikutnya adalah Cashier (`role: "cashier"`). Di `verification_progress` tidak ada baris `approve director`.
 - Fitur `vendor revision` adalah data di `/vendor-edits`. Selama revisi berstatus `pending`, vendor-nya berstatus `request revision`. Tombol approve/reject revisi ada di data vendor edit, bukan di vendor, jadi vendor berstatus `request revision` tidak menampilkan tombol.
 
 ## 5. Error dari endpoint action

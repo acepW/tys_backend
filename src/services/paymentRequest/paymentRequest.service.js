@@ -810,12 +810,20 @@ class PaymentRequestService extends DualDatabaseService {
     }
 
     let status = `approve ${role}`;
+    let progress_status;
 
     const existingData = await this.getById(id, {}, isDoubleDatabase);
     if (!existingData) {
       throw new Error(`PaymentRequest with ID ${id} not found`);
     }
     const cost_bearer = existingData.cost_bearer;
+
+    // Top up petty cash has no director step. The cashier's flow waits on
+    // "approve director", while the progress log keeps who actually approved.
+    if (role === "manager fat" && existingData.payment_type === "top up petty cash") {
+      status = "approve director";
+      progress_status = "approve manager fat";
+    }
 
     // Logika khusus hanya untuk dept manager
     if (role === "dept manager") {
@@ -829,7 +837,7 @@ class PaymentRequestService extends DualDatabaseService {
     return this._changeStatus(
       id,
       status,
-      { cost_bearer, note, id_user },
+      { cost_bearer, note, id_user, progress_status },
       isDoubleDatabase
     );
   }
@@ -892,12 +900,14 @@ class PaymentRequestService extends DualDatabaseService {
    * @param {Number} options.id_user - User ID performing the action
    * @param {Number} options.total_payment - Total payment amount (required for paid)
    * @param {String} options.file_proof_payment - File path of payment proof (required for paid)
+   * @param {String} options.progress_status - Status for the progress log when it differs from the document status
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated payment request
    */
   async _changeStatus(id, status, options = {}, isDoubleDatabase = true) {
-    const { cost_bearer, note, id_user, total_payment, file_proof_payment } =
+    const { cost_bearer, note, id_user, total_payment, file_proof_payment, progress_status } =
       options;
+    const loggedStatus = progress_status || status;
 
     let transaction1 = null;
     let transaction2 = null;
@@ -914,8 +924,8 @@ class PaymentRequestService extends DualDatabaseService {
       const progressData = {
         id_payment_request: id,
         id_user,
-        status,
-        note: note || `Payment request ${status}`,
+        status: loggedStatus,
+        note: note || `Payment request ${loggedStatus}`,
       };
 
       if (isDoubleDatabase) {

@@ -17,6 +17,7 @@
     "db:sync-leave-request-sick-letter": "node scripts/sync-leave-request-sick-letter.js",
     "db:sync-leave-request-fields": "node scripts/sync-leave-request-fields.js",
     "db:sync-recruitment": "node scripts/sync-recruitment-models.js",
+    "db:sync-payment-request-type": "node scripts/sync-payment-request-type.js",
     "db:setup-approval-flows": "node scripts/setup-approval-flows.js",
     "start": "nodemon server.js"
   },

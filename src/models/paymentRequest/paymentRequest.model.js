@@ -97,7 +97,7 @@ module.exports = (sequelize) => {
         comment: "Payment request number",
       },
       request_format: {
-        type: DataTypes.ENUM("standard", "expense", "pjt"),
+        type: DataTypes.ENUM("standard", "expense", "pjt", "top up petty cash"),
         allowNull: false,
         defaultValue: "standard",
       },
@@ -122,7 +122,7 @@ module.exports = (sequelize) => {
           "Employee name for a PJT payment request (defaults to the employee's full_name)",
       },
       payment_type: {
-        type: DataTypes.ENUM("vendor", "pnbp spb", "others", "pjt"),
+        type: DataTypes.ENUM("vendor", "pnbp spb", "others", "pjt", "top up petty cash"),
         allowNull: false,
         comment: "Payment type",
       },
