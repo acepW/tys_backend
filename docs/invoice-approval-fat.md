@@ -202,7 +202,7 @@ Semua report ditunda. Data yang dibutuhkan report invoice penjualan (pembayaran,
 44. AR & AP, SPV, atau Direktur boleh menolak dengan catatan wajib; invoice kembali ke `waiting for payment`.
 45. Syarat pengajuan: status `waiting for payment`, belum pernah ada bukti bayar di-upload, dan `tax_invoice_status` masih `none`.
 46. Cancel yang di-approve Direktur membuat status `cancelled`; item incoming tetap terpakai, sama seperti 2c.
-47. Debit note yang terhubung tidak ikut batal atau berubah.
+47. ~~Debit note yang terhubung tidak ikut batal atau berubah.~~ Diubah 2026-11-11: debit note yang terhubung ke invoice (`invoices.id_debit_note`) **ikut batal** saat cancel invoice di-approve Direktur. Rinciannya masih usulan, lihat "Rincian debit note ikut batal" di Pertanyaan terbuka Tahap 5.
 48. Nilai termin di Contract atau PO tidak ikut berubah saat konversi; penyesuaiannya menyusul bersama pekerjaan CT/PO.
 
 ## Pertanyaan terbuka
@@ -243,10 +243,20 @@ Catatan yang bergantung pada jawaban di atas:
 
 - **Status invoice setelah konversi 50% di-approve Direktur.** Usulan: kembali ke `waiting for payment` agar sisa 50% bisa ditagih. Alternatif: `cancelled`, atau invoice lama `cancelled` dan dibuat invoice baru bernilai 50%. Usulan lain yang terkait masih menunggu keputusan ini: nomor invoice tetap, tetap Proforma, konversi hanya sekali, dan nilai awal serta waktu konversi disimpan di kolom baru.
 
+Rincian debit note ikut batal (keputusan 47, diubah 2026-11-11). Semua butir masih usulan dan menunggu konfirmasi:
+
+- **47a. Status baru**: enum `status` debit note ditambah `cancelled` (juga status progress `cancelled`), lewat script sinkronisasi database. Status ini final: debit note tidak bisa diedit, di-submit, di-approve, atau dibayar lagi, dan otomatis hilang dari My Task.
+- **47b. Waktu batal**: debit note dibatalkan dalam transaksi yang sama saat Direktur approve cancel invoice (6.3), bukan saat Sales mengajukan. Kalau pengajuan ditolak di tahap mana pun, debit note tidak berubah.
+- **47c. Debit note sudah dibayar**: syarat pengajuan (keputusan 45) ditambah: debit note yang terhubung belum `paid`. Kalau sudah `paid`, pembatalannya masuk alur invoice yang sudah bayar (ditunda).
+- **47d. Selama pengajuan berjalan**: pencatatan bayar debit note (`PATCH /debit-notes/paid/:id`) ditolak agar debit note tidak menjadi `paid` di tengah proses approval cancel. Submit dan approve debit note tetap boleh.
+- **47e. Item incoming debit note**: tetap terpakai dan tidak dikembalikan ke daftar incoming, sama seperti 2c dan keputusan 46.
+- **47f. Konversi 50%**: debit note tidak ikut batal dan nilainya tidak berubah.
+- **47g. Reject SPV karena CT/PO (2b)**: invoice yang menjadi `cancelled` lewat `reject_type: ct/po cancelled` juga membatalkan debit note-nya, agar aturannya sama. Ini mengubah kode Tahap 4 yang sudah selesai.
+
 ### Alur pembatalan (ditunda)
 
 4. Poin 5: data addendum/pembatalan CT/PO apa yang dipakai untuk mengaktifkan tombol cancel? *(Dilepas dulu, lihat keputusan 38.)*
-5. ~~Poin 6: apakah pembatalan invoice yang belum bayar juga membatalkan debit note yang terhubung?~~ Terjawab 2026-11-10: tidak ikut batal (keputusan 47).
+5. ~~Poin 6: apakah pembatalan invoice yang belum bayar juga membatalkan debit note yang terhubung?~~ Terjawab 2026-11-10: tidak ikut batal. Diubah 2026-11-11: **ikut batal** (keputusan 47 dan rincian 47a–47g).
 
 ### Report (ditunda)
 
