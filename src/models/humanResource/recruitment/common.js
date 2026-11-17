@@ -48,11 +48,12 @@ function associate(Model, models, { fileableType, fileCategories = [], withCandi
     });
 }
 
-const tableOptions = (tableName, indexes = []) => ({
+// withStatus false for a module without approval (the candidate database).
+const tableOptions = (tableName, indexes = [], { withStatus = true } = {}) => ({
   tableName,
   timestamps: true,
   underscored: true,
-  indexes: [{ fields: ["status"] }, ...indexes],
+  indexes: [...(withStatus ? [{ fields: ["status"] }] : []), ...indexes],
 });
 
 module.exports = { APPROVAL_STATUSES, approvalColumns, candidateColumns, associate, tableOptions };

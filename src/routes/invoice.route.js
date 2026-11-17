@@ -5,6 +5,7 @@ const {
   taxInvoiceRequestStatuses,
   editableStatuses,
   whtUploadStatuses,
+  cancellationStatuses,
 } = require("../services/invoice/invoice.service");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 const { requireApprover } = require("../middleware/approval.middleware");
@@ -97,7 +98,7 @@ router.patch(
   InvoiceController.uploadTaxInvoice,
 );
 
-//PATCH revision: sales requests -> AR & AP revises the PPh (or rejects the request)
+//PATCH revision: sales requests -> AR & AP revises the taxes, PPN and PPh (or rejects the request)
 // -> SPV FAT Internal approves (back to waiting for payment) or rejects (back to AR & AP)
 router.patch(
   "/revision-request/:id",
@@ -128,6 +129,28 @@ router.patch(
   authenticate,
   requireApprover("invoice", ["waiting for revision"]),
   InvoiceController.rejectRevision,
+);
+
+//PATCH cancellation of an unpaid proforma (cancel, or convert to 50%): sales
+// requests -> AR & AP -> SPV FAT Internal -> director; approve/reject act on the
+// current step and are checked against that step's flow
+router.patch(
+  "/cancellation-request/:id",
+  authenticate,
+  requireApprover("invoice", ["waiting for payment"]),
+  InvoiceController.requestCancellation,
+);
+router.patch(
+  "/cancellation-approve/:id",
+  authenticate,
+  requireApprover("invoice", cancellationStatuses),
+  InvoiceController.approveCancellation,
+);
+router.patch(
+  "/cancellation-reject/:id",
+  authenticate,
+  requireApprover("invoice", cancellationStatuses),
+  InvoiceController.rejectCancellation,
 );
 
 module.exports = router;

@@ -22,7 +22,12 @@
 //      with "paid waiting wht" / "wht verification" / "wht rejected" /
 //      "paid & clear". Invoices already "paid" become "paid & clear" without any
 //      withholding tax receipt (decision 27). Progress rows keep "paid".
-const { DataTypes } = require("sequelize");
+//   7. Withholding tax checklists move from { item: boolean } to
+//      { item: { checked, note } } so each item can carry a note (2026-11-18).
+//   8. Tahap 5 (2026-11-18): adds the cancellation statuses of invoices and
+//      their progress, invoices.id_invoice_converted_from, the
+//      invoice_cancellations table and the "cancelled" debit note status.
+const { DataTypes, Op } = require("sequelize");
 const { models, db1, db2 } = require("../src/models");
 
 // Invoice statuses dropped from the model, and where their invoices move.
@@ -86,6 +91,41 @@ async function migrateSchema(name, dbModels) {
   await addTaxInvoiceStatus(name, dbModels.Invoice);
   for (const column of ["is_final", "final_at", "reject_type"])
     await addColumn(name, dbModels.Invoice, column);
+  await convertChecklists(name, dbModels.InvoiceWithholdingTax);
+  // Tahap 5: cancellation and conversion of an unpaid proforma (2026-11-18)
+  await syncStatus(name, dbModels.Invoice, "invoices", "cancellation verified");
+  await syncStatus(name, dbModels.InvoiceVerificationProgress,
+    "invoice_verification_progress", "cancellation rejected");
+  await addColumn(name, dbModels.Invoice, "id_invoice_converted_from");
+  await dbModels.InvoiceCancellation.sync({ alter: false });
+  await syncStatus(name, dbModels.DebitNote, "debit_notes", "'cancelled'");
+  await syncStatus(name, dbModels.DebitNoteVerificationProgress,
+    "debit_note_verification_progress", "'cancelled'");
+}
+
+// Withholding tax checklists stored as { item: boolean } become
+// { item: { checked, note } } (2026-11-18). Rows already converted are skipped.
+async function convertChecklists(name, model) {
+  const rows = await model.findAll({
+    attributes: ["id", "checklist"],
+    where: { checklist: { [Op.ne]: null } },
+  });
+  let converted = 0;
+  for (const row of rows) {
+    const checklist =
+      typeof row.checklist === "string" ? JSON.parse(row.checklist) : row.checklist;
+    if (!checklist || typeof checklist !== "object") continue;
+    if (!Object.values(checklist).some((value) => typeof value === "boolean")) continue;
+    const value = Object.fromEntries(
+      Object.entries(checklist).map(([item, checked]) => [
+        item,
+        typeof checked === "boolean" ? { checked, note: "" } : checked,
+      ]),
+    );
+    await model.update({ checklist: value }, { where: { id: row.id } });
+    converted++;
+  }
+  if (converted) console.log(`[${name}] ~ ${converted} withholding tax checklists converted to { checked, note }`);
 }
 
 async function addColumn(name, model, column) {

@@ -25,6 +25,9 @@ Transisi status (dari → ke) tetap diatur di kode masing-masing fitur. Tabel in
 | `invoice`         | `payment proof rejected` | Upload ulang bukti bayar (Sales) | `PATCH /invoices/upload-payment/:id`                       |
 | `invoice`         | `revision requested` | Revisi PPh / tolak permintaan revisi (AR & AP) | `PATCH /invoices/revise/:id`, `/revision-request-reject/:id` |
 | `invoice`         | `waiting for revision` | Approve / reject revisi (SPV FAT Internal) | `PATCH /invoices/revision-approve/:id`, `/revision-reject/:id` |
+| `invoice`         | `cancellation requested` | Approve / reject pembatalan (AR & AP) | `PATCH /invoices/cancellation-approve/:id`, `/cancellation-reject/:id` |
+| `invoice`         | `cancellation reviewed` | Approve / reject pembatalan (SPV FAT Internal) | `PATCH /invoices/cancellation-approve/:id`, `/cancellation-reject/:id` |
+| `invoice`         | `cancellation verified` | Approve / reject pembatalan (Direktur) | `PATCH /invoices/cancellation-approve/:id`, `/cancellation-reject/:id` |
 | `invoice tax invoice` | `requested` (kolom `tax_invoice_status`) | Upload faktur pajak (AR & AP) | `PATCH /invoices/tax-invoice/:id` |
 | `debit note`      | `pending`         | Submit | `PATCH /debit-notes/submit/:id` |
 | `debit note`      | `on verification` | Approve / reject                     | `PATCH /debit-notes/approve/:id`, `/reject/:id`               |

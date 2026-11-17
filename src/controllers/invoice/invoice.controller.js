@@ -1,5 +1,5 @@
 const invoiceService = require("../../services/invoice/invoice.service");
-const { editableStatuses, rejectTypes } = require("../../services/invoice/invoice.service");
+const { rejectTypes } = require("../../services/invoice/invoice.service");
 const incomingInvoiceService = require("../../services/invoice/incomingInvoice.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 const approvalAccess = require("../../services/approvalFlow/approvalAccess.service");
@@ -299,55 +299,35 @@ class InvoiceController {
   }
 
   /**
-   * Update invoice with invoice services (create/update/delete)
-   * Only a pending draft, or an invoice SPV rejected for its tax, can be edited;
-   * after approval the tax goes through the revision flow. Statuses change only
-   * through their own actions.
+   * Edit a draft (AR & AP): only what the user sets on create, the invoice date,
+   * due date, note and the tax flags; the taxes and total are recalculated. Every
+   * other field in the body is ignored. Only a pending draft, or an invoice SPV
+   * rejected for its tax, can be edited; after approval the tax goes through the
+   * revision flow.
+   * Body: date, due_date, note, tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2
    */
   async update(req, res) {
     try {
-      const { id } = req.params;
       const {
         is_double_database,
-        invoice_services,
-        status: _status,
-        tax_invoice_status: _taxInvoiceStatus,
-        reject_type: _rejectType,
-        is_final: _isFinal,
-        final_at: _finalAt,
-        file_final_invoice: _fileFinalInvoice,
-        ...invoiceData
-      } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
+        date,
+        due_date,
+        note,
+        tax_ppn,
+        tax_pph_23,
+        tax_pp_20,
+        tax_pph_4_ayat_2,
+      } = req.body || {};
 
-      // Check if invoice exists
-      const existing = await invoiceService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Invoice not found", 404);
-      }
-      if (!editableStatuses.includes(existing.status)) {
-        return errorResponse(
-          res,
-          "Only a pending or rejected invoice can be edited; use the revision request after approval",
-          409,
-        );
-      }
-
-      // Validate invoice_services
-      if (invoice_services && !Array.isArray(invoice_services)) {
-        return errorResponse(res, "invoice_services must be an array", 400);
-      }
-
-      const result = await invoiceService.updateWithRelations(
-        id,
-        invoiceData,
-        invoice_services || [],
-        isDoubleDatabase
+      const result = await invoiceService.updateDraft(
+        req.params.id,
+        { date, due_date, note, tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 },
+        is_double_database !== false,
       );
 
       return successResponse(res, result, "Invoice updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -496,7 +476,7 @@ class InvoiceController {
 
   /**
    * Accept withholding tax receipt (AR & AP)
-   * Body: checklist, receipt_no, tax_period (MM-YYYY), receipt_date, note
+   * Body: checklist (every item { checked: true, note }), receipt_no, tax_period (MM-YYYY), receipt_date, note
    */
   async acceptWithholdingTax(req, res) {
     try {
@@ -518,7 +498,7 @@ class InvoiceController {
 
   /**
    * Reject withholding tax receipt (AR & AP)
-   * Body: note, wht_reject_attachment (array of screenshots), checklist (optional)
+   * Body: note, wht_reject_attachment (array of screenshots), checklist (every item as { checked, note }; a note on each unchecked one)
    */
   async rejectWithholdingTax(req, res) {
     try {
@@ -641,16 +621,22 @@ class InvoiceController {
 
   /**
    * Revise invoice tax (AR & AP)
-   * Body: tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 (booleans), note
+   * Body: tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 (booleans), note
    */
   async revise(req, res) {
     try {
-      const { is_double_database, note, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 } =
-        req.body || {};
+      const {
+        is_double_database,
+        note,
+        tax_ppn,
+        tax_pph_23,
+        tax_pp_20,
+        tax_pph_4_ayat_2,
+      } = req.body || {};
 
       const result = await invoiceService.reviseInvoice(
         req.params.id,
-        { note, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 },
+        { note, tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 },
         req.user.id,
         is_double_database !== false,
       );
@@ -696,6 +682,72 @@ class InvoiceController {
       );
 
       return successResponse(res, result, "Invoice revision rejected successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Request cancellation (sales): cancel the unpaid proforma, or convert it to 50%
+   * Body: type (cancel|convert), reason, cancellation_attachment (array of files),
+   * cancel_debit_note (boolean, required when the invoice has a debit note)
+   */
+  async requestCancellation(req, res) {
+    try {
+      const { is_double_database, type, reason, cancellation_attachment, cancel_debit_note } =
+        req.body || {};
+
+      const result = await invoiceService.requestCancellation(
+        req.params.id,
+        { type, reason, cancellation_attachment, cancel_debit_note },
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice cancellation requested successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Approve cancellation at its current step (AR & AP, SPV FAT Internal, then the
+   * director, who carries it out)
+   * Body: note
+   */
+  async approveCancellation(req, res) {
+    try {
+      const { is_double_database, note } = req.body || {};
+
+      const result = await invoiceService.approveCancellation(
+        req.params.id,
+        note,
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice cancellation approved successfully");
+    } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Reject cancellation at its current step; the invoice waits for payment again
+   * Body: note (required)
+   */
+  async rejectCancellation(req, res) {
+    try {
+      const { is_double_database, note } = req.body || {};
+
+      const result = await invoiceService.rejectCancellation(
+        req.params.id,
+        note,
+        req.user.id,
+        is_double_database !== false,
+      );
+
+      return successResponse(res, result, "Invoice cancellation rejected successfully");
     } catch (error) {
       return errorResponse(res, error.message, error.statusCode || 500);
     }

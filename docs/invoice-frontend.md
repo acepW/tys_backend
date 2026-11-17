@@ -1,6 +1,6 @@
-# Panduan Frontend: Invoice (Approval, Pembayaran, Faktur Pajak, Revisi, Bukti Potong)
+# Panduan Frontend: Invoice (Approval, Pembayaran, Faktur Pajak, Revisi, Bukti Potong, Pembatalan)
 
-Invoice penjualan dibuat AR & AP dari pembayaran contract/PO yang sudah dibuka (incoming), di-submit, lalu di-approve SPV FAT Internal (tanpa upload file). Setelah itu Sales bisa meminta Faktur Pajak (FP), meminta revisi tax, atau meng-upload bukti bayar dari klien yang kemudian diverifikasi AR & AP sampai invoice lunas. Invoice yang dipotong PPh 23 / PPh 4(2) baru selesai (`paid & clear`) setelah bukti potongnya diterima AR & AP. Semua endpoint berawalan `/api/invoices` dan memakai cookie login yang sama seperti endpoint lain.
+Invoice penjualan dibuat AR & AP dari pembayaran contract/PO yang sudah dibuka (incoming), di-submit, lalu di-approve SPV FAT Internal (tanpa upload file). Setelah itu Sales bisa meminta Faktur Pajak (FP), meminta revisi tax, mengajukan pembatalan atau konversi 50% (selama belum ada pembayaran dan FP belum diminta), atau meng-upload bukti bayar dari klien yang kemudian diverifikasi AR & AP sampai invoice lunas. Invoice yang dipotong PPh 23 / PPh 4(2) baru selesai (`paid & clear`) setelah bukti potongnya diterima AR & AP. Semua endpoint berawalan `/api/invoices` dan memakai cookie login yang sama seperti endpoint lain.
 
 Alur ini mengikuti dokumen kebutuhan "Kebutuhan Sistem - FAT Internal". Progres per poin dokumen ada di [invoice-approval-fat.md](invoice-approval-fat.md).
 
@@ -23,26 +23,34 @@ pending ─submit─► on verification ─approve──────────
                                                                │                        (AR & AP tolak ─► wht rejected ─Sales upload ulang─► wht verification)
                                                                │                        (AR & AP terima semua bukti potong ─► paid & clear)
                                                                │
-                                                               └─ Sales minta revisi ─► revision requested ─AR & AP revisi PPh─► waiting for revision
+                                                               └─ Sales minta revisi ─► revision requested ─AR & AP revisi pajak─► waiting for revision
                                                                   (AR & AP tolak permintaan ─► waiting for payment)     (SPV tolak ─► revision requested)
                                                                                                                         (SPV approve ─► waiting for payment)
+
+Pembatalan / konversi 50% (dari waiting for payment, belum ada bukti bayar dan FP belum diminta):
+
+waiting for payment ─Sales ajukan─► cancellation requested ─AR & AP approve─► cancellation reviewed ─SPV approve─► cancellation verified ─Direktur approve─► cancelled
+                                    (ditolak di tahap mana pun ─► waiting for payment)                                    (konversi: invoice baru 50% dibuat, langsung waiting for payment)
 ```
 
 | Status                   | Arti                                                     | Siapa yang beraksi | Tombol yang tampil                 |
 | ------------------------ | -------------------------------------------------------- | ------------------ | ---------------------------------- |
 | `pending`                | Draft invoice dibuat AR & AP                             | AR & AP            | Edit, Submit                       |
 | `on verification`        | Menunggu SPV FAT Internal / Manager                      | SPV FAT Internal   | Approve, Reject                    |
-| `waiting for payment`    | Invoice bisa di-download Sales, menunggu klien membayar  | Sales              | Upload Bukti Bayar, Minta Revisi   |
+| `waiting for payment`    | Invoice bisa di-download Sales, menunggu klien membayar  | Sales              | Upload Bukti Bayar, Minta Revisi, Cancel Invoice |
 | `payment verification`   | Bukti bayar sedang dicek AR & AP                         | AR & AP            | Terima, Tolak                      |
 | `payment proof rejected` | Bukti bayar ditolak AR & AP (alasan di riwayat)          | Sales              | Upload Ulang Bukti Bayar           |
-| `revision requested`     | Sales minta revisi tax, menunggu AR & AP                 | AR & AP            | Revisi PPh, Tolak Permintaan       |
+| `revision requested`     | Sales minta revisi tax, menunggu AR & AP                 | AR & AP            | Revisi Pajak, Tolak Permintaan     |
 | `waiting for revision`   | Hasil revisi menunggu SPV FAT Internal                   | SPV FAT Internal   | Approve Revisi, Reject Revisi      |
 | `paid waiting wht`       | Lunas, menunggu bukti potong PPh dari klien              | Sales              | Upload Bukti Potong                |
 | `wht verification`       | Bukti potong sedang dicek AR & AP                        | AR & AP            | Terima, Tolak (per bukti potong)   |
 | `wht rejected`           | Bukti potong ditolak AR & AP (alasan dan screenshot di riwayat) | Sales       | Upload Ulang Bukti Potong          |
 | `paid & clear`           | Lunas dan bukti potong (kalau ada) sudah diterima        | -                  | Tidak ada                          |
 | `rejected`               | Ditolak SPV karena salah PPh/PPN, kembali ke AR & AP     | AR & AP            | Edit, Submit (ulang)               |
-| `cancelled`              | Ditolak SPV karena CT/PO di-addendum/batal/revisi        | -                  | Tidak ada                          |
+| `cancellation requested` | Pembatalan/konversi diajukan Sales, menunggu AR & AP     | AR & AP            | Approve, Reject Pembatalan         |
+| `cancellation reviewed`  | Disetujui AR & AP, menunggu SPV FAT Internal             | SPV FAT Internal   | Approve, Reject Pembatalan         |
+| `cancellation verified`  | Disetujui SPV, menunggu Direktur                         | Direktur           | Approve, Reject Pembatalan         |
+| `cancelled`              | Ditolak SPV karena CT/PO di-addendum/batal/revisi, atau pembatalan/konversi di-approve Direktur | - | Tidak ada              |
 
 - `paid & clear` dan `cancelled` adalah status akhir. Status `paid` sudah tidak dipakai; invoice lama yang `paid` dipindahkan ke `paid & clear`.
 - SPV memilih jenis reject (`reject_type`): `tax` → `rejected`, AR & AP memperbaiki lalu submit ulang ke `on verification`; `ct/po cancelled` → `cancelled`, Sales membuat request invoice baru dari CT/PO yang sudah diubah. Lihat bagian 5.
@@ -66,7 +74,11 @@ none ─Sales request FP (1x) / bukti bayar pertama diterima─► requested ─
 - Sales bisa request FP **satu kali**, kapan pun setelah invoice di-approve SPV (termasuk saat bukti bayar sedang dicek), selama `tax_invoice_status === "none"`. Final Invoice ikut diterbitkan saat itu, walaupun belum ada pembayaran.
 - Kalau belum di-request, `tax_invoice_status` otomatis menjadi `requested` saat bukti bayar pertama **diterima** AR & AP. Ini berlaku untuk invoice ber-PPN (Final Invoice + FP) maupun tanpa PPN (Final Invoice saja).
 - Mengubah `status` tidak mengubah `tax_invoice_status`, dan sebaliknya.
-- Pengecualian (sejak 2026-11-10): kalau SPV meng-approve revisi PPh pada invoice yang sudah Final, `tax_invoice_status` kembali menjadi `requested` sementara `is_final` tetap `true`, karena total pada file Final Invoice sudah berubah. AR & AP meng-upload ulang Final Invoice; FP tetap berlaku. Selama masa ini tombol yang tampil adalah Upload, bukan Download.
+- Pengecualian (sejak 2026-11-10): kalau SPV meng-approve revisi ~~PPh~~ pajak pada invoice yang sudah Final, `tax_invoice_status` kembali menjadi `requested` sementara `is_final` tetap `true`, karena total pada file Final Invoice sudah berubah. AR & AP meng-upload ulang Final Invoice; FP tetap berlaku kalau PPN tidak berubah. Selama masa ini tombol yang tampil adalah Upload, bukan Download.
+- Revisi PPN (sejak 2026-11-18), berlaku saat SPV approve revisi:
+  - PPN dihapus dan FP sudah terbit: `tax_invoice_no`, `tax_invoice_date`, dan `tax_invoice_attachment` dikosongkan. Nomor FP lama tercatat di catatan riwayat `revision approved`. Form upload ulang cukup berisi Final Invoice.
+  - PPN dihapus saat FP baru diminta (belum Final): `tax_invoice_status` kembali `none`.
+  - PPN ditambahkan ke invoice yang sudah Final: form upload ulang wajib berisi nomor, tanggal, dan file FP baru.
 
 ### Bayar sebagian
 
@@ -88,11 +100,11 @@ Semua angka uang dikirim backend sebagai **string** (`"10000000"`). Ubah ke angk
 
 ### Revisi tax
 
-Revisi dipakai kalau ada perubahan PPh yang baru diinfokan klien. Aturannya:
+Revisi dipakai kalau ada perubahan pajak (PPN atau PPh) yang baru diinfokan klien. Aturannya:
 
 - Hanya bisa diminta saat `waiting for payment` dan **belum ada bukti bayar yang diterima** (`payment_amount` kosong atau 0).
 - Sales wajib mengisi alasan dan melampirkan bukti chat klien.
-- AR & AP hanya bisa mengubah **PPh** (`tax_pph_23`, `tax_pp_20`, `tax_pph_4_ayat_2`). PPN tidak berubah, jadi nomor invoice dan FP tetap sama. `pph`, `pp_20`, `pph_4_ayat_2`, dan `total` dihitung ulang oleh backend.
+- ~~AR & AP hanya bisa mengubah **PPh** (`tax_pph_23`, `tax_pp_20`, `tax_pph_4_ayat_2`). PPN tidak berubah, jadi nomor invoice dan FP tetap sama.~~ *(Diubah 2026-11-18.)* AR & AP bisa mengubah **semua pajak**: `tax_ppn`, `tax_pph_23`, `tax_pp_20`, dan `tax_pph_4_ayat_2`. Nomor invoice tetap sama. FP tetap berlaku kalau PPN tidak berubah; dampak perubahan PPN ke FP ada di bagian Final Invoice dan Faktur Pajak di atas. Backend menghitung ulang `pph`, `pp_20`, `pph_4_ayat_2`, dan `total`. `ppn` hanya dihitung ulang kalau centang PPN berubah.
 
 ### Tombol mana yang tampil: flag dari backend
 
@@ -131,9 +143,17 @@ Tombol **Request Faktur Pajak** dan **Minta Revisi** memakai `is_can_approve_rej
 | `final invoice issued`      | AR & AP meng-upload Final Invoice (invoice tanpa PPN)    |
 | `revision requested`        | Sales minta revisi (alasan di `note`, bukti chat di `revision_attachment`) |
 | `revision request rejected` | AR & AP menolak permintaan revisi (alasan di `note`)     |
-| `revised`                   | AR & AP merevisi PPh                                     |
+| `revised`                   | AR & AP merevisi pajak (PPN/PPh)                         |
 | `revision approved`         | SPV approve revisi                                       |
 | `revision rejected`         | SPV menolak revisi, kembali ke AR & AP (alasan di `note`) |
+| `cancellation requested`    | Sales mengajukan pembatalan atau konversi 50% (jenis dan alasan di `note`) |
+| `cancellation reviewed`     | AR & AP approve pembatalan                               |
+| `cancellation verified`     | SPV FAT Internal approve pembatalan                      |
+| `cancellation rejected`     | Pembatalan ditolak (`note` diawali siapa yang menolak), invoice kembali `waiting for payment` |
+| `cancelled`                 | Juga: Direktur approve pembatalan penuh                  |
+| `converted`                 | Direktur approve konversi; `note` menyebut nomor invoice baru |
+
+Invoice baru hasil konversi diawali progress `created` yang menyebut nomor invoice lama.
 
 Invoice lama bisa masih punya progress `signing`, `waiting for payment`, atau `paid` dari alur sebelumnya. Tampilkan apa adanya.
 
@@ -166,12 +186,15 @@ Riwayat untuk bukti potong:
 | Upload Final Invoice + FP  | `PATCH /api/invoices/tax-invoice/:id`             | `tax_invoice_status` = `requested`             |
 | Minta revisi               | `PATCH /api/invoices/revision-request/:id`        | `status` = `waiting for payment`, belum ada pembayaran diterima |
 | Tolak permintaan revisi    | `PATCH /api/invoices/revision-request-reject/:id` | `status` = `revision requested`                |
-| Revisi PPh                 | `PATCH /api/invoices/revise/:id`                  | `status` = `revision requested`                |
+| Revisi pajak               | `PATCH /api/invoices/revise/:id`                  | `status` = `revision requested`                |
 | Approve revisi             | `PATCH /api/invoices/revision-approve/:id`        | `status` = `waiting for revision`              |
 | Reject revisi              | `PATCH /api/invoices/revision-reject/:id`         | `status` = `waiting for revision`              |
 | Upload bukti potong        | `PATCH /api/invoices/:id/withholding-taxes/:whtId/upload` | Bukti potong `waiting` / `rejected`, invoice `paid waiting wht` / `wht verification` / `wht rejected` |
 | Terima bukti potong        | `PATCH /api/invoices/:id/withholding-taxes/:whtId/accept` | Bukti potong `verification`              |
 | Tolak bukti potong         | `PATCH /api/invoices/:id/withholding-taxes/:whtId/reject` | Bukti potong `verification`              |
+| Ajukan pembatalan/konversi | `PATCH /api/invoices/cancellation-request/:id`    | `status` = `waiting for payment`, belum ada bukti bayar, `tax_invoice_status` = `none`, bukan invoice hasil konversi |
+| Approve pembatalan         | `PATCH /api/invoices/cancellation-approve/:id`    | `status` = `cancellation requested` / `reviewed` / `verified` |
+| Reject pembatalan          | `PATCH /api/invoices/cancellation-reject/:id`     | `status` = `cancellation requested` / `reviewed` / `verified` |
 
 Semua aksi `PATCH` mengembalikan detail invoice terbaru (bentuknya sama dengan `GET /api/invoices/:id`), jadi halaman detail bisa langsung di-refresh dari response.
 
@@ -232,11 +255,38 @@ Untuk field berbentuk **array file** (`payment_proof`, `tax_invoice_attachment`,
 
 Hasil: invoice berstatus `pending`.
 
-`PUT /api/invoices/:id` hanya bisa selama `pending`, atau `rejected` (ditolak SPV karena pajak). Setelah di-approve, perubahan tax harus lewat revisi (bagian 9). Field `status`, `tax_invoice_status`, `reject_type`, `is_final`, `final_at`, dan `file_final_invoice` di body `PUT` diabaikan.
+`PUT /api/invoices/:id` hanya bisa selama `pending`, atau `rejected` (ditolak SPV karena pajak). Setelah di-approve, perubahan tax harus lewat revisi (bagian 9). ~~Field `status`, `tax_invoice_status`, `reject_type`, `is_final`, `final_at`, dan `file_final_invoice` di body `PUT` diabaikan.~~
+
+*(Diubah 2026-11-18.)* Edit draft hanya mengubah field yang diisi user saat create:
+
+```json
+{
+  "date": "2026-11-01",
+  "due_date": "2026-12-01",
+  "note": "Termin 1",
+  "tax_ppn": true,
+  "tax_pph_23": true,
+  "tax_pp_20": false,
+  "tax_pph_4_ayat_2": false
+}
+```
+
+Semua field opsional. Field yang tidak dikirim tetap memakai nilai lama.
+
+| Field                                                    | Keterangan                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------ |
+| `date`                                                   | Tanggal invoice. Kalau dikirim, harus tanggal valid (tidak boleh kosong) |
+| `due_date`                                               | Jatuh tempo. `null` atau `""` mengosongkannya                |
+| `note`                                                   | Teks. `null` atau `""` mengosongkannya                       |
+| `tax_ppn`, `tax_pph_23`, `tax_pp_20`, `tax_pph_4_ayat_2` | Boolean                                                      |
+
+- Backend menghitung ulang `ppn`, `pph`, `pp_20`, `pph_4_ayat_2`, dan `total` dari `sub_total` dengan tarif pajak aktif, sama seperti saat create.
+- Field lain di body diabaikan, termasuk `invoice_no`, nominal, dan `invoice_services`. Rincian jasa dan `sub_total` tetap mengikuti termin CT/PO. ~~Sebelumnya hampir semua kolom bisa ditimpa, dan `invoice_services` yang tidak dikirim membuat rincian jasa terhapus.~~
+- Debit note yang dibuat bersama invoice tidak ikut berubah.
 
 ## 2. List dan detail
 
-`proforma_invoice_no` adalah `invoice_no` dengan awalan `PRO-`. Nilainya dihitung otomatis di response dan selalu mengikuti `invoice_no`, jadi tidak perlu dikirim saat create atau update.
+`proforma_invoice_no` adalah `invoice_no` dengan sisipan `PRO` setelah nomor urut, misalnya `006/INV/TYS/XI/2026` menjadi `006/PRO/INV/TYS/XI/2026`. ~~Sebelumnya: `invoice_no` dengan awalan `PRO-`.~~ *(Diubah 2026-11-18.)* Nilainya dihitung otomatis di response dan selalu mengikuti `invoice_no`, jadi tidak perlu dikirim saat create atau update.
 
 `GET /api/invoices/:id` (potongan field yang relevan untuk alur ini):
 
@@ -247,8 +297,8 @@ Hasil: invoice berstatus `pending`.
   "message": "Invoice retrieved successfully",
   "data": {
     "id": 21,
-    "invoice_no": "INV-TYSCG-2026-0005",
-    "proforma_invoice_no": "PRO-INV-TYSCG-2026-0005",
+    "invoice_no": "005/INV/TYSCG/XI/2026",
+    "proforma_invoice_no": "005/PRO/INV/TYSCG/XI/2026",
     "status": "waiting for payment",
     "tax_ppn": true,
     "tax_pph_23": true,
@@ -309,6 +359,7 @@ Catatan field:
 - `revision_attachment` berisi bukti chat klien, hanya ada pada riwayat `revision requested`.
 - `wht_reject_attachment` berisi screenshot penolakan bukti potong, hanya ada pada riwayat `wht rejected`.
 - `withholding_taxes` (hanya di detail): satu baris per jenis PPh yang wajib bukti potong. Lihat bagian 10.
+- `cancellations`, `converted_from`, dan `converted_to` (hanya di detail): riwayat pengajuan pembatalan/konversi dan invoice asal/hasil konversi. Lihat bagian 11.
 
 ## 3. Aturan tombol
 
@@ -319,19 +370,20 @@ Tombol aksi status hanya tampil kalau `is_can_approve_reject === true`:
 | `pending`                | **Edit**, **Submit**                                      |
 | `rejected`               | **Edit**, **Submit Ulang**. Tampilkan alasan SPV dari riwayat `rejected` terakhir |
 | `on verification`        | **Approve** (modal: catatan) dan **Reject** (modal: jenis reject + alasan) |
-| `waiting for payment`    | **Upload Bukti Bayar**. **Minta Revisi** hanya kalau `payment_amount` kosong atau 0 |
+| `waiting for payment`    | **Upload Bukti Bayar**. **Minta Revisi** hanya kalau `payment_amount` kosong atau 0. **Cancel Invoice** hanya kalau `payments` kosong, `tax_invoice_status === "none"`, dan `id_invoice_converted_from` kosong (bagian 11) |
+| `cancellation requested`, `cancellation reviewed`, `cancellation verified` | **Approve Pembatalan** (modal: catatan) dan **Reject Pembatalan** (modal: alasan). Tampilkan jenis, alasan, bukti, dan pilihan debit note dari `cancellations` terakhir |
 | `payment proof rejected` | **Upload Ulang Bukti Bayar**. Tampilkan juga alasan penolakan dari `verification_note` pembayaran terakhir |
 | `payment verification`   | **Terima** dan **Tolak** (modal: alasan). Tampilkan pembayaran dengan `status === "verification"` untuk dicek |
-| `revision requested`     | **Revisi PPh** (form bagian 9b) dan **Tolak Permintaan** (modal: alasan). Tampilkan alasan dan bukti chat dari riwayat `revision requested` terakhir |
+| `revision requested`     | **Revisi Pajak** (form bagian 9b) dan **Tolak Permintaan** (modal: alasan). Tampilkan alasan dan bukti chat dari riwayat `revision requested` terakhir |
 | `waiting for revision`   | **Approve Revisi** (modal: catatan) dan **Reject Revisi** (modal: alasan) |
 | `paid waiting wht`, `wht rejected` | **Upload Bukti Potong** pada setiap baris `withholding_taxes` yang `waiting` / `rejected`. Untuk `rejected`, tampilkan `note_reject` dan screenshot dari riwayat `wht rejected` terakhir |
-| `wht verification`       | **Terima** (modal: checklist + nomor, masa pajak, tanggal) dan **Tolak** (modal: alasan + screenshot) pada setiap baris `withholding_taxes` yang `verification` |
+| `wht verification`       | **Terima** (modal: checklist 10 item + catatan opsional, nomor, masa pajak, tanggal) dan **Tolak** (modal: checklist 10 item + catatan per item, alasan, screenshot) pada setiap baris `withholding_taxes` yang `verification` |
 
 Tombol Faktur Pajak:
 
 | Kondisi                                                                 | Tampilkan                          |
 | ----------------------------------------------------------------------- | ---------------------------------- |
-| `tax_ppn === true`, `tax_invoice_status === "none"`, `status` bukan `pending` / `on verification` / `rejected` / `cancelled`, user Sales | **Request Faktur Pajak** |
+| `tax_ppn === true`, `tax_invoice_status === "none"`, `status` bukan `pending` / `on verification` / `rejected` / `cancelled` / `cancellation requested` / `cancellation reviewed` / `cancellation verified`, user Sales | **Request Faktur Pajak** |
 | `is_can_upload_tax_invoice === true`                                    | **Upload Final Invoice & Faktur Pajak** (tanpa field FP kalau `tax_ppn === false`) |
 | `tax_invoice_status === "issued"`                                       | **Download Final Invoice** (`file_final_invoice`), dan untuk invoice ber-PPN **Download Faktur Pajak** (`tax_invoice_attachment`) beserta nomor/tanggal FP |
 
@@ -506,14 +558,14 @@ PATCH /api/invoices/tax-invoice/21
 | Field                    | Wajib | Label di form        |
 | ------------------------ | ----- | -------------------- |
 | `file_final_invoice`     | Ya    | File Final Invoice, array file minimal 1 |
-| `tax_invoice_no`         | Ya, kalau `tax_ppn`. Saat upload ulang setelah revisi boleh dikosongkan (memakai nomor lama) | Nomor Faktur Pajak   |
-| `tax_invoice_date`       | Ya, kalau `tax_ppn`. Saat upload ulang setelah revisi boleh dikosongkan (memakai tanggal lama) | Tanggal Faktur Pajak |
+| `tax_invoice_no`         | Ya, kalau `tax_ppn`. Saat upload ulang setelah revisi boleh dikosongkan (memakai nomor lama), kecuali invoice belum punya nomor FP (PPN baru ditambahkan lewat revisi) | Nomor Faktur Pajak   |
+| `tax_invoice_date`       | Ya, kalau `tax_ppn`. Saat upload ulang setelah revisi boleh dikosongkan (memakai tanggal lama), kecuali invoice belum punya tanggal FP | Tanggal Faktur Pajak |
 | `tax_invoice_attachment` | Tidak | File Faktur Pajak (sebaiknya diwajibkan di form untuk invoice ber-PPN) |
 | `note`                   | Tidak | Catatan              |
 
 Untuk invoice tanpa PPN, cukup kirim `file_final_invoice` (dan `note`); field FP diabaikan.
 
-Hasil: `tax_invoice_status` menjadi `issued`, `is_final` menjadi `true`, dan `final_at` terisi. ~~Setelah itu Final Invoice dan FP tidak bisa di-upload ulang.~~ *(Diubah 2026-11-10: upload ulang terbuka lagi kalau revisi PPh di-approve SPV setelah Final terbit. Di luar kondisi itu tetap tidak bisa. Saat upload ulang, field FP yang tidak dikirim memakai data lama; jangan kirim `tax_invoice_attachment: []` karena akan mengosongkan file FP.)* Sales cukup melihat dan men-download-nya; dokumen yang terbit tidak masuk My Task Sales.
+Hasil: `tax_invoice_status` menjadi `issued`, `is_final` menjadi `true`, dan `final_at` terisi. ~~Setelah itu Final Invoice dan FP tidak bisa di-upload ulang.~~ *(Diubah 2026-11-10: upload ulang terbuka lagi kalau revisi pajak di-approve SPV setelah Final terbit. Di luar kondisi itu tetap tidak bisa. Saat upload ulang, field FP yang tidak dikirim memakai data lama; jangan kirim `tax_invoice_attachment: []` karena akan mengosongkan file FP.)* Sales cukup melihat dan men-download-nya; dokumen yang terbit tidak masuk My Task Sales.
 
 ## 9. Revisi tax
 
@@ -547,9 +599,9 @@ PATCH /api/invoices/revision-request/21
 
 Hasil: `revision requested`.
 
-### 9b. Revisi PPh (AR & AP)
+### 9b. Revisi Pajak (AR & AP)
 
-Tampilkan form berisi tiga checkbox PPh dengan nilai awal dari invoice. PPN tidak ditampilkan sebagai field yang bisa diubah.
+Tampilkan form berisi empat checkbox pajak (PPN, PPh 23, PP 20, PPh 4(2)) dengan nilai awal dari invoice. ~~Tiga checkbox PPh saja; PPN tidak bisa diubah.~~ *(Diubah 2026-11-18.)* Kalau AR & AP mengubah centang PPN pada invoice yang FP-nya sudah diminta atau terbit, tampilkan peringatan bahwa FP akan terdampak (lihat bagian Final Invoice dan Faktur Pajak).
 
 ```http
 PATCH /api/invoices/revise/21
@@ -557,6 +609,7 @@ PATCH /api/invoices/revise/21
 
 ```json
 {
+  "tax_ppn": true,
   "tax_pph_23": true,
   "tax_pp_20": false,
   "tax_pph_4_ayat_2": false,
@@ -566,12 +619,13 @@ PATCH /api/invoices/revise/21
 
 | Field              | Wajib | Keterangan                                       |
 | ------------------ | ----- | ------------------------------------------------ |
+| `tax_ppn`          | Tidak | Boolean. Kalau tidak dikirim, nilai lama dipakai. Baru sejak 2026-11-18 |
 | `tax_pph_23`       | Tidak | Boolean. Kalau tidak dikirim, nilai lama dipakai |
 | `tax_pp_20`        | Tidak | Boolean. Kalau tidak dikirim, nilai lama dipakai |
 | `tax_pph_4_ayat_2` | Tidak | Boolean. Kalau tidak dikirim, nilai lama dipakai |
 | `note`             | Tidak | Catatan                                          |
 
-Backend menghitung ulang `pph`, `pp_20`, `pph_4_ayat_2`, dan `total` dari tarif pajak aktif. Hasil: `waiting for revision`.
+Backend menghitung ulang `pph`, `pp_20`, `pph_4_ayat_2`, dan `total` dari tarif pajak aktif. `ppn` hanya dihitung ulang kalau centang PPN berubah; kalau tidak, nominal lama dipakai supaya tetap sama dengan FP. Hasil: `waiting for revision`.
 
 ### 9c. Tolak permintaan revisi (AR & AP)
 
@@ -647,7 +701,7 @@ Saat bukti bayar terakhir diterima, backend membuat satu baris di `withholding_t
 | `dpp`, `rate`, `amount` | Diambil dari invoice: DPP = `sub_total`, tarif (%) dari master tax saat lunas, nilai = `pph` / `pph_4_ayat_2` |
 | `status` | `waiting` (belum di-upload), `verification` (sedang dicek), `rejected` (ditolak), `clear` (diterima) |
 | `receipt_no`, `tax_period`, `receipt_date` | Diisi AR & AP saat menerima |
-| `checklist` | Hasil checklist AR & AP (lihat 10b) |
+| `checklist` | Hasil checklist AR & AP terakhir, `null` kalau belum pernah diverifikasi. Setiap item `{ "checked": boolean, "note": "teks" }` (lihat 10b). Saat status `rejected`, tampilkan item yang `checked: false` beserta `note`-nya ke Sales |
 | `note_reject` | Alasan penolakan terakhir |
 
 Status invoice mengikuti semua bukti potongnya: ada yang `verification` → `wht verification`; ada yang `rejected` → `wht rejected`; semua `clear` → `paid & clear`; selain itu `paid waiting wht`.
@@ -688,16 +742,16 @@ PATCH /api/invoices/21/withholding-taxes/51/accept
 ```json
 {
   "checklist": {
-    "recipient_npwp": true,
-    "withholder_npwp": true,
-    "receipt_no": true,
-    "tax_period": true,
-    "receipt_date": true,
-    "dpp": true,
-    "rate": true,
-    "amount": true,
-    "reference_date": true,
-    "reference_no": true
+    "recipient_npwp": { "checked": true, "note": "" },
+    "withholder_npwp": { "checked": true, "note": "" },
+    "receipt_no": { "checked": true, "note": "" },
+    "tax_period": { "checked": true, "note": "" },
+    "receipt_date": { "checked": true, "note": "" },
+    "dpp": { "checked": true, "note": "Sesuai invoice" },
+    "rate": { "checked": true, "note": "" },
+    "amount": { "checked": true, "note": "" },
+    "reference_date": { "checked": true, "note": "" },
+    "reference_no": { "checked": true, "note": "" }
   },
   "receipt_no": "BP-2026-000123",
   "tax_period": "11-2026",
@@ -719,7 +773,8 @@ PATCH /api/invoices/21/withholding-taxes/51/accept
 | `reference_date` | Tanggal dokumen referensi |
 | `reference_no` | Nomor dokumen referensi |
 
-- **Semua 10 item wajib `true`.** Kalau ada yang tidak sesuai, tombol Terima dinonaktifkan dan AR & AP memakai Tolak.
+- *(Diubah 2026-11-18.)* Setiap item checklist berbentuk `{ "checked": boolean, "note": "teks" }`. Ke-10 item wajib dikirim. ~~Setiap item hanya boolean (`"dpp": true`).~~ Format boolean lama masih diterima dan disimpan sebagai `{ "checked": true, "note": "" }`, tapi sebaiknya frontend memakai format baru.
+- **Semua 10 item wajib `checked: true`.** `note` per item opsional. Kalau ada yang tidak sesuai, tombol Terima dinonaktifkan dan AR & AP memakai Tolak.
 - `receipt_no` wajib, `tax_period` format `MM-YYYY`, `receipt_date` tanggal valid.
 - Hasil: bukti potong menjadi `clear`. Kalau semua bukti potong sudah `clear`, invoice menjadi `paid & clear` dan datanya masuk Withholding Tax List.
 
@@ -732,7 +787,18 @@ PATCH /api/invoices/21/withholding-taxes/51/reject
 ```json
 {
   "note": "NPWP pemotong tidak sesuai",
-  "checklist": { "recipient_npwp": true, "withholder_npwp": false },
+  "checklist": {
+    "recipient_npwp": { "checked": true, "note": "" },
+    "withholder_npwp": { "checked": false, "note": "NPWP pemotong beda dengan data klien" },
+    "receipt_no": { "checked": true, "note": "" },
+    "tax_period": { "checked": true, "note": "" },
+    "receipt_date": { "checked": true, "note": "" },
+    "dpp": { "checked": true, "note": "" },
+    "rate": { "checked": true, "note": "" },
+    "amount": { "checked": true, "note": "" },
+    "reference_date": { "checked": true, "note": "" },
+    "reference_no": { "checked": true, "note": "" }
+  },
   "wht_reject_attachment": [
     {
       "original_name": "npwp-salah.png",
@@ -746,10 +812,145 @@ PATCH /api/invoices/21/withholding-taxes/51/reject
 ```
 
 - `note` dan `wht_reject_attachment` (minimal 1 screenshot) **wajib**.
-- `checklist` opsional; kalau dikirim, item yang tidak `true` tersimpan sebagai `false` untuk menunjukkan apa yang salah.
+- ~~`checklist` opsional; kalau dikirim, item yang tidak `true` tersimpan sebagai `false` untuk menunjukkan apa yang salah.~~ *(Diubah 2026-11-18.)* `checklist` **wajib**, dengan ke-10 item dalam format yang sama seperti di 10b:
+  - Setiap item wajib punya `checked` boolean, baik `true` maupun `false`.
+  - `note` **wajib** untuk item yang `checked: false`, opsional untuk yang `true`.
+  - Minimal satu item harus `checked: false`. Kalau semua sesuai, pakai Terima.
 - Hasil: bukti potong menjadi `rejected`. Alasan ada di `note_reject`, screenshot di riwayat `wht rejected`. Sales meminta perbaikan ke klien lalu upload ulang.
 
-## 11. Pesan error yang perlu ditangani
+## 11. Cancel dan konversi Proforma Invoice
+
+Untuk invoice yang **belum dibayar** dan **FP-nya belum diminta**. Sales klik **Cancel Invoice**, lalu frontend menampilkan:
+
+- **(A) Peringatan**: ketentuannya, klien wajib membayar 50% dari nominal Proforma Invoice sebelum dibatalkan.
+- **(B) Konversi 50%**: pilihan normal. Invoice ini dibatalkan dan diganti invoice baru bernilai 50% yang ditagih seperti biasa.
+- **(C) Batal penuh**: kalau klien tetap tidak mengikuti ketentuan.
+
+B dan C sama-sama wajib alasan dan bukti, lalu melewati AR & AP, SPV FAT Internal, dan Direktur. Frontend hanya mengirim jenis permintaan; nominal 50% dihitung backend.
+
+Syarat tombol **Cancel Invoice** (backend juga mengeceknya):
+
+- `status === "waiting for payment"`.
+- `payments` kosong, termasuk bukti bayar yang ditolak.
+- `tax_invoice_status === "none"`.
+- `id_invoice_converted_from` kosong. Invoice hasil konversi tidak bisa dibatalkan atau dikonversi lagi.
+
+### 11a. Ajukan pembatalan atau konversi (Sales)
+
+Upload bukti dulu lewat `POST /api/uploads/invoice/single` atau `/multiple`, lalu:
+
+```http
+PATCH /api/invoices/cancellation-request/21
+```
+
+```json
+{
+  "type": "convert",
+  "reason": "Klien membatalkan proyek, setuju membayar 50%",
+  "cancel_debit_note": false,
+  "cancellation_attachment": [
+    {
+      "original_name": "persetujuan-klien.pdf",
+      "stored_name": "1763400000000-persetujuan-klien.pdf",
+      "url": "/files/invoice/1763400000000-persetujuan-klien.pdf",
+      "mime_type": "application/pdf",
+      "size": 64000
+    }
+  ]
+}
+```
+
+| Field                     | Wajib | Keterangan |
+| ------------------------- | ----- | ---------- |
+| `type`                    | Ya    | `convert` (B, konversi 50%) atau `cancel` (C, batal penuh) |
+| `reason`                  | Ya    | Alasan pembatalan |
+| `cancellation_attachment` | Ya    | Bukti permintaan/persetujuan klien, array file minimal 1 |
+| `cancel_debit_note`       | Ya, kalau invoice punya debit note aktif (`debit_note` terisi dan statusnya bukan `cancelled`) | Boolean. Tampilkan pertanyaan: "Invoice ini memiliki Debit Note terkait. Apakah Debit Note juga dibatalkan?" Kalau debit note sudah `paid`, hanya boleh `false`. Diabaikan kalau invoice tidak punya debit note |
+
+Hasil: `cancellation requested`, masuk My Task AR & AP. Selama proses ini Sales tidak bisa upload bukti bayar, minta revisi, atau request FP.
+
+### 11b. Approve atau reject pembatalan (AR & AP, SPV FAT Internal, Direktur)
+
+Satu endpoint approve dan satu endpoint reject untuk ketiga tahap. Backend menentukan tahapnya dari `status` invoice.
+
+```http
+PATCH /api/invoices/cancellation-approve/21
+```
+
+```json
+{ "note": "Bukti persetujuan klien sesuai" }
+```
+
+```http
+PATCH /api/invoices/cancellation-reject/21
+```
+
+```json
+{ "note": "Bukti persetujuan klien belum ada tanda tangan" }
+```
+
+| `status` sekarang         | Siapa            | Approve →                | Reject → |
+| ------------------------- | ---------------- | ------------------------ | -------- |
+| `cancellation requested`  | AR & AP          | `cancellation reviewed`  | `waiting for payment` |
+| `cancellation reviewed`   | SPV FAT Internal | `cancellation verified`  | `waiting for payment` |
+| `cancellation verified`   | Direktur         | `cancelled` (lihat di bawah) | `waiting for payment` |
+
+- `note` opsional saat approve, **wajib** saat reject.
+- Pengajuan yang ditolak tetap tersimpan di `cancellations`. Sales boleh mengajukan lagi; pengajuan baru menjadi baris baru.
+
+Saat **Direktur approve**:
+
+- Invoice ini menjadi `cancelled`.
+- **Konversi (`convert`)**: backend membuat invoice baru yang langsung `waiting for payment` (Proforma, tanpa submit/approve SPV lagi) dan masuk My Task Sales:
+  - `invoice_no` melanjutkan nomor terakhir company yang sama, misalnya `006/INV/TYS/XI/2026` diganti `012/INV/TYS/XI/2026`.
+  - `sub_total` = 50% dari invoice lama (dibulatkan). PPN, PPh, dan `total` dihitung ulang dengan tarif aktif; centang pajak sama dengan invoice lama.
+  - Rincian jasa (`invoice_services`) juga 50% per baris; selisih pembulatan masuk ke baris terakhir.
+  - `date` = tanggal approve Direktur. `due_date` mempertahankan selisih hari dari invoice lama (kosong kalau di invoice lama kosong).
+  - `id_invoice_converted_from` berisi id invoice lama.
+- **Debit note**: kalau `cancel_debit_note` `true`, debit note menjadi `cancelled` (status akhir). Kalau `false`, debit note tetap berlaku; pada konversi, debit note ikut terhubung ke invoice baru.
+
+Response approve/reject adalah detail invoice yang dibatalkan. Untuk membuka invoice baru, pakai `cancellations[].invoice_new.id` atau `converted_to.id`.
+
+### 11c. Data di detail invoice
+
+```json
+"cancellations": [
+  {
+    "id": 3,
+    "type": "convert",
+    "reason": "Klien membatalkan proyek, setuju membayar 50%",
+    "cancel_debit_note": false,
+    "status": "approved",
+    "reject_note": null,
+    "id_invoice_new": 35,
+    "reviewed_at": "2026-11-18T03:00:00.000Z",
+    "verified_at": "2026-11-18T04:00:00.000Z",
+    "approved_at": "2026-11-18T05:00:00.000Z",
+    "rejected_at": null,
+    "user_request": { "id": 5, "name": "Sales A" },
+    "user_review": { "id": 7, "name": "AR AP" },
+    "user_verify": { "id": 8, "name": "SPV FAT" },
+    "user_approve": { "id": 9, "name": "Direktur" },
+    "user_reject": null,
+    "invoice_new": { "id": 35, "invoice_no": "012/INV/TYS/XI/2026", "status": "waiting for payment" },
+    "cancellation_attachment": [{ "original_name": "persetujuan-klien.pdf", "url": "/files/invoice/..." }]
+  }
+],
+"converted_from": null,
+"converted_to": { "id": 35, "invoice_no": "012/INV/TYS/XI/2026", "status": "waiting for payment", "sub_total": "500000", "total": "545000" }
+```
+
+| Field | Isi |
+| ----- | --- |
+| `cancellations[].status` | `requested` (menunggu AR & AP), `reviewed` (menunggu SPV), `verified` (menunggu Direktur), `approved`, `rejected` (alasan di `reject_note`) |
+| `converted_from` | Di invoice hasil konversi: invoice lama yang digantikan. Tampilkan label "Konversi 50% dari …" |
+| `converted_to` | Di invoice yang dikonversi: invoice penggantinya |
+
+### 11d. Debit note yang dibatalkan
+
+Debit note dengan status `cancelled` adalah status akhir. Edit, hapus, submit, approve, reject, dan input pembayaran ditolak dengan 409 `Debit note is cancelled`. Selama pengajuan pembatalan invoice yang memilih `cancel_debit_note: true` masih berjalan, input pembayaran debit note (`PATCH /api/debit-notes/paid/:id`) juga ditolak 409.
+
+## 12. Pesan error yang perlu ditangani
 
 | HTTP | Pesan                                                                 | Kapan                                                  |
 | ---- | --------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -766,17 +967,21 @@ PATCH /api/invoices/21/withholding-taxes/51/reject
 | 400  | `reject_type must be one of: tax, ct/po cancelled`                    | Jenis reject tidak valid                               |
 | 400  | `withholding_tax_receipt must be a non-empty array`                   | Upload bukti potong tanpa file                         |
 | 400  | `checklist must be an object`, `Every checklist item must be checked to accept; reject the receipt instead (unchecked: ...)` | Terima bukti potong dengan checklist tidak lengkap |
+| 400  | `checklist must contain every item (missing: ...)`, `checklist.<item>.checked must be a boolean`, `checklist.<item>.note must be a string` | Terima/tolak bukti potong dengan item checklist kurang atau salah format |
+| 400  | `checklist.<item>.note is required when the item is not checked`       | Tolak bukti potong, item `false` tanpa catatan         |
+| 400  | `At least one checklist item must be unchecked to reject; accept the receipt instead` | Tolak bukti potong padahal semua item sesuai |
 | 400  | `receipt_no is required`, `tax_period must use MM-YYYY format`, `receipt_date must be a valid date` | Data bukti potong tidak lengkap |
 | 400  | `wht_reject_attachment must be a non-empty array`                     | Tolak bukti potong tanpa screenshot                    |
 | 404  | `Withholding tax not found`                                           | `whtId` bukan milik invoice ini                        |
 | 409  | `Withholding tax receipt <aksi> is not allowed while the invoice is <status>` | Aksi bukti potong di status invoice yang salah |
 | 409  | `Withholding tax receipt cannot be <aksi> while it is <status>`       | Aksi di status bukti potong yang salah (misalnya upload saat masih dicek) |
-| 400  | `note is required to explain the revision`                            | Minta revisi tanpa alasan                              |
+| 400  | `date must be a valid date`, `due_date must be a valid date`, `note must be a string` | Edit draft dengan data tidak valid |
 | 400  | `revision_attachment must be a non-empty array`                       | Minta revisi tanpa bukti chat                          |
-| 400  | `tax_pph_23 must be a boolean` (atau `tax_pp_20`, `tax_pph_4_ayat_2`) | Nilai checkbox revisi bukan boolean                    |
+| 400  | `tax_ppn must be a boolean` (atau `tax_pph_23`, `tax_pp_20`, `tax_pph_4_ayat_2`) | Nilai checkbox revisi bukan boolean                    |
 | 403  | `You are not allowed to act on <fitur> with status "<status>"`        | User tidak terdaftar di approval flow status itu       |
 | 404  | `Invoice not found`                                                   | ID tidak ada                                           |
 | 409  | `Only a pending or rejected invoice can be edited; use the revision request after approval` | `PUT` saat invoice tidak `pending` / `rejected` |
+| 400  | `date must be a valid date`                                           | Edit draft dengan tanggal tidak valid                  |
 | 409  | `Submit is not allowed while the invoice is <status>`, `Reject is not allowed while the invoice is <status>` | Submit/reject di status yang salah (misalnya invoice `cancelled`) |
 | 409  | `Payment proof cannot be uploaded while the invoice is <status>`      | Upload bukti bayar di status yang salah (misalnya masih ada bukti yang sedang dicek) |
 | 409  | `Payment proof cannot be verified while the invoice is <status>`      | Terima/tolak di status yang salah                      |
@@ -786,6 +991,12 @@ PATCH /api/invoices/21/withholding-taxes/51/reject
 | 409  | `Final invoice and tax invoice have already been issued`              | Upload kedua kali                                      |
 | 409  | `Invoice cannot be revised after a payment has been accepted`         | Minta revisi setelah ada pembayaran diterima           |
 | 409  | `<aksi> is not allowed while the invoice is <status>`                 | Aksi revisi di status yang salah                       |
+| 400  | `type must be one of: cancel, convert`, `reason is required`, `cancellation_attachment must be a non-empty array` | Pengajuan pembatalan tidak lengkap |
+| 400  | `cancel_debit_note must be a boolean: the invoice has a debit note`  | Pengajuan pembatalan tanpa pilihan debit note          |
+| 409  | `Invoice cannot be cancelled after a payment proof was uploaded`, `Invoice cannot be cancelled after its tax invoice was requested`, `An invoice converted to 50% cannot be cancelled or converted again` | Syarat pengajuan pembatalan tidak terpenuhi |
+| 409  | `A paid debit note cannot be cancelled with the invoice`, `The debit note has been paid; it cannot be cancelled with the invoice` | Debit note sudah dibayar (saat mengajukan, atau dibayar sebelum Direktur approve) |
+| 409  | `Cancellation request is not allowed while the invoice is <status>`, `Approving the cancellation is not allowed ...`, `Rejecting the cancellation is not allowed ...` | Aksi pembatalan di status yang salah |
+| 409  | `Debit note is cancelled`, `Debit note cannot be paid while the cancellation of its invoice, which cancels the debit note too, is in process` | Aksi pada debit note yang dibatalkan / sedang diajukan batal |
 | 409  | `Action is not allowed from status "<status>"`                        | Aksi di status yang salah (pengecekan approval flow)   |
 
 Pesan error ada di field `message` pada response. Error 403 dan 409 dengan pesan `Action is not allowed ...` / `You are not allowed ...` berasal dari pengecekan approval flow dan baru memblokir setelah backend mengaktifkan `APPROVAL_ENFORCE`. Selama itu belum aktif, gunakan flag dari backend untuk menyembunyikan tombol.
@@ -804,5 +1015,9 @@ Pesan error ada di field `message` pada response. Error 403 dan 409 dengan pesan
 | Reject SPV selalu `rejected` (status akhir)                           | `reject_type`: `tax` → `rejected` (AR & AP edit + submit ulang), `ct/po cancelled` → `cancelled` (status akhir) |
 | Upload FP hanya nomor, tanggal, dan file FP                           | Wajib `file_final_invoice`; invoice menjadi Final (`is_final`, `final_at`). Invoice tanpa PPN juga diminta Final Invoice setelah bukti bayar diterima |
 | -                                                                     | Status baru `payment verification`, `payment proof rejected`, `revision requested`, `waiting for revision` |
+| `PUT /:id` (edit draft) menimpa hampir semua kolom yang dikirim, termasuk `invoice_services` | `PUT /:id` hanya mengubah `date`, `due_date`, `note`, dan 4 checkbox pajak; pajak dan `total` dihitung ulang backend (2026-11-18) |
+| Checklist bukti potong: tiap item boolean (`"dpp": true`); saat tolak opsional | Tiap item `{ "checked", "note" }`; saat tolak wajib 10 item, catatan wajib di item `false`, minimal satu `false` (2026-11-18) |
+| Tidak ada pembatalan invoice | `PATCH /cancellation-request/:id`, `/cancellation-approve/:id`, `/cancellation-reject/:id`: cancel atau konversi 50% lewat AR & AP, SPV, Direktur; status baru `cancellation requested` / `reviewed` / `verified`; debit note bisa ikut `cancelled` (2026-11-18) |
+| Revisi hanya mengubah PPh (`tax_pph_23`, `tax_pp_20`, `tax_pph_4_ayat_2`) | Revisi mengubah semua pajak, termasuk `tax_ppn` (2026-11-18). PPN dihapus → data FP dikosongkan; PPN ditambahkan ke invoice Final → upload ulang wajib membawa FP baru |
 
 Endpoint `/signing/:id`, `/waiting-for-payment/:id`, dan `/pay/:id` sudah dihapus dan akan mengembalikan 404.

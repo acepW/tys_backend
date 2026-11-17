@@ -141,7 +141,9 @@ module.exports = (sequelize) => {
         type: DataTypes.VIRTUAL(DataTypes.STRING, ["invoice_no"]),
         get() {
           const invoiceNo = this.getDataValue("invoice_no");
-          return invoiceNo ? `PRO-${invoiceNo}` : null;
+          if (!invoiceNo) return null;
+          // 006/INV/TYS/XI/2026 -> 006/PRO/INV/TYS/XI/2026
+          return invoiceNo.includes("/") ? invoiceNo.replace("/", "/PRO/") : `PRO/${invoiceNo}`;
         },
       },
       tax_ppn: {
@@ -283,11 +285,20 @@ module.exports = (sequelize) => {
           "wht rejected",
           "paid & clear",
           "cancelled",
+          "cancellation requested",
+          "cancellation reviewed",
+          "cancellation verified",
         ),
         allowNull: false,
         defaultValue: "pending",
         comment:
-          "Status of Invoice; rejected goes back to AR & AP for the tax, cancelled (CT/PO changed) is final; once paid off it follows the withholding tax receipts until paid & clear",
+          "Status of Invoice; rejected goes back to AR & AP for the tax, cancelled (CT/PO changed, or a cancellation approved by the director) is final; once paid off it follows the withholding tax receipts until paid & clear; a cancellation request waits for AR & AP (requested), SPV FAT Internal (reviewed) and the director (verified)",
+      },
+      id_invoice_converted_from: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "invoices", key: "id" },
+        comment: "Cancelled invoice this one replaces at 50% (conversion approved by the director)",
       },
       is_active: {
         type: DataTypes.BOOLEAN,
@@ -493,6 +504,25 @@ module.exports = (sequelize) => {
       constraints: false,
       scope: { fileable_type: "invoices", category: "file_final_invoice" },
       as: "file_final_invoice",
+    });
+
+    // Cancellation requests (cancel or convert to 50%) of the invoice
+    Invoice.hasMany(models.InvoiceCancellation, {
+      foreignKey: "id_invoice",
+      as: "cancellations",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // A converted invoice: the cancelled invoice it replaces, and from the other
+    // side the invoice that replaced it
+    Invoice.belongsTo(models.Invoice, {
+      foreignKey: "id_invoice_converted_from",
+      as: "converted_from",
+    });
+    Invoice.hasOne(models.Invoice, {
+      foreignKey: "id_invoice_converted_from",
+      as: "converted_to",
     });
 
     // Invoice belongs to Debit Note

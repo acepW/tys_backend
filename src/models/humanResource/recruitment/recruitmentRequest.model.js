@@ -2,12 +2,17 @@ const { DataTypes } = require("sequelize");
 const { approvalColumns, associate, tableOptions } = require("./common");
 
 // Approval chain of a candidate request: created straight to HR Staff, then
-// SPV/Manager HR -> Director -> approve; any stage can reject. A request from the HR
-// division starts at SPV/Manager HR. There is no draft/submit step.
+// SPV HR -> Manager HR -> Director -> approve. A request from the HR division
+// starts at SPV HR. A rejection sends it back to an earlier stage or to the
+// requester (returned to requester), who fixes it and submits it again. "reject"
+// (rejected for good) is only on requests from before 2026-11-18.
+const RETURNED_TO_REQUESTER = "returned to requester";
 const REQUEST_STATUSES = [
   "request hr staff",
-  "request spv/manager hr",
+  "request spv hr",
+  "request manager hr",
   "request director",
+  RETURNED_TO_REQUESTER,
   "approve",
   "reject",
 ];
@@ -22,6 +27,11 @@ module.exports = (sequelize) => {
     "RecruitmentRequest",
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+      request_no: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        comment: "REC-<company initial>-MM-YYYY-0001, set on create; null only for old requests without a company",
+      },
       id_company: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -58,8 +68,30 @@ module.exports = (sequelize) => {
         allowNull: true,
         comment: "Number of people to hire",
       },
-      job_requirement: { type: DataTypes.TEXT, allowNull: true },
+      current_division_member: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Current number of people in the division; required on create since 2026-11-18",
+      },
+      job_requirement: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Old single job requirement, split into hard_skill/soft_skill/other_requirement; kept for old rows",
+      },
+      hard_skill: { type: DataTypes.TEXT, allowNull: true, comment: "Job requirement: hard skill" },
+      soft_skill: { type: DataTypes.TEXT, allowNull: true, comment: "Job requirement: soft skill" },
+      other_requirement: { type: DataTypes.TEXT, allowNull: true, comment: "Job requirement: others" },
       job_description: { type: DataTypes.TEXT, allowNull: true },
+      salary_min: {
+        type: DataTypes.DECIMAL(15, 0),
+        allowNull: true,
+        comment: "Salary range from; set by the requester or SPV HR",
+      },
+      salary_max: {
+        type: DataTypes.DECIMAL(15, 0),
+        allowNull: true,
+        comment: "Salary range to; set by the requester or SPV HR",
+      },
       request_type: {
         type: DataTypes.ENUM(...REQUEST_TYPES),
         allowNull: true,
@@ -74,7 +106,7 @@ module.exports = (sequelize) => {
       },
       ...approvalColumns(REQUEST_STATUSES),
     },
-    tableOptions("recruitment_requests"),
+    tableOptions("recruitment_requests", [{ name: "idx_recruitment_request_no", fields: ["request_no"] }]),
   );
   RecruitmentRequest.associate = (models) => {
     associate(RecruitmentRequest, models, {});
@@ -96,5 +128,6 @@ module.exports = (sequelize) => {
 };
 
 module.exports.REQUEST_STATUSES = REQUEST_STATUSES;
+module.exports.RETURNED_TO_REQUESTER = RETURNED_TO_REQUESTER;
 module.exports.REQUEST_TYPES = REQUEST_TYPES;
 module.exports.HIRING_STATUSES = HIRING_STATUSES;

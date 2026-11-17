@@ -73,7 +73,7 @@ module.exports = (sequelize) => {
       checklist: {
         type: DataTypes.JSON,
         allowNull: true,
-        comment: "AR & AP verification checklist, one boolean per WHT_CHECKLIST item",
+        comment: "AR & AP verification checklist, { checked, note } per WHT_CHECKLIST item",
       },
       note: {
         type: DataTypes.TEXT,

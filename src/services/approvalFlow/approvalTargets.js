@@ -54,6 +54,9 @@ module.exports = {
       "paid waiting wht": "Upload Withholding Tax Receipt",
       "wht verification": "Verify Withholding Tax Receipt",
       "wht rejected": "Re-upload Withholding Tax Receipt",
+      "cancellation requested": "Approve / Reject Invoice Cancellation by AR & AP",
+      "cancellation reviewed": "Approve / Reject Invoice Cancellation by SPV FAT Internal",
+      "cancellation verified": "Approve / Reject Invoice Cancellation by Director",
     },
   },
   // The final invoice and tax invoice (faktur pajak) run beside the invoice's
@@ -132,23 +135,20 @@ module.exports = {
     },
   },
   // Recruitment modules: each document is created pending and approved or rejected.
-  // A request (candidate request) has no number; tasks show its id. It is created at
-  // "request hr staff", or "request spv/manager hr" from the HR division.
+  // A request (candidate request) is created at "request hr staff", or "request spv
+  // hr" from the HR division; a request returned to the requester waits for them,
+  // not for an approval flow. The candidate database has no approval since
+  // 2026-11-18, so it has no target.
   "recruitment request": {
     model: "RecruitmentRequest",
     label: "Recruitment Request",
-    numberField: "id",
+    numberField: "request_no",
     statuses: {
       "request hr staff": "Approve / Reject Recruitment Request by HR Staff",
-      "request spv/manager hr": "Approve / Reject Recruitment Request by SPV/Manager HR",
+      "request spv hr": "Approve / Reject Recruitment Request by SPV HR",
+      "request manager hr": "Approve / Reject Recruitment Request by Manager HR",
       "request director": "Approve / Reject Recruitment Request by Director",
     },
-  },
-  "recruitment candidate": {
-    model: "RecruitmentCandidate",
-    label: "Recruitment Candidate",
-    numberField: "name",
-    statuses: { pending: "Approve / Reject Recruitment Candidate" },
   },
   "recruitment hr interview": {
     model: "RecruitmentHrInterview",

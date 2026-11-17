@@ -171,6 +171,9 @@ Status dokumen berubah, jadi `is_can_approve_reject` dan `action_label` juga iku
 | `invoice`              | `payment proof rejected` | Re-upload Payment Proof Invoice               | Upload Payment    | `PATCH /invoices/upload-payment/:id`               |
 | `invoice`              | `revision requested`  | Revise Invoice Tax / Reject Revision Request     | Revise, Reject    | `PATCH /invoices/revise/:id`, `/revision-request-reject/:id` |
 | `invoice`              | `waiting for revision` | Approve / Reject Invoice Revision               | Approve, Reject   | `PATCH /invoices/revision-approve/:id`, `/revision-reject/:id` |
+| `invoice`              | `cancellation requested` | Approve / Reject Invoice Cancellation by AR & AP | Approve, Reject | `PATCH /invoices/cancellation-approve/:id`, `/cancellation-reject/:id` |
+| `invoice`              | `cancellation reviewed` | Approve / Reject Invoice Cancellation by SPV FAT Internal | Approve, Reject | `PATCH /invoices/cancellation-approve/:id`, `/cancellation-reject/:id` |
+| `invoice`              | `cancellation verified` | Approve / Reject Invoice Cancellation by Director | Approve, Reject | `PATCH /invoices/cancellation-approve/:id`, `/cancellation-reject/:id` |
 | `invoice tax invoice`  | `requested` (`tax_invoice_status`) | Upload Tax Invoice (FP)              | Upload FP         | `PATCH /invoices/tax-invoice/:id` (flag: `is_can_upload_tax_invoice`) |
 | `debit note`           | `pending`             | Submit Debit Note                                | Submit            | `PATCH /debit-notes/submit/:id`                    |
 | `debit note`           | `on verification`     | Approve / Reject Debit Note                      | Approve, Reject   | `PATCH /debit-notes/approve/:id`, `/reject/:id`    |

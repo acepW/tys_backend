@@ -8,6 +8,10 @@ const incomingInvoiceService = require("./incomingInvoice.service");
 const taxService = require("../masterTax/tax.service");
 const { WHT_CHECKLIST } = require("../../models/invoice/invoiceWithholdingTax.model");
 const {
+  CANCELLATION_TYPES,
+  OPEN_CANCELLATION_STATUSES,
+} = require("../../models/invoice/invoiceCancellation.model");
+const {
   fail,
   withTransactions,
   mirrorCreate,
@@ -48,13 +52,34 @@ const taxInvoiceRequestStatuses = [
   "waiting for revision",
   ...whtInvoiceStatuses,
 ];
-// A revision changes only the PPh; PPN stays so the tax invoice remains valid.
-const revisableTaxFlags = ["tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"];
+// A revision may change every tax (PPN since 2026-11-18); removing the PPN voids
+// the issued tax invoice, see approveRevision.
+const revisableTaxFlags = ["tax_ppn", "tax_pph_23", "tax_pp_20", "tax_pph_4_ayat_2"];
 // AR & AP edits and submits a draft, and an invoice SPV rejected for its tax.
 const editableStatuses = ["pending", "rejected"];
 // SPV rejection reasons: tax goes back to AR & AP; ct/po cancelled ends the
 // invoice and sales creates a new one from the changed CT/PO.
 const rejectTypes = ["tax", "ct/po cancelled"];
+// Cancellation request steps (FAT Internal point 6–6.3): invoice status -> who
+// approves it, the next invoice status and the cancellation row update. The
+// director's approval carries the cancel or conversion out.
+const cancellationSteps = {
+  "cancellation requested": {
+    role: "AR & AP",
+    next: "cancellation reviewed",
+    row: (idUser) => ({ status: "reviewed", id_user_review: idUser, reviewed_at: new Date() }),
+  },
+  "cancellation reviewed": {
+    role: "SPV FAT Internal",
+    next: "cancellation verified",
+    row: (idUser) => ({ status: "verified", id_user_verify: idUser, verified_at: new Date() }),
+  },
+  "cancellation verified": { role: "Director" },
+};
+const cancellationStatuses = Object.keys(cancellationSteps);
+// A conversion bills this share of the cancelled invoice.
+const CONVERSION_RATE = 0.5;
+const romanMonths = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 
 class InvoiceService extends DualDatabaseService {
   constructor() {
@@ -458,6 +483,38 @@ class InvoiceService extends DualDatabaseService {
             },
           ],
         },
+        {
+          model: dbModels.InvoiceCancellation,
+          as: "cancellations",
+          separate: true,
+          order: [["id", "ASC"]],
+          include: [
+            ...["user_request", "user_review", "user_verify", "user_approve", "user_reject"].map(
+              (as) => ({ model: dbModels.User, as, attributes: ["id", "name", "email"] }),
+            ),
+            {
+              model: dbModels.Invoice,
+              as: "invoice_new",
+              attributes: ["id", "invoice_no", "status"],
+            },
+            {
+              model: dbModels.File,
+              as: "cancellation_attachment",
+              required: false,
+              where: { is_active: true },
+            },
+          ],
+        },
+        {
+          model: dbModels.Invoice,
+          as: "converted_from",
+          attributes: ["id", "invoice_no", "status", "sub_total", "total"],
+        },
+        {
+          model: dbModels.Invoice,
+          as: "converted_to",
+          attributes: ["id", "invoice_no", "status", "sub_total", "total"],
+        },
       ],
     };
 
@@ -498,26 +555,7 @@ class InvoiceService extends DualDatabaseService {
       isDoubleDatabase,
     );
 
-    // 🔥 function bulan romawi
-    function getRomanMonth(month) {
-      const romans = [
-        "I",
-        "II",
-        "III",
-        "IV",
-        "V",
-        "VI",
-        "VII",
-        "VIII",
-        "IX",
-        "X",
-        "XI",
-        "XII",
-      ];
-      return romans[month - 1];
-    }
-
-    const bulanRomawi = getRomanMonth(month);
+    const bulanRomawi = romanMonths[month - 1];
 
     // 🔥 3. Merge + format nomor
     const result = dataCompany.map((company) => {
@@ -1310,110 +1348,68 @@ class InvoiceService extends DualDatabaseService {
     }
   }
   /**
-   * Update invoice with invoice services (create/update/delete)
-   * @param {Number} id - Invoice ID
-   * @param {Object} invoiceData - Invoice data to update
-   * @param {Array} invoiceServices - Invoice services data
-   * @param {Boolean} isDoubleDatabase
-   * @returns {Object} Updated invoice with all relations
+   * AR & AP edits a draft: only what the user sets on create, the invoice date,
+   * due date, note and the tax flags. The taxes and total are recalculated from
+   * sub_total with the active rates, as on create. Only a pending draft, or an
+   * invoice SPV rejected for its tax, can be edited; after approval use the
+   * revision flow.
+   * @param {Object} data - { date, due_date, note, tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2 }; a field left out keeps its value
    */
-  async updateWithRelations(
-    id,
-    invoiceData,
-    invoiceServices = [],
-    isDoubleDatabase = true,
-  ) {
-    let transaction1 = null;
-    let transaction2 = null;
+  async updateDraft(id, data, isDoubleDatabase = true) {
+    const isInvalidDate = (value) => Number.isNaN(new Date(value).getTime());
+    if (data.date !== undefined && (!data.date || isInvalidDate(data.date)))
+      fail("date must be a valid date");
+    // due_date is optional, as on create: null or "" clears it.
+    const dueDate = data.due_date === undefined ? undefined : data.due_date || null;
+    if (dueDate && isInvalidDate(dueDate)) fail("due_date must be a valid date");
+    if (data.note !== undefined && data.note !== null && typeof data.note !== "string")
+      fail("note must be a string");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoice(id, t1);
+      if (!editableStatuses.includes(invoice.status))
+        fail(
+          "Only a pending or rejected invoice can be edited; use the revision request after approval",
+          409,
+        );
+      const flags = this._taxFlags(data, invoice);
+      const { ppn, pph, pp_20, pph_4_ayat_2, total } = await taxService.calculate(
+        invoice.sub_total,
+        flags.tax_ppn,
+        flags.tax_pph_23,
+        t1,
+        flags.tax_pp_20,
+        flags.tax_pph_4_ayat_2,
+      );
+      await mirrorUpdate(
+        "Invoice",
+        invoice.id,
+        {
+          ...(data.date !== undefined && { date: data.date }),
+          ...(dueDate !== undefined && { due_date: dueDate }),
+          ...(data.note !== undefined && { note: data.note || "" }),
+          ...flags,
+          ppn,
+          pph,
+          pp_20,
+          pph_4_ayat_2,
+          total,
+        },
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
 
-    try {
-      if (isDoubleDatabase) {
-        transaction1 = await db1.transaction();
-        transaction2 = await db2.transaction();
-
-        console.log(`🔄 Updating Invoice ID ${id} with services...`);
-
-        // 1. Update Invoice in both databases
-        const [updatedRows1] = await this.Model1.update(invoiceData, {
-          where: { id },
-          transaction: transaction1,
-        });
-
-        const [updatedRows2] = await this.Model2.update(invoiceData, {
-          where: { id },
-          transaction: transaction2,
-        });
-
-        if (updatedRows1 === 0 && updatedRows2 === 0) {
-          throw new Error(`Invoice with ID ${id} not found`);
-        }
-
-        console.log(`✅ Updated Invoice in both databases`);
-
-        // 2. Sync Invoice Services (syncChildRecords handles create/update/delete)
-        const servicesData = invoiceServices.map((service) => ({
-          ...service,
-          id_invoice: id,
-        }));
-
-        const servicesResult = await syncChildRecords({
-          Model1: models.db1.InvoiceService,
-          Model2: models.db2.InvoiceService,
-          foreignKey: "id_invoice",
-          parentId: id,
-          newData: servicesData,
-          transaction1,
-          transaction2,
-          isDoubleDatabase,
-        });
-
-        console.log(`✅ Synced Invoice Services`);
-
-        await transaction1.commit();
-        await transaction2.commit();
-        console.log(`✅ Invoice with all relations successfully updated`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
-      } else {
-        // Single database (DB1 only)
-        transaction1 = await db1.transaction();
-
-        const [updatedRows] = await this.Model1.update(invoiceData, {
-          where: { id },
-          transaction: transaction1,
-        });
-
-        if (updatedRows === 0) {
-          throw new Error(`Invoice with ID ${id} not found`);
-        }
-
-        const servicesData = invoiceServices.map((service) => ({
-          ...service,
-          id_invoice: id,
-        }));
-
-        const servicesResult = await syncChildRecords({
-          Model1: models.db1.InvoiceService,
-          Model2: null,
-          foreignKey: "id_invoice",
-          parentId: id,
-          newData: servicesData,
-          transaction1,
-          transaction2: null,
-          isDoubleDatabase: false,
-        });
-
-        await transaction1.commit();
-        console.log(`✅ Invoice updated in DB1 only`);
-
-        return await this.getById(id, {}, isDoubleDatabase);
-      }
-    } catch (error) {
-      console.error(`❌ Error updating Invoice:`, error.message);
-      if (transaction1) await transaction1.rollback();
-      if (transaction2) await transaction2.rollback();
-      throw new Error(`Failed to update Invoice: ${error.message}`);
+  // The revisable tax flags from the body; a flag left out keeps the invoice value.
+  _taxFlags(data, invoice) {
+    const flags = {};
+    for (const key of revisableTaxFlags) {
+      const value = data[key] ?? invoice[key];
+      if (typeof value !== "boolean") fail(`${key} must be a boolean`);
+      flags[key] = value;
     }
+    return flags;
   }
 
   /**
@@ -1889,9 +1885,9 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
-   * Sales asks AR & AP to fix the invoice tax (e.g. a PPh the client reported
-   * late), with the client's chat as proof. The invoice and tax invoice numbers
-   * stay the same, so only an unpaid invoice can be revised.
+   * Sales asks AR & AP to fix the invoice tax, PPN or PPh (e.g. a PPh the client
+   * reported late), with the client's chat as proof. The invoice number stays the
+   * same, so only an unpaid invoice can be revised.
    */
   async requestRevision(id, data, idUser, isDoubleDatabase = true) {
     if (!data.note?.toString().trim())
@@ -1956,10 +1952,10 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
-   * AR & AP changes the PPh flags and recalculates the deductions and total, then
-   * SPV FAT Internal reviews it. PPN is kept as it is, so the tax invoice (FP)
-   * number and amount stay valid.
-   * @param {Object} data - { tax_pph_23, tax_pp_20, tax_pph_4_ayat_2, note }; a flag left out keeps its value
+   * AR & AP changes the tax flags (PPN and PPh) and recalculates the taxes and
+   * total, then SPV FAT Internal reviews it. The PPN amount is recalculated only
+   * when the PPN flag changes, so an unchanged PPN keeps matching the tax invoice.
+   * @param {Object} data - { tax_ppn, tax_pph_23, tax_pp_20, tax_pph_4_ayat_2, note }; a flag left out keeps its value
    */
   async reviseInvoice(id, data, idUser, isDoubleDatabase = true) {
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
@@ -1969,31 +1965,26 @@ class InvoiceService extends DualDatabaseService {
         "Revision",
         t1,
       );
-      const flags = {};
-      for (const key of revisableTaxFlags) {
-        const value = data[key] ?? invoice[key];
-        if (typeof value !== "boolean") fail(`${key} must be a boolean`);
-        flags[key] = value;
-      }
-      const { pph, pp_20, pph_4_ayat_2 } = await taxService.calculate(
+      const flags = this._taxFlags(data, invoice);
+      const ppnChanged = flags.tax_ppn !== invoice.tax_ppn;
+      const calculated = await taxService.calculate(
         invoice.sub_total,
-        false,
+        ppnChanged && flags.tax_ppn,
         flags.tax_pph_23,
         t1,
         flags.tax_pp_20,
         flags.tax_pph_4_ayat_2,
       );
+      const { pph, pp_20, pph_4_ayat_2 } = calculated;
+      const ppn = ppnChanged ? calculated.ppn : Number(invoice.ppn);
       const total =
-        Number(invoice.sub_total) +
-        Number(invoice.ppn) -
-        pph -
-        pp_20 -
-        pph_4_ayat_2;
+        Number(invoice.sub_total) + ppn - pph - pp_20 - pph_4_ayat_2;
       await mirrorUpdate(
         "Invoice",
         invoice.id,
         {
           ...flags,
+          ppn,
           pph,
           pp_20,
           pph_4_ayat_2,
@@ -2018,7 +2009,10 @@ class InvoiceService extends DualDatabaseService {
   /**
    * SPV FAT Internal approves the revised invoice (no file is uploaded), and it
    * goes back to waiting for payment. A final invoice already issued shows the old
-   * total, so AR & AP must upload it again; the tax invoice (PPN) stays valid.
+   * total, so AR & AP must upload it again. The tax invoice stays valid unless the
+   * PPN was removed: then its number, date and files are cleared (the number stays
+   * in the progress history). A PPN added to a final invoice has no tax invoice
+   * yet, so the re-upload must bring a new one.
    */
   async approveRevision(id, note, idUser, isDoubleDatabase = true) {
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
@@ -2028,21 +2022,48 @@ class InvoiceService extends DualDatabaseService {
         "Approving the revision",
         t1,
       );
+      const voidedTaxInvoiceNo = invoice.tax_invoice_no;
+      const voidsTaxInvoice =
+        !invoice.tax_ppn && !!(invoice.tax_invoice_no || invoice.tax_invoice_date);
+      const needsNewTaxInvoice = invoice.tax_ppn && !invoice.tax_invoice_no;
+      // Not final yet: a tax invoice requested by sales is no longer needed
+      // without PPN; the final invoice is requested on the first accepted payment.
+      let taxInvoiceStatus;
+      if (invoice.is_final) taxInvoiceStatus = "requested";
+      else if (!invoice.tax_ppn && invoice.tax_invoice_status === "requested")
+        taxInvoiceStatus = "none";
       await mirrorUpdate(
         "Invoice",
         invoice.id,
         {
           status: "waiting for payment",
-          ...(invoice.is_final && { tax_invoice_status: "requested" }),
+          ...(taxInvoiceStatus && { tax_invoice_status: taxInvoiceStatus }),
+          ...(voidsTaxInvoice && { tax_invoice_no: null, tax_invoice_date: null }),
         },
         t1,
         t2,
       );
+      if (voidsTaxInvoice)
+        await syncFiles(
+          "invoices",
+          invoice.id,
+          "tax_invoice_attachment",
+          [],
+          idUser,
+          t1,
+          t2,
+        );
       await this._addProgress(
         invoice.id,
         idUser,
         "revision approved",
-        note || "Invoice revision approved",
+        [
+          note || "Invoice revision approved",
+          voidsTaxInvoice &&
+            `tax invoice ${voidedTaxInvoiceNo || ""} voided because PPN was removed`,
+        ]
+          .filter(Boolean)
+          .join("; "),
         t1,
         t2,
       );
@@ -2051,7 +2072,9 @@ class InvoiceService extends DualDatabaseService {
           invoice.id,
           idUser,
           "final invoice requested",
-          "Final invoice must be uploaded again after the revision",
+          needsNewTaxInvoice
+            ?"Final invoice and a new tax invoice must be uploaded after the revision"
+            : "Final invoice must be uploaded again after the revision",
           t1,
           t2,
         );
@@ -2074,6 +2097,393 @@ class InvoiceService extends DualDatabaseService {
       idUser,
       isDoubleDatabase,
     );
+  }
+
+  /**
+   * Sales asks to cancel an unpaid proforma invoice, or to convert it to 50%
+   * (FAT Internal point 6). Only while waiting for payment, before any payment
+   * proof is uploaded and before the tax invoice is requested, and not for an
+   * invoice that is itself a conversion. AR & AP, SPV FAT Internal and the
+   * director approve it in turn; nothing changes until the director approves.
+   * @param {Object} data - { type: cancel|convert, reason, cancellation_attachment (files), cancel_debit_note }
+   */
+  async requestCancellation(id, data, idUser, isDoubleDatabase = true) {
+    if (!CANCELLATION_TYPES.includes(data.type))
+      fail(`type must be one of: ${CANCELLATION_TYPES.join(", ")}`);
+    const reason = data.reason?.toString().trim();
+    if (!reason) fail("reason is required");
+    if (
+      !Array.isArray(data.cancellation_attachment) ||
+      !data.cancellation_attachment.length
+    )
+      fail("cancellation_attachment must be a non-empty array");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const invoice = await this._lockInvoiceIn(
+        id,
+        ["waiting for payment"],
+        "Cancellation request",
+        t1,
+      );
+      if (invoice.id_invoice_converted_from)
+        fail("An invoice converted to 50% cannot be cancelled or converted again", 409);
+      if (invoice.tax_invoice_status !== "none")
+        fail("Invoice cannot be cancelled after its tax invoice was requested", 409);
+      const payments = await models.db1.InvoicePayment.count({
+        where: { id_invoice: invoice.id },
+        transaction: t1,
+      });
+      if (payments)
+        fail("Invoice cannot be cancelled after a payment proof was uploaded", 409);
+      const cancelDebitNote = await this._cancelDebitNoteChoice(
+        invoice,
+        data.cancel_debit_note,
+        t1,
+      );
+      const cancellation = await mirrorCreate(
+        "InvoiceCancellation",
+        {
+          id_invoice: invoice.id,
+          type: data.type,
+          reason,
+          cancel_debit_note: cancelDebitNote,
+          status: "requested",
+          id_user_request: idUser,
+        },
+        t1,
+        t2,
+      );
+      await syncFiles(
+        "invoice_cancellations",
+        cancellation.id,
+        "cancellation_attachment",
+        data.cancellation_attachment,
+        idUser,
+        t1,
+        t2,
+      );
+      await mirrorUpdate("Invoice", invoice.id, { status: "cancellation requested" }, t1, t2);
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "cancellation requested",
+        `${data.type === "convert" ? "Conversion to 50%" : "Cancellation"} requested${
+          cancelDebitNote ? " with the debit note" : ""
+        }: ${reason}`,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * Approves the cancellation request at its current step: AR & AP, then SPV FAT
+   * Internal, then the director. The director's approval cancels the invoice;
+   * a conversion also creates its replacement invoice of 50%, waiting for
+   * payment, with the next invoice number. The debit note is cancelled too when
+   * sales chose so.
+   */
+  async approveCancellation(id, note, idUser, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const { invoice, cancellation } = await this._lockCancellation(
+        id,
+        "Approving the cancellation",
+        t1,
+      );
+      const step = cancellationSteps[invoice.status];
+      if (step.next) {
+        await mirrorUpdate("InvoiceCancellation", cancellation.id, step.row(idUser), t1, t2);
+        await mirrorUpdate("Invoice", invoice.id, { status: step.next }, t1, t2);
+        await this._addProgress(
+          invoice.id,
+          idUser,
+          step.next,
+          note || `Cancellation approved by ${step.role}`,
+          t1,
+          t2,
+        );
+        return;
+      }
+      const newInvoice =
+        cancellation.type === "convert"
+          ? await this._convertInvoice(invoice, cancellation, idUser, t1, t2)
+          : null;
+      if (cancellation.cancel_debit_note)
+        await this._cancelDebitNote(invoice, idUser, t1, t2);
+      await mirrorUpdate(
+        "InvoiceCancellation",
+        cancellation.id,
+        {
+          status: "approved",
+          id_user_approve: idUser,
+          approved_at: new Date(),
+          id_invoice_new: newInvoice?.id ?? null,
+        },
+        t1,
+        t2,
+      );
+      await mirrorUpdate("Invoice", invoice.id, { status: "cancelled" }, t1, t2);
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        newInvoice ? "converted" : "cancelled",
+        [
+          note,
+          newInvoice
+            ? `Converted to 50%, replaced by invoice ${newInvoice.invoice_no}`
+            : "Cancellation approved by Director",
+          cancellation.cancel_debit_note && "debit note cancelled",
+        ]
+          .filter(Boolean)
+          .join("; "),
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /** Rejects the cancellation request at its current step; the invoice waits for payment again. */
+  async rejectCancellation(id, note, idUser, isDoubleDatabase = true) {
+    if (!note?.toString().trim()) fail("note is required for rejection");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const { invoice, cancellation } = await this._lockCancellation(
+        id,
+        "Rejecting the cancellation",
+        t1,
+      );
+      const { role } = cancellationSteps[invoice.status];
+      await mirrorUpdate(
+        "InvoiceCancellation",
+        cancellation.id,
+        {
+          status: "rejected",
+          reject_note: note,
+          id_user_reject: idUser,
+          rejected_at: new Date(),
+        },
+        t1,
+        t2,
+      );
+      await mirrorUpdate("Invoice", invoice.id, { status: "waiting for payment" }, t1, t2);
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        "cancellation rejected",
+        `Rejected by ${role}: ${note}`,
+        t1,
+        t2,
+      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  // Locks the invoice in a cancellation step and its open cancellation request.
+  async _lockCancellation(id, action, t1) {
+    const invoice = await this._lockInvoiceIn(id, cancellationStatuses, action, t1);
+    const cancellation = await models.db1.InvoiceCancellation.findOne({
+      where: { id_invoice: invoice.id, status: OPEN_CANCELLATION_STATUSES },
+      order: [["id", "DESC"]],
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+    if (!cancellation) fail("No cancellation request is in process", 409);
+    return { invoice, cancellation };
+  }
+
+  // Whether the linked debit note is cancelled too. Sales must choose when the
+  // invoice has an active debit note; a paid one cannot be cancelled in this flow.
+  async _cancelDebitNoteChoice(invoice, choice, t1) {
+    if (!invoice.id_debit_note) return false;
+    const debitNote = await models.db1.DebitNote.findOne({
+      where: { id: invoice.id_debit_note, is_active: true },
+      transaction: t1,
+    });
+    if (!debitNote || debitNote.status === "cancelled") return false;
+    if (typeof choice !== "boolean")
+      fail("cancel_debit_note must be a boolean: the invoice has a debit note");
+    if (choice && debitNote.status === "paid")
+      fail("A paid debit note cannot be cancelled with the invoice", 409);
+    return choice;
+  }
+
+  async _cancelDebitNote(invoice, idUser, t1, t2) {
+    const debitNote = await models.db1.DebitNote.findOne({
+      where: { id: invoice.id_debit_note },
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+    if (!debitNote || debitNote.status === "cancelled") return;
+    if (debitNote.status === "paid")
+      fail("The debit note has been paid; it cannot be cancelled with the invoice", 409);
+    await mirrorUpdate("DebitNote", debitNote.id, { status: "cancelled" }, t1, t2);
+    await mirrorCreate(
+      "DebitNoteVerificationProgress",
+      {
+        id_debit_note: debitNote.id,
+        id_user: idUser,
+        status: "cancelled",
+        note: `Cancelled with invoice ${invoice.invoice_no}`,
+      },
+      t1,
+      t2,
+    );
+  }
+
+  /**
+   * Creates the invoice of 50% that replaces a converted one: same source,
+   * customer and taxes, half the sub total with the taxes recalculated at the
+   * active rates, the next invoice number and the same days until due. It is a
+   * proforma waiting for payment, as the director already approved it.
+   */
+  async _convertInvoice(invoice, cancellation, idUser, t1, t2) {
+    const now = new Date();
+    const subTotal = Math.round(Number(invoice.sub_total) * CONVERSION_RATE);
+    const { ppn, pph, pp_20, pph_4_ayat_2, total } = await taxService.calculate(
+      subTotal,
+      invoice.tax_ppn,
+      invoice.tax_pph_23,
+      t1,
+      invoice.tax_pp_20,
+      invoice.tax_pph_4_ayat_2,
+    );
+    const dueDate = invoice.due_date
+      ? new Date(now.getTime() + (new Date(invoice.due_date) - new Date(invoice.date)))
+      : null;
+    const created = await this._sharedCreate(
+      "Invoice",
+      {
+        source_type: invoice.source_type,
+        id_quotation: invoice.id_quotation,
+        id_contract: invoice.id_contract,
+        id_pre_order: invoice.id_pre_order,
+        id_contract_payment: invoice.id_contract_payment,
+        id_pre_order_payment: invoice.id_pre_order_payment,
+        id_company: invoice.id_company,
+        id_customer: invoice.id_customer,
+        // A debit note left active follows the invoice that is still billed.
+        id_debit_note: cancellation.cancel_debit_note ? null : invoice.id_debit_note,
+        id_user_create: idUser,
+        id_user_approve: idUser,
+        currency_type: invoice.currency_type,
+        date: now,
+        due_date: dueDate,
+        invoice_no: await this._nextInvoiceNo(invoice.id_company, now, t1),
+        tax_ppn: invoice.tax_ppn,
+        tax_pph_23: invoice.tax_pph_23,
+        tax_pp_20: invoice.tax_pp_20,
+        tax_pph_4_ayat_2: invoice.tax_pph_4_ayat_2,
+        sub_total: subTotal,
+        ppn,
+        pph,
+        pp_20,
+        pph_4_ayat_2,
+        total,
+        note: `Converted to 50% from invoice ${invoice.invoice_no}`,
+        status: "waiting for payment",
+        tax_invoice_status: "none",
+        is_final: false,
+        id_invoice_converted_from: invoice.id,
+        is_active: true,
+      },
+      t1,
+      t2,
+    );
+    await this._copyServicesAtRate(invoice, created.id, subTotal, t1, t2);
+    await this._addProgress(
+      created.id,
+      idUser,
+      "created",
+      `Converted to 50% from invoice ${invoice.invoice_no}, approved by Director`,
+      t1,
+      t2,
+    );
+    return created;
+  }
+
+  // Copies the service lines at CONVERSION_RATE; the rounding difference goes to
+  // the last line so the lines add up to the new sub total.
+  async _copyServicesAtRate(invoice, idInvoiceNew, subTotal, t1, t2) {
+    const lines = await models.db1.InvoiceService.findAll({
+      where: { id_invoice: invoice.id, is_active: true },
+      order: [["id", "ASC"]],
+      transaction: t1,
+    });
+    const billed = invoice.currency_type === "rmb" ? "total_price_rmb" : "total_price_idr";
+    const totals = {};
+    for (const field of ["total_price_idr", "total_price_rmb"]) {
+      const target =
+        field === billed
+          ? subTotal
+          : Math.round(
+              lines.reduce((sum, line) => sum + Number(line[field] || 0), 0) *
+                CONVERSION_RATE,
+            );
+      let assigned = 0;
+      totals[field] = lines.map((line, index) => {
+        const value =
+          index === lines.length - 1
+            ? target - assigned
+            : Math.round(Number(line[field] || 0) * CONVERSION_RATE);
+        assigned += value;
+        return value;
+      });
+    }
+    for (const [index, line] of lines.entries()) {
+      const qty = Number(line.qty) || 1;
+      const totalIdr = totals.total_price_idr[index];
+      const totalRmb = totals.total_price_rmb[index];
+      await this._sharedCreate(
+        "InvoiceService",
+        {
+          id_invoice: idInvoiceNew,
+          id_quotation_service: line.id_quotation_service,
+          product_name_indo: line.product_name_indo,
+          product_name_mandarin: line.product_name_mandarin,
+          price_idr: Math.round(totalIdr / qty),
+          price_rmb: Math.round(totalRmb / qty),
+          qty: line.qty,
+          total_price_idr: totalIdr,
+          total_price_rmb: totalRmb,
+          payment_type: line.payment_type,
+          is_active: true,
+        },
+        t1,
+        t2,
+      );
+    }
+  }
+
+  // Next invoice number of the company, as GET /invoices/no/documents gives it.
+  async _nextInvoiceNo(idCompany, now, t1) {
+    const year = now.getFullYear();
+    const total = await models.db1.Invoice.count({
+      where: {
+        id_company: idCompany,
+        is_active: true,
+        createdAt: {
+          [Op.gte]: new Date(`${year}-01-01`),
+          [Op.lt]: new Date(`${year + 1}-01-01`),
+        },
+      },
+      transaction: t1,
+    });
+    const company = await models.db1.Company.findByPk(idCompany, {
+      attributes: ["initial_company"],
+      transaction: t1,
+    });
+    const initial = company?.initial_company?.toUpperCase() || "-";
+    return `${String(total + 1).padStart(3, "0")}/INV/${initial}/${romanMonths[now.getMonth()]}/${year}`;
+  }
+
+  // Creates a row in both databases with the same id, which neither has used yet.
+  async _sharedCreate(modelName, data, t1, t2) {
+    const row = { ...data };
+    if (t2)
+      row.id = await this._nextSharedId(models.db1[modelName], models.db2[modelName], t1, t2);
+    const created = await models.db1[modelName].create(row, { transaction: t1 });
+    if (t2) await models.db2[modelName].create(row, { transaction: t2 });
+    return created;
   }
 
   // Locks the invoice, checks it is in one of `from`, moves it to `to` and logs progress.
@@ -2138,10 +2548,8 @@ class InvoiceService extends DualDatabaseService {
    * @param {Object} data - { checklist, receipt_no, tax_period, receipt_date, note }
    */
   async acceptWithholdingTax(id, whtId, data, idUser, isDoubleDatabase = true) {
-    const checklist = data.checklist;
-    if (!checklist || typeof checklist !== "object" || Array.isArray(checklist))
-      fail("checklist must be an object");
-    const unchecked = WHT_CHECKLIST.filter((item) => checklist[item] !== true);
+    const checklist = this._whtChecklist(data.checklist, { requireNotes: false });
+    const unchecked =WHT_CHECKLIST.filter((item) => !checklist[item].checked);
     if (unchecked.length)
       fail(
         `Every checklist item must be checked to accept; reject the receipt instead (unchecked: ${unchecked.join(", ")})`,
@@ -2168,7 +2576,7 @@ class InvoiceService extends DualDatabaseService {
           receipt_no: data.receipt_no.toString().trim(),
           tax_period: data.tax_period,
           receipt_date: data.receipt_date,
-          checklist: Object.fromEntries(WHT_CHECKLIST.map((item) => [item, true])),
+          checklist,
           id_user_verify: idUser,
           verified_at: new Date(),
         },
@@ -2199,8 +2607,38 @@ class InvoiceService extends DualDatabaseService {
   }
 
   /**
-   * AR & AP rejects a withholding tax receipt with a comment and at least one
-   * screenshot of the problem; sales asks the client for a corrected one.
+   * Validates the AR & AP checklist: every WHT_CHECKLIST item as
+   * { checked, note }, with a note on each unchecked item. A bare boolean is
+   * still taken as { checked, note: "" } (the format before 2026-11-18).
+   * Accepting skips the note rule, as any unchecked item already blocks it.
+   * @returns {Object} { [item]: { checked, note } } as stored
+   */
+  _whtChecklist(input, { requireNotes = true } = {}) {
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      fail("checklist must be an object");
+    const missing = WHT_CHECKLIST.filter((item) => input[item] === undefined);
+    if (missing.length)
+      fail(`checklist must contain every item (missing: ${missing.join(", ")})`);
+    return Object.fromEntries(
+      WHT_CHECKLIST.map((item) => {
+        const value =
+          typeof input[item] === "boolean" ? { checked: input[item] } : input[item];
+        if (typeof value?.checked !== "boolean")
+          fail(`checklist.${item}.checked must be a boolean`);
+        if (value.note != null && typeof value.note !== "string")
+          fail(`checklist.${item}.note must be a string`);
+        const note = value.note?.trim() || "";
+        if (requireNotes && !value.checked && !note)
+          fail(`checklist.${item}.note is required when the item is not checked`);
+        return [item, { checked: value.checked, note }];
+      }),
+    );
+  }
+
+  /**
+   * AR & AP rejects a withholding tax receipt with a comment, at least one
+   * screenshot of the problem and the full checklist showing which items failed;
+   * sales asks the client for a corrected one.
    * @param {Object} data - { note, wht_reject_attachment (files), checklist }
    */
   async rejectWithholdingTax(id, whtId, data, idUser, isDoubleDatabase = true) {
@@ -2210,6 +2648,9 @@ class InvoiceService extends DualDatabaseService {
       !data.wht_reject_attachment.length
     )
       fail("wht_reject_attachment must be a non-empty array");
+    const checklist = this._whtChecklist(data.checklist);
+    if (WHT_CHECKLIST.every((item) => checklist[item].checked))
+      fail("At least one checklist item must be unchecked to reject; accept the receipt instead");
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const { invoice, taxes, tax } = await this._lockWithholdingTax(
         id,
@@ -2225,13 +2666,7 @@ class InvoiceService extends DualDatabaseService {
         {
           status: "rejected",
           note_reject: data.note,
-          // The checklist AR & AP filled in, if any, shows which items failed.
-          ...(data.checklist &&
-            typeof data.checklist === "object" && {
-              checklist: Object.fromEntries(
-                WHT_CHECKLIST.map((item) => [item, data.checklist[item] === true]),
-              ),
-            }),
+          checklist,
           id_user_verify: idUser,
           verified_at: new Date(),
         },
@@ -2349,3 +2784,4 @@ module.exports.taxInvoiceRequestStatuses = taxInvoiceRequestStatuses;
 module.exports.editableStatuses = editableStatuses;
 module.exports.rejectTypes = rejectTypes;
 module.exports.whtUploadStatuses = whtUploadStatuses;
+module.exports.cancellationStatuses = cancellationStatuses;

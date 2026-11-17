@@ -10,6 +10,18 @@ module.exports = (sequelize) => {
         autoIncrement: true,
         comment: "Primary key for customer",
       },
+      id_company: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: { model: "companies", key: "id" },
+        comment: "Company the customer belongs to; its initial is part of customer_code",
+      },
+      customer_code: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
+        comment:
+          "C-<company initial>-<YYYY>-<MM><sequence>, set on create; the sequence per company initial never resets",
+      },
       customer_type: {
         type: DataTypes.ENUM("company", "personal"),
         allowNull: false,
@@ -170,6 +182,15 @@ module.exports = (sequelize) => {
           name: "idx_is_active",
           fields: ["is_active"],
         },
+        {
+          name: "uq_customer_code",
+          unique: true,
+          fields: ["customer_code"],
+        },
+        {
+          name: "idx_customer_company",
+          fields: ["id_company"],
+        },
       ],
     },
   );
@@ -178,6 +199,14 @@ module.exports = (sequelize) => {
   Customer.associate = (models) => {
     // Contoh: Customer dapat memiliki relasi dengan Order, dll
     // Customer.hasMany(models.Order, { ... });
+
+    // Customer belongs to the company whose initial is in its code
+    Customer.belongsTo(models.Company, {
+      foreignKey: "id_company",
+      as: "company",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     // Customer has many File
     Customer.hasMany(models.File, {

@@ -7,6 +7,7 @@ const { authenticate, authorize } = require("../middleware/auth.middleware");
 router.get("/", authenticate, customerController.getAll);
 router.get("/active", authenticate, customerController.getActive);
 router.get("/search", authenticate, customerController.search);
+router.get("/next-customer-code", authenticate, customerController.getNextCustomerCodes);
 router.get("/:id", authenticate, customerController.getById);
 
 // POST routes

@@ -2,6 +2,15 @@ const { Op } = require("sequelize");
 const DualDatabaseService = require("./dualDatabase.service");
 const { models, db1, db2 } = require("../models");
 const fileService = require("./file.service");
+const { getNextCustomerCode } = require("../utils/customerCode");
+
+const fail = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  throw error;
+};
+// Escapes LIKE wildcards so a company initial is matched literally.
+const likeLiteral = (value) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
 
 class CustomerService extends DualDatabaseService {
   constructor() {
@@ -39,6 +48,11 @@ class CustomerService extends DualDatabaseService {
           as: "customer_documents",
           required: false,
           where: { is_active: true },
+        },
+        {
+          model: dbModels.Company,
+          as: "company",
+          attributes: ["id", "company_name", "initial_company"],
         },
       ],
       order: [["createdAt", "DESC"]],
@@ -80,6 +94,11 @@ class CustomerService extends DualDatabaseService {
           required: false,
           where: { is_active: true },
         },
+        {
+          model: dbModels.Company,
+          as: "company",
+          attributes: ["id", "company_name", "initial_company"],
+        },
       ],
     };
 
@@ -87,19 +106,77 @@ class CustomerService extends DualDatabaseService {
   }
 
   /**
-   * Search customers by company name (indo)
+   * Search customers by company name (indo) or customer code
    */
   async searchByCompanyName(searchTerm, isDoubleDatabase = true) {
+    const pattern = `%${searchTerm}%`;
     const options = {
       where: {
-        company_name_indo: {
-          [Op.like]: `%${searchTerm}%`,
-        },
+        [Op.or]: [
+          { company_name_indo: { [Op.like]: pattern } },
+          { customer_code: { [Op.like]: pattern } },
+        ],
       },
       order: [["company_name_indo", "ASC"]],
     };
 
     return await this.findAll(options, isDoubleDatabase);
+  }
+
+  /**
+   * Next customer code of every company, for the create form. The code is
+   * assigned again when the customer is saved, so it may move on if someone
+   * else saves a customer of the same company first. Deleted customers keep
+   * their code, so they still count.
+   */
+  async getNextCustomerCodes() {
+    const [companies, customers] = await Promise.all([
+      models.db1.Company.findAll({
+        attributes: ["id", "company_name", "initial_company"],
+        raw: true,
+      }),
+      models.db1.Customer.findAll({ attributes: ["customer_code"], raw: true }),
+    ]);
+    const codes = customers.map((customer) => customer.customer_code);
+    return companies.map((company) => {
+      const initial = String(company.initial_company || "-").trim().toUpperCase();
+      return {
+        id_company: company.id,
+        company_name: company.company_name,
+        initial_company: initial,
+        ...getNextCustomerCode(initial, codes),
+      };
+    });
+  }
+
+  // The active company a new customer belongs to; its initial goes in the code.
+  async _companyForCode(idCompany, t1) {
+    const id = Number(idCompany);
+    if (!Number.isInteger(id) || id <= 0) fail("id_company is required");
+    const company = await models.db1.Company.findOne({
+      where: { id, is_active: true },
+      attributes: ["id", "initial_company"],
+      transaction: t1,
+    });
+    if (!company) fail("Company not found", 404);
+    const initial = String(company.initial_company || "").trim().toUpperCase();
+    if (!initial) fail("The company has no initial for the customer code");
+    return { id, initial };
+  }
+
+  // Next code of the company initial, read under lock in the create transaction.
+  async _nextCustomerCode(initial, t1) {
+    const customers = await models.db1.Customer.findAll({
+      attributes: ["customer_code"],
+      where: { customer_code: { [Op.like]: `C-${likeLiteral(initial)}-%` } },
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+      raw: true,
+    });
+    return getNextCustomerCode(
+      initial,
+      customers.map((customer) => customer.customer_code),
+    ).customer_code;
   }
 
   /**
@@ -120,6 +197,8 @@ class CustomerService extends DualDatabaseService {
    * Build customer payload from raw request body.
    * @param {Object} body
    * @param {Boolean} isUpdate - if true, only include fields explicitly provided
+   * id_company and customer_code are not in the list: both are set once on create
+   * and never changed.
    */
   _buildCustomerData(body, isUpdate = false) {
     const fields = [
@@ -193,10 +272,18 @@ class CustomerService extends DualDatabaseService {
     let transaction1 = null;
     let transaction2 = null;
 
+    // The company is picked by the user; the code is assigned here, never sent.
+    const assignCode = async () => {
+      const company = await this._companyForCode(body.id_company, transaction1);
+      dataToCreate.id_company = company.id;
+      dataToCreate.customer_code = await this._nextCustomerCode(company.initial, transaction1);
+    };
+
     try {
       if (isDoubleDatabase) {
         transaction1 = await db1.transaction();
         transaction2 = await db2.transaction();
+        await assignCode();
 
         console.log(`🔄 Creating Customer with relations in both databases...`);
 
@@ -231,6 +318,7 @@ class CustomerService extends DualDatabaseService {
         return customer1.toJSON();
       } else {
         transaction1 = await db1.transaction();
+        await assignCode();
 
         const customer = await this.Model1.create(dataToCreate, {
           transaction: transaction1,
@@ -258,7 +346,12 @@ class CustomerService extends DualDatabaseService {
       console.error(`❌ Error creating Customer:`, error.message);
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
-      throw new Error(`Failed to create Customer: ${error.message}`);
+      // Another customer of the same company took the code first (unique index).
+      if (error.name === "SequelizeUniqueConstraintError")
+        fail("Customer code was just used by another customer; please save again", 409);
+      const wrapped = new Error(`Failed to create Customer: ${error.message}`);
+      wrapped.statusCode = error.statusCode;
+      throw wrapped;
     }
   }
 

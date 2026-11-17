@@ -110,6 +110,18 @@ class CustomerController {
         201,
       );
     } catch (error) {
+      return errorResponse(res, error.message, error.statusCode || 500);
+    }
+  }
+
+  /**
+   * Next customer code of every company, for the create form
+   */
+  async getNextCustomerCodes(req, res) {
+    try {
+      const result = await customerService.getNextCustomerCodes();
+      return successResponse(res, result, "Next customer codes retrieved successfully");
+    } catch (error) {
       return errorResponse(res, error.message);
     }
   }

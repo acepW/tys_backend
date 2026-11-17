@@ -50,6 +50,11 @@ const check = {
     const value = Number(data[key]);
     if (!Number.isInteger(value) || value <= 0) fail(`${key} must be a positive integer`);
   },
+  nonNegativeInteger(data, key) {
+    if (data[key] == null || data[key] === "") return;
+    const value = Number(data[key]);
+    if (!Number.isInteger(value) || value < 0) fail(`${key} must be a whole number of 0 or more`);
+  },
   amount(data, key) {
     if (data[key] == null || data[key] === "") return;
     const amount = Number(data[key]);
@@ -82,10 +87,15 @@ const revisionValue = (value) => (value == null || value === "" ? null : String(
  *   prepare(data, existing, t1)    validates and completes data before it is saved
  *   afterSave(doc, input, userId, t1, t2)   side effects after create/edit
  *   editableStatuses   statuses that may be edited (null = any)
+ *   withoutApproval    the document has no status and is never approved or rejected
+ *   validateInput(input, existing)   checks the raw body (e.g. required files)
+ *   checkEdit(existing, data, userId)   per-status edit rules; may drop fields from data
  *   initialStatus(data, userId, t1)   status on create (default "pending")
- *   approvalStages     { status: { by, next } }: each status waiting for an approver,
- *                      who acts as `by`; approve moves to `next`, reject to "reject".
- *                      Without it, only "pending" can be approved or rejected.
+ *   approvalStages     { status: { by, next, rejectTo } }: each status waiting for an
+ *                      approver, who acts as `by`; approve moves to `next`. reject moves
+ *                      to "reject", or with rejectTo ({ target: status }) to the status
+ *                      of the chosen target (reject_to). Without approvalStages, only
+ *                      "pending" can be approved or rejected.
  *   revisions          { modelName, foreignKey }: every edit is a revision: its changed
  *                      fields (old and new value) are stored in that model and the
  *                      progress says "revised" instead of "edited"
@@ -173,12 +183,15 @@ class RecruitmentDocumentService {
   }
 
   async create(input, userId, isDoubleDatabase = true) {
+    this.config.validateInput?.(input, null);
     const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const data = await this.config.prepare(this.pick(input, true), null, t1);
-      const status = (await this.config.initialStatus?.(data, userId, t1)) ?? "pending";
+      const status = this.config.withoutApproval
+        ? undefined
+        : ((await this.config.initialStatus?.(data, userId, t1)) ?? "pending");
       const doc = await mirrorCreate(
         this.config.modelName,
-        { ...data, id_user_request: userId, status },
+        { ...data, id_user_request: userId, ...(status && { status }) },
         t1,
         t2,
       );
@@ -196,7 +209,10 @@ class RecruitmentDocumentService {
       const { editableStatuses } = this.config;
       if (editableStatuses && !editableStatuses.includes(existing.status))
         fail(`${this.config.label} cannot be edited while it is ${existing.status}`, 409);
-      const data = await this.config.prepare(this.pick(input, false), existing, t1);
+      this.config.validateInput?.(input, existing);
+      const picked = this.pick(input, false);
+      await this.config.checkEdit?.(existing, picked, userId);
+      const data = await this.config.prepare(picked, existing, t1);
       const isRevision = Boolean(this.config.revisions);
       const changed = isRevision ? await this.addRevisions(existing, data, userId, t1, t2) : [];
       await mirrorUpdate(this.config.modelName, existing.id, data, t1, t2);
@@ -251,7 +267,8 @@ class RecruitmentDocumentService {
   // decision: "approve" or "reject"; a rejection needs a note. With approvalStages
   // the document moves stage by stage and the progress names who acted (e.g.
   // "approve hr staff"); without it only a pending document is decided, once.
-  async decide(id, decision, userId, note, isDoubleDatabase = true) {
+  async decide(id, decision, userId, note, isDoubleDatabase = true, rejectTo = null) {
+    if (this.config.withoutApproval) fail(`${this.config.label} has no approval`, 404);
     if (!["approve", "reject"].includes(decision)) fail("Invalid decision");
     if (decision === "reject" && !note?.trim()) fail("note is required for rejection");
     const { approvalStages } = this.config;
@@ -259,13 +276,20 @@ class RecruitmentDocumentService {
       const doc = await this.lock(id, t1);
       const stage = approvalStages ? approvalStages[doc.status] : doc.status === "pending" && { next: "approve" };
       if (!stage) fail(`${this.config.label} is already ${doc.status}`, 409);
-      const status = decision === "approve" ? stage.next : "reject";
+      let status = decision === "approve" ? stage.next : "reject";
+      let progressStatus = stage.by ? `${decision} ${stage.by}` : decision;
+      if (decision === "reject" && stage.rejectTo) {
+        const targets = Object.keys(stage.rejectTo);
+        const target = rejectTo ?? (targets.length === 1 ? targets[0] : null);
+        if (!targets.includes(target)) fail(`reject_to must be one of: ${targets.join(", ")}`);
+        status = stage.rejectTo[target];
+        progressStatus = `reject ${stage.by} to ${target}`;
+      }
       await mirrorUpdate(this.config.modelName, doc.id, { status }, t1, t2);
-      const progressStatus = stage.by ? `${decision} ${stage.by}` : decision;
       await this.addProgress(doc.id, userId, progressStatus, note, t1, t2);
     });
     return this.getById(id);
   }
 }
 
-module.exports = { RecruitmentDocumentService, check, findPage };
+module.exports = { RecruitmentDocumentService, check, findPage, revisionValue };

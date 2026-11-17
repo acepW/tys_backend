@@ -9,12 +9,12 @@ const { models, db1 } = require("../src/models");
 
 const proof = [{ original_name: "proof.pdf", stored_name: "a.pdf", url: "/files/a.pdf", mime_type: "application/pdf", size: 1 }];
 
-test("proforma number is the invoice number with a PRO- prefix and is never stored", () => {
+test("proforma number inserts PRO after the sequence number and is never stored", () => {
   const { Invoice } = models.db1;
   const invoice = Invoice.build({ invoice_no: "004/INV/TYSCG/XI/2026", proforma_invoice_no: "ignored" });
-  assert.equal(invoice.toJSON().proforma_invoice_no, "PRO-004/INV/TYSCG/XI/2026");
-  invoice.invoice_no = "005/INV/TYSCG/XI/2026";
-  assert.equal(invoice.toJSON().proforma_invoice_no, "PRO-005/INV/TYSCG/XI/2026");
+  assert.equal(invoice.toJSON().proforma_invoice_no, "004/PRO/INV/TYSCG/XI/2026");
+  invoice.invoice_no = "006/INV/TYS/XI/2026";
+  assert.equal(invoice.toJSON().proforma_invoice_no, "006/PRO/INV/TYS/XI/2026");
   assert.equal(Invoice.tableAttributes.proforma_invoice_no, undefined);
 });
 
@@ -265,23 +265,49 @@ test("SPV rejects a changed CT/PO: the invoice is cancelled for good", async (t)
 
 test("only a pending or tax-rejected invoice can be edited", async (t) => {
   const controller = require("../src/controllers/invoice/invoice.controller");
-  const originals = { find: invoiceService.findById, update: invoiceService.updateWithRelations };
-  t.after(() => Object.assign(invoiceService, { findById: originals.find, updateWithRelations: originals.update }));
-  let status;
-  let saved;
-  invoiceService.findById = async () => ({ id: 1, status });
-  invoiceService.updateWithRelations = async (id, data) => { saved = data; return data; };
+  const state = mockDb(t, { invoice: ppnInvoice() });
   const call = async () => {
     const res = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
-    await controller.update({ params: { id: 1 }, body: { note: "PPh diperbaiki", status: "paid", is_final: true,
-      reject_type: null } }, res);
+    await controller.update({ params: { id: 1 }, body: { date: "2026-11-01", is_double_database: false } }, res);
     return res.code;
   };
   for (const [current, code] of [["pending", 200], ["rejected", 200], ["cancelled", 409], ["on verification", 409]]) {
-    status = current;
+    state.invoice.status = current;
     assert.equal(await call(), code);
   }
-  assert.deepEqual(saved, { note: "PPh diperbaiki" });
+});
+
+test("editing a draft changes only the dates, note and taxes, and recalculates the taxes", async (t) => {
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "pending", date: "2026-10-29", due_date: "2026-11-29",
+    note: "Termin 1", invoice_no: "005/INV/TYS/XI/2026", ppn: "100000" }) });
+  for (const [data, message] of [
+    [{ date: "bukan tanggal" }, /date must be a valid date/],
+    [{ date: null }, /date must be a valid date/],
+    [{ due_date: "bukan tanggal" }, /due_date must be a valid date/],
+    [{ note: 5 }, /note must be a string/],
+    [{ tax_ppn: "ya" }, /tax_ppn must be a boolean/],
+  ])
+    await assert.rejects(invoiceService.updateDraft(1, data, false), fails(400, message));
+
+  // The controller passes only the editable fields on.
+  const controller = require("../src/controllers/invoice/invoice.controller");
+  const res = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+  await controller.update({ params: { id: 1 }, body: { is_double_database: false, date: "2026-11-01",
+    due_date: "2026-12-01", note: "Termin 1 revisi", tax_pph_23: true, invoice_no: "999", total: 1, status: "paid",
+    invoice_services: [] } }, res);
+  assert.equal(res.code, 200);
+  assert.deepEqual(
+    [state.invoice.date, state.invoice.due_date, state.invoice.note, state.invoice.tax_ppn, state.invoice.tax_pph_23,
+      state.invoice.ppn, state.invoice.pph, state.invoice.total, state.invoice.invoice_no, state.invoice.status],
+    ["2026-11-01", "2026-12-01", "Termin 1 revisi", true, true, 110000, 20000, 1090000, "005/INV/TYS/XI/2026", "pending"]);
+  assert.deepEqual(state.files, []);
+
+  // Fields left out keep their value; an empty due_date and note are cleared, as on create.
+  await invoiceService.updateDraft(1, { tax_ppn: false }, false);
+  assert.deepEqual([state.invoice.date, state.invoice.due_date, state.invoice.note, state.invoice.ppn, state.invoice.total],
+    ["2026-11-01", "2026-12-01", "Termin 1 revisi", 0, 980000]);
+  await invoiceService.updateDraft(1, { due_date: "", note: null }, false);
+  assert.deepEqual([state.invoice.due_date, state.invoice.note], [null, ""]);
 });
 
 test("sales requests a revision with the client chat as proof", async (t) => {
@@ -300,17 +326,64 @@ test("an invoice with an accepted payment cannot be revised", async (t) => {
     fails(409, /after a payment has been accepted/));
 });
 
-test("AR & AP revises only the PPh and keeps the PPN of the tax invoice", async (t) => {
-  const state = mockDb(t, { invoice: ppnInvoice({ status: "revision requested" }) });
+test("AR & AP revises the PPh and keeps the PPN amount of the tax invoice when PPN is unchanged", async (t) => {
+  // Stored PPN differs from the active rate (11%) to show it is not recalculated.
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "revision requested", ppn: "100000" }) });
   await assert.rejects(invoiceService.reviseInvoice(1, { tax_pph_23: "yes" }, 7, false), fails(400, /must be a boolean/));
-  await invoiceService.reviseInvoice(1, { tax_pph_23: true, tax_ppn: false }, 7, false);
+  await assert.rejects(invoiceService.reviseInvoice(1, { tax_ppn: "no" }, 7, false), fails(400, /tax_ppn must be a boolean/));
+  await invoiceService.reviseInvoice(1, { tax_pph_23: true }, 7, false);
   assert.equal(state.invoice.status, "waiting for revision");
   assert.equal(state.invoice.tax_pph_23, true);
   assert.equal(state.invoice.tax_ppn, true);
   assert.equal(state.invoice.pph, 20000);
-  assert.equal(state.invoice.ppn, "110000");
-  assert.equal(state.invoice.total, 1090000);
+  assert.equal(state.invoice.ppn, 100000);
+  assert.equal(state.invoice.total, 1080000);
   assert.equal(state.progress[0].status, "revised");
+});
+
+test("AR & AP revises the PPN: removing or adding it recalculates the PPN and total", async (t) => {
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "revision requested" }) });
+  await invoiceService.reviseInvoice(1, { tax_ppn: false }, 7, false);
+  assert.deepEqual([state.invoice.tax_ppn, state.invoice.ppn, state.invoice.total], [false, 0, 1000000]);
+
+  state.invoice.status = "revision requested";
+  await invoiceService.reviseInvoice(1, { tax_ppn: true, tax_pph_23: true }, 7, false);
+  assert.deepEqual([state.invoice.tax_ppn, state.invoice.ppn, state.invoice.pph, state.invoice.total],
+    [true, 110000, 20000, 1090000]);
+});
+
+test("removing the PPN voids the issued tax invoice; the final invoice is uploaded again without it", async (t) => {
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "waiting for revision", tax_ppn: false, ppn: "0",
+    is_final: true, tax_invoice_status: "issued", tax_invoice_no: "010.000-26.00000001", tax_invoice_date: "2026-10-30" }) });
+  await invoiceService.approveRevision(1, null, 8, false);
+  assert.deepEqual(
+    [state.invoice.tax_invoice_status, state.invoice.tax_invoice_no, state.invoice.tax_invoice_date],
+    ["requested", null, null]);
+  assert.deepEqual(state.files, [{ type: "invoices", id: 1, category: "tax_invoice_attachment" }]);
+  assert.match(state.progress[0].note, /tax invoice 010\.000-26\.00000001 voided because PPN was removed/);
+
+  await invoiceService.uploadTaxInvoice(1, { file_final_invoice: proof }, 7, false);
+  assert.deepEqual([state.invoice.tax_invoice_status, state.invoice.tax_invoice_no], ["issued", null]);
+  assert.equal(state.progress.at(-1).status, "final invoice issued");
+});
+
+test("removing the PPN cancels a tax invoice sales requested before the invoice is final", async (t) => {
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "waiting for revision", tax_ppn: false, ppn: "0",
+    tax_invoice_status: "requested" }) });
+  await invoiceService.approveRevision(1, null, 8, false);
+  assert.deepEqual([state.invoice.status, state.invoice.tax_invoice_status], ["waiting for payment", "none"]);
+  assert.deepEqual(state.files, []);
+  assert.deepEqual(state.progress.map((row) => row.status), ["revision approved"]);
+});
+
+test("adding the PPN to a final invoice requires a new tax invoice on the re-upload", async (t) => {
+  const state = mockDb(t, { invoice: ppnInvoice({ status: "waiting for revision", is_final: true,
+    tax_invoice_status: "issued", tax_invoice_no: null, tax_invoice_date: null }) });
+  await invoiceService.approveRevision(1, null, 8, false);
+  assert.equal(state.invoice.tax_invoice_status, "requested");
+  assert.equal(state.progress.at(-1).note, "Final invoice and a new tax invoice must be uploaded after the revision");
+  await assert.rejects(invoiceService.uploadTaxInvoice(1, { file_final_invoice: proof }, 7, false),
+    fails(400, /tax_invoice_no is required/));
 });
 
 test("SPV rejects a revision back to AR & AP, then approves it without a file", async (t) => {
@@ -382,11 +455,12 @@ test("sales may request a tax invoice while AR & AP verifies a payment", async (
 const whtInvoice = (data = {}) => ppnInvoice({
   tax_pph_23: true, pph: "20000", sub_total: "1000000", total: "1090000", ...data,
 });
-const checklist = Object.fromEntries(require("../src/models/invoice/invoiceWithholdingTax.model")
-  .WHT_CHECKLIST.map((item) => [item, true]));
+const { WHT_CHECKLIST } = require("../src/models/invoice/invoiceWithholdingTax.model");
+const checklist = Object.fromEntries(WHT_CHECKLIST.map((item) => [item, { checked: true, note: "" }]));
 const receipt = { withholding_tax_receipt: proof, note: "Bukti potong dari klien" };
 const acceptBody = { checklist, receipt_no: "BP-0001", tax_period: "11-2026", receipt_date: "2026-11-03" };
-const rejectBody = { note: "NPWP pemotong salah", wht_reject_attachment: proof };
+const rejectBody = { note: "NPWP pemotong salah", wht_reject_attachment: proof,
+  checklist: { ...checklist, withholder_npwp: { checked: false, note: "NPWP beda" } } };
 
 test("paying off an invoice with PPh creates one receipt per PPh type and waits for them", async (t) => {
   const state = mockDb(t, { invoice: whtInvoice({ tax_pph_4_ayat_2: true, pph_4_ayat_2: "100000", total: "990000" }) });
@@ -428,10 +502,15 @@ test("sales uploads a receipt, AR & AP rejects it with screenshots, then accepts
   await assert.rejects(invoiceService.rejectWithholdingTax(1, 51, { note: "" }, 9, false), fails(400, /note is required/));
   await assert.rejects(invoiceService.rejectWithholdingTax(1, 51, { note: "x" }, 9, false),
     fails(400, /wht_reject_attachment must be a non-empty array/));
-  await invoiceService.rejectWithholdingTax(1, 51, { ...rejectBody, checklist: { ...checklist, withholder_npwp: false } }, 9, false);
+  await invoiceService.rejectWithholdingTax(1, 51, { ...rejectBody, checklist: { ...checklist,
+    withholder_npwp: { checked: false, note: " NPWP beda dengan data klien " }, dpp: { checked: true, note: "Sesuai" } } },
+  9, false);
   assert.deepEqual([state.invoice.status, state.withholdingTaxes[0].status, state.withholdingTaxes[0].note_reject],
     ["wht rejected", "rejected", "NPWP pemotong salah"]);
-  assert.equal(state.withholdingTaxes[0].checklist.withholder_npwp, false);
+  assert.deepEqual(
+    [state.withholdingTaxes[0].checklist.withholder_npwp, state.withholdingTaxes[0].checklist.dpp,
+      state.withholdingTaxes[0].checklist.rate],
+    [{ checked: false, note: "NPWP beda dengan data klien" }, { checked: true, note: "Sesuai" }, { checked: true, note: "" }]);
   const rejected = state.progress.at(-1);
   assert.deepEqual([rejected.status, rejected.note], ["wht rejected", "PPh 23: NPWP pemotong salah"]);
   assert.deepEqual(state.files.at(-1), { type: "invoice_verification_progress", id: rejected.id, category: "wht_reject_attachment" });
@@ -445,6 +524,27 @@ test("sales uploads a receipt, AR & AP rejects it with screenshots, then accepts
     ["clear", "BP-0001", "11-2026", "2026-11-03", 9]);
   assert.deepEqual(state.progress.map((row) => row.status),
     ["wht uploaded", "wht rejected", "wht uploaded", "wht accepted", "paid & clear"]);
+  assert.deepEqual(state.withholdingTaxes[0].checklist, checklist);
+});
+
+test("rejecting a receipt needs the full checklist with a note on each unchecked item", async (t) => {
+  const state = mockDb(t, {
+    invoice: whtInvoice({ status: "wht verification" }),
+    withholdingTaxes: [{ id: 51, id_invoice: 1, tax_type: "pph_23", status: "verification" }],
+  });
+  const { dpp: _dpp, ...withoutDpp } = checklist;
+  for (const [list, message] of [
+    [undefined, /checklist must be an object/],
+    [withoutDpp, /checklist must contain every item \(missing: dpp\)/],
+    [{ ...checklist, dpp: { note: "x" } }, /checklist\.dpp\.checked must be a boolean/],
+    [{ ...checklist, dpp: { checked: false, note: 5 } }, /checklist\.dpp\.note must be a string/],
+    [{ ...checklist, dpp: { checked: false, note: " " } }, /checklist\.dpp\.note is required when the item is not checked/],
+    [{ ...checklist, dpp: false }, /checklist\.dpp\.note is required/],
+    [checklist, /At least one checklist item must be unchecked/],
+  ])
+    await assert.rejects(invoiceService.rejectWithholdingTax(1, 51, { ...rejectBody, checklist: list }, 9, false),
+      fails(400, message));
+  assert.equal(state.withholdingTaxes[0].status, "verification");
 });
 
 test("accepting a receipt needs every checklist item and a valid receipt number, period and date", async (t) => {
@@ -454,7 +554,8 @@ test("accepting a receipt needs every checklist item and a valid receipt number,
   });
   for (const [body, message] of [
     [{ ...acceptBody, checklist: undefined }, /checklist must be an object/],
-    [{ ...acceptBody, checklist: { ...checklist, dpp: false, rate: "yes" } }, /unchecked: dpp, rate/],
+    [{ ...acceptBody, checklist: { ...checklist, rate: "yes" } }, /checklist\.rate\.checked must be a boolean/],
+    [{ ...acceptBody, checklist: { ...checklist, dpp: { checked: false }, rate: false } }, /unchecked: dpp, rate/],
     [{ ...acceptBody, receipt_no: " " }, /receipt_no is required/],
     [{ ...acceptBody, tax_period: "2026-11" }, /tax_period must use MM-YYYY format/],
     [{ ...acceptBody, tax_period: "13-2026" }, /tax_period must use MM-YYYY format/],

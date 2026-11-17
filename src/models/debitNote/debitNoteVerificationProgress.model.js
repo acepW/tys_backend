@@ -41,6 +41,7 @@ module.exports = (sequelize) => {
           "rejected",
           "approved",
           "paid",
+          "cancelled",
         ),
         allowNull: false,
         comment: "Status of Debit Note Progress",

@@ -88,7 +88,7 @@ class DebitNoteController {
         "Debit notes retrieved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -117,7 +117,7 @@ class DebitNoteController {
         "Debit note retrieved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -141,7 +141,7 @@ class DebitNoteController {
         "Debit note retrieved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -330,7 +330,7 @@ class DebitNoteController {
         201
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -353,6 +353,7 @@ class DebitNoteController {
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
       }
+      await debitNoteService.assertChangeable(id);
 
       // Validate debit_note_items
       if (debit_note_items && !Array.isArray(debit_note_items)) {
@@ -368,7 +369,7 @@ class DebitNoteController {
 
       return successResponse(res, result, "Debit note updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -399,7 +400,7 @@ class DebitNoteController {
 
       return successResponse(res, result, "Debit note submitted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -430,7 +431,7 @@ class DebitNoteController {
 
       return successResponse(res, result, "Debit note approved successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -461,7 +462,7 @@ class DebitNoteController {
 
       return successResponse(res, result, "Debit note rejected successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -503,7 +504,7 @@ class DebitNoteController {
 
       return successResponse(res, result, "Debit note paid successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -524,12 +525,13 @@ class DebitNoteController {
       if (!existing) {
         return errorResponse(res, "Debit note not found", 404);
       }
+      await debitNoteService.assertChangeable(id);
 
       await debitNoteService.update(id, { is_active: false }, isDoubleDatabase);
 
       return successResponse(res, null, "Debit note deleted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 }

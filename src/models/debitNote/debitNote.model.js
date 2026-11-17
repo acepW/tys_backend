@@ -211,10 +211,11 @@ module.exports = (sequelize) => {
           "rejected",
           "approved",
           "paid",
+          "cancelled",
         ),
         allowNull: false,
         defaultValue: "pending",
-        comment: "Status of DebitNote",
+        comment: "Status of DebitNote; cancelled (with its invoice, chosen by sales) is final",
       },
       is_active: {
         type: DataTypes.BOOLEAN,

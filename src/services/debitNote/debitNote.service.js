@@ -5,6 +5,9 @@ const { models, db1, db2 } = require("../../models");
 const { Op, fn, col } = require("sequelize");
 const incomingDebitNoteService = require("./incomingDebitNote.service");
 const taxService = require("../masterTax/tax.service");
+const {
+  OPEN_CANCELLATION_STATUSES,
+} = require("../../models/invoice/invoiceCancellation.model");
 
 class DebitNoteService extends DualDatabaseService {
   constructor() {
@@ -1051,6 +1054,42 @@ class DebitNoteService extends DualDatabaseService {
   }
 
   /**
+   * A debit note cancelled with its invoice is final: it cannot be edited,
+   * deleted or moved to another status. While the cancellation of its invoice
+   * that also cancels the debit note is in process, it cannot be paid.
+   * @param {Number} id - Debit note ID
+   * @param {String} status - Target status, if the change is a status change
+   */
+  async assertChangeable(id, status = null) {
+    const debitNote = await models.db1.DebitNote.findByPk(id, {
+      attributes: ["id", "status"],
+    });
+    if (!debitNote) return;
+    const conflict = (message) => {
+      const error = new Error(message);
+      error.statusCode = 409;
+      throw error;
+    };
+    if (debitNote.status === "cancelled") conflict("Debit note is cancelled");
+    if (status !== "paid") return;
+    const pending = await models.db1.InvoiceCancellation.count({
+      where: { cancel_debit_note: true, status: OPEN_CANCELLATION_STATUSES },
+      include: [
+        {
+          model: models.db1.Invoice,
+          as: "invoice",
+          where: { id_debit_note: id },
+          attributes: [],
+        },
+      ],
+    });
+    if (pending)
+      conflict(
+        "Debit note cannot be paid while the cancellation of its invoice, which cancels the debit note too, is in process",
+      );
+  }
+
+  /**
    * Internal method to change debit note status
    * @param {Number} id - Debit note ID
    * @param {String} status - New status
@@ -1070,6 +1109,7 @@ class DebitNoteService extends DualDatabaseService {
     payment_method,
     proof_of_payment,
   ) {
+    await this.assertChangeable(id, status);
     let transaction1 = null;
     let transaction2 = null;
     const progressStatus = status === "on verification" ? "submitted" : status;

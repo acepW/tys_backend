@@ -10,8 +10,9 @@ function respondError(res, error) {
 const like = (value) => ({ [Op.like]: `%${value}%` });
 const stepFilters = { equal: ["id_recruitment_candidate", "status", "decision"], like: { search: "candidate_name" } };
 
-// Per module: service, approval_for, list filters (equal: exact match query keys;
-// like: query key -> column searched with LIKE) and response labels.
+// Per module: service, approval_for (none for the candidate database, which has no
+// approval), list filters (equal: exact match query keys; like: query key -> column
+// searched with LIKE) and response labels.
 const MODULES = {
   requests: {
     service: recruitment.request, approvalFor: "recruitment request", label: "Recruitment request",
@@ -22,11 +23,11 @@ const MODULES = {
     },
   },
   candidates: {
-    service: recruitment.candidate, approvalFor: "recruitment candidate", label: "Recruitment candidate",
+    service: recruitment.candidate, approvalFor: null, label: "Recruitment candidate",
     filters: {
       equal: ["id_recruitment_request", "id_company", "id_department", "id_division", "id_position", "id_level",
-        "status"],
-      like: { name: "name", job_title: "job_title" },
+        "has_professional_license", "license_type"],
+      like: { name: "name", job_title: "job_title", hiring_status: "hiring_status" },
     },
   },
   "hr-interviews": {
@@ -49,7 +50,8 @@ const MODULES = {
 
 // Builds the handlers of one module.
 function moduleController({ service, approvalFor, label, filters }) {
-  const flags = (data, req) => approvalAccess.attachActionFlags(approvalFor, data, req.user?.id);
+  const flags = (data, req) =>
+    approvalFor ? approvalAccess.attachActionFlags(approvalFor, data, req.user?.id) : data;
   const isDouble = (body) => body.is_double_database !== false;
   return {
     async getAll(req, res) {
@@ -87,7 +89,7 @@ function moduleController({ service, approvalFor, label, filters }) {
         try {
           const body = req.body || {};
           return successResponse(res,
-            await service.decide(req.params.id, decision, req.user.id, body.note, isDouble(body)),
+            await service.decide(req.params.id, decision, req.user.id, body.note, isDouble(body), body.reject_to),
             `${label} ${decision === "approve" ? "approved" : "rejected"}`);
         } catch (error) { return respondError(res, error); }
       };
@@ -112,8 +114,20 @@ async function setRequestHiringStatus(req, res) {
   } catch (error) { return respondError(res, error); }
 }
 
+// The requester submits a recruitment request returned to them again.
+async function resubmitRequest(req, res) {
+  try {
+    const body = req.body || {};
+    const result = await recruitment.request.resubmit(req.params.id, req.user.id, body.note,
+      body.is_double_database !== false);
+    return successResponse(res, await approvalAccess.attachActionFlags("recruitment request", result, req.user?.id),
+      "Recruitment request resubmitted");
+  } catch (error) { return respondError(res, error); }
+}
+
 module.exports = {
   MODULES,
+  resubmitRequest,
   modules: Object.fromEntries(Object.entries(MODULES).map(([path, config]) => [path, moduleController(config)])),
   candidateOptions,
   setRequestHiringStatus,
