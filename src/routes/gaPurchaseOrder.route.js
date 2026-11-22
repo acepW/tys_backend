@@ -23,6 +23,11 @@ for (const [path, role] of [["ga-manager", "ga_manager"], ["director", "director
 }
 router.patch("/ga-staff/realization/:id/items/:itemId", authenticate, controller.saveRealization);
 router.patch("/ga-staff/accept/:id/items/:itemId", authenticate, controller.acceptItem);
+// Return in two steps: save the goods receipt as a draft (editable, deletable),
+// then accept all of it or return some units / quantity.
+router.patch("/ga-staff/receipt/:id/items/:itemId", authenticate, controller.saveReceipt);
+router.delete("/ga-staff/receipt/:id/items/:itemId", authenticate, (req, res) => controller.deleteReceipt(req, res));
+router.patch("/ga-staff/receipt/accept/:id/items/:itemId", authenticate, controller.acceptReceipt);
 router.patch("/ga-staff/return/:id/items/:itemId", authenticate, controller.returnItem);
 router.patch("/ga-staff/refund/:id/items/:itemId", authenticate, controller.requestRefund);
 // Refund approval is per item and does not change the order status.

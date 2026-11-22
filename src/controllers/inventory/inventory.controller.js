@@ -10,7 +10,14 @@ class InventoryController {
   async getAll(req, res) {
     try {
       const where = {};
-      if (req.query?.search) where.item_name = { [Op.like]: `%${req.query.search}%` };
+      if (req.query?.search) {
+        const like = { [Op.like]: `%${req.query.search}%` };
+        where[Op.or] = ["item_name", "product_code", "serial_number", "model_number"]
+          .map((field) => ({ [field]: like }));
+      }
+      if (req.query?.id_master_item) where.id_master_item = req.query.id_master_item;
+      // Only rows that still hold stock.
+      if (req.query?.in_stock === "true") where.quantity = { [Op.gt]: 0 };
       if (req.query?.purchase_request_category)
         where.purchase_request_category = req.query.purchase_request_category;
       if (req.query?.asset_category) where.asset_category = req.query.asset_category;

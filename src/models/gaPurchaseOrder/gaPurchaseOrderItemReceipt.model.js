@@ -24,8 +24,16 @@ module.exports = (sequelize) => {
         references: { model: "users", key: "id" },
       },
       type: {
-        type: DataTypes.ENUM("accept", "return"),
+        type: DataTypes.ENUM("draft", "accept", "return"),
         allowNull: false,
+        comment:
+          "draft: saved, not stocked yet (first step of a return); accept / return: completed",
+      },
+      has_serial_number: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: "Received with one serial number per unit (see units); otherwise by quantity only",
       },
       quantity_received: {
         type: DataTypes.DECIMAL(15, 2),
@@ -67,6 +75,11 @@ module.exports = (sequelize) => {
         comment: "Cost of shipping the returned goods back (return only)",
       },
       note: { type: DataTypes.TEXT, allowNull: true },
+      return_note: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Reason the goods are shipped back (return only)",
+      },
     },
     {
       tableName: "ga_purchase_order_item_receipts",
@@ -90,6 +103,10 @@ module.exports = (sequelize) => {
     GaPurchaseOrderItemReceipt.belongsTo(models.User, {
       foreignKey: "id_user",
       as: "user",
+    });
+    GaPurchaseOrderItemReceipt.hasMany(models.GaPurchaseOrderItemReceiptUnit, {
+      foreignKey: "id_ga_purchase_order_item_receipt",
+      as: "units",
     });
     for (const category of [
       "files_goods_in",

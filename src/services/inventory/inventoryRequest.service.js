@@ -8,10 +8,11 @@ const {
 } = require("../procurement/shared");
 const inventoryService = require("./inventory.service");
 
+// item_name is not taken from the input; it is copied from the master item.
 const fields = [
-  "item_name",
+  "id_master_item",
   "brand",
-  "serial_number",
+  "model_number",
   "size",
   "material",
   "other",
@@ -33,8 +34,14 @@ function pick(input) {
   );
 }
 
+// Fields that decide the units of a request made with serial numbers; sending any
+// of them on edit re-checks (and replaces) the units.
+const unitFields = ["has_serial_number", "units", "quantity", "id_master_item"];
+
 // Manual stock entry with a single approval step (approval_for "inventory request").
-// Stock only reaches inventories when the request is approved.
+// Stock only reaches inventories when the request is approved. With
+// has_serial_number, units holds one serial number per unit and each unit becomes
+// its own inventory row on approval.
 class InventoryRequestService {
   includes() {
     const db = models.db1;
@@ -47,7 +54,22 @@ class InventoryRequestService {
       {
         model: db.Inventory,
         as: "inventory",
-        attributes: ["id", "item_name", "quantity", "quantity_unit"],
+        attributes: ["id", "product_code", "item_name", "quantity", "quantity_unit"],
+      },
+      {
+        model: db.MasterItem,
+        as: "master_item",
+        attributes: ["id", "item_code", "item_name"],
+      },
+      {
+        model: db.InventoryRequestUnit,
+        as: "units",
+        separate: true,
+        order: [["id", "ASC"]],
+        attributes: ["id", "serial_number", "id_inventory"],
+        include: [
+          { model: db.Inventory, as: "inventory", attributes: ["id", "product_code"] },
+        ],
       },
       { model: db.Company, as: "company", attributes: ["id", "company_name"] },
       {
@@ -162,14 +184,83 @@ class InventoryRequestService {
     return { ...data, id_company: company.id, id_inventory_location: location.id };
   }
 
+  // Copies item_name from the master item when id_master_item is sent; it must be active.
+  async resolveMaster(data, t1) {
+    if (data.id_master_item === undefined) return data;
+    const master = await models.db1.MasterItem.findOne({
+      where: { id: data.id_master_item, is_active: true },
+      attributes: ["id", "item_name"],
+      transaction: t1,
+    });
+    if (!master) fail(`Master item ${data.id_master_item} not found`, 404);
+    return { ...data, id_master_item: master.id, item_name: master.item_name };
+  }
+
+  // Serial numbers of a request with has_serial_number: one per unit of a whole
+  // quantity, free in inventory, in draft goods receipts and in other pending
+  // requests of the same master item. Returns null without serial numbers.
+  async requestSerials(hasSerialNumber, quantity, masterId, units, requestId, t1) {
+    if (!hasSerialNumber) return null;
+    const count = Number(quantity);
+    if (!Number.isInteger(count))
+      fail(`quantity (${count}) must be a whole number to use serial numbers`);
+    if (!Array.isArray(units) || units.length !== count)
+      fail(`units must have ${count} entries, one serial number per unit`);
+    const serials = units.map((unit, i) => {
+      const serial = typeof unit?.serial_number === "string" ? unit.serial_number.trim() : "";
+      if (!serial) fail(`units[${i}].serial_number is required`);
+      return serial;
+    });
+    await inventoryService.assertSerialsAvailable(masterId, serials, t1);
+    await inventoryService.assertSerialsNotReserved(masterId, serials, t1, {
+      inventoryRequestId: requestId,
+    });
+    return serials;
+  }
+
+  // Saves serials as the request's units (none when serials is null); a new
+  // request has no units to remove yet.
+  async replaceUnits(requestId, serials, t1, t2, isNew = false) {
+    if (!isNew) {
+      const where = { id_inventory_request: requestId };
+      await models.db1.InventoryRequestUnit.destroy({ where, transaction: t1 });
+      if (t2) await models.db2.InventoryRequestUnit.destroy({ where, transaction: t2 });
+    }
+    for (const serial of serials ?? [])
+      await mirrorCreate(
+        "InventoryRequestUnit",
+        { id_inventory_request: requestId, serial_number: serial },
+        t1,
+        t2,
+      );
+  }
+
   async createOne(input, userId, t1, t2) {
-    const data = await this.resolvePlace(pick(input), null, t1);
+    const data = await this.resolveMaster(
+      await this.resolvePlace(pick(input), null, t1),
+      t1,
+    );
+    const hasSerialNumber = input.has_serial_number === true;
+    const serials = await this.requestSerials(
+      hasSerialNumber,
+      data.quantity,
+      data.id_master_item,
+      input.units,
+      null,
+      t1,
+    );
     const request = await mirrorCreate(
       "InventoryRequest",
-      { ...data, status: "pending", id_user_request: userId },
+      {
+        ...data,
+        has_serial_number: hasSerialNumber,
+        status: "pending",
+        id_user_request: userId,
+      },
       t1,
       t2,
     );
+    await this.replaceUnits(request.id, serials, t1, t2, true);
     await syncFiles(
       "inventory_requests",
       request.id,
@@ -212,7 +303,29 @@ class InventoryRequestService {
       const request = await this.lockPending(id, t1);
       if (request.id_user_request !== userId)
         fail("Only the creator can edit this inventory request", 403);
-      const data = await this.resolvePlace(pick(input), request, t1);
+      const data = await this.resolveMaster(
+        await this.resolvePlace(pick(input), request, t1),
+        t1,
+      );
+      // Units are re-checked and replaced only when something that decides them is sent.
+      if (unitFields.some((field) => input[field] !== undefined)) {
+        const hasSerialNumber =
+          input.has_serial_number === undefined
+            ? request.has_serial_number
+            : input.has_serial_number === true;
+        const serials = await this.requestSerials(
+          hasSerialNumber,
+          data.quantity ?? request.quantity,
+          data.id_master_item ?? request.id_master_item,
+          input.units,
+          request.id,
+          t1,
+        );
+        if (input.has_serial_number !== undefined) data.has_serial_number = hasSerialNumber;
+        // A request without serial numbers before and after has no units to touch.
+        if (hasSerialNumber || request.has_serial_number)
+          await this.replaceUnits(id, serials, t1, t2);
+      }
       await mirrorUpdate("InventoryRequest", id, data, t1, t2);
       await syncFiles(
         "inventory_requests",
@@ -230,17 +343,21 @@ class InventoryRequestService {
 
   async approve(id, userId, note, isDoubleDatabase = true) {
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      await this.lockPending(id, t1);
-      const inventoryId = await inventoryService.addFromInventoryRequest(
+      const request = await this.lockPending(id, t1);
+      const inventoryIds = await inventoryService.addFromInventoryRequest(
         id,
         userId,
         t1,
         t2,
       );
+      // With serial numbers each unit links its own row (units[].id_inventory).
       await mirrorUpdate(
         "InventoryRequest",
         id,
-        { status: "approve", id_inventory: inventoryId },
+        {
+          status: "approve",
+          id_inventory: request.has_serial_number ? null : inventoryIds[0],
+        },
         t1,
         t2,
       );

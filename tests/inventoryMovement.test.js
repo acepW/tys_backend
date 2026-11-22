@@ -21,10 +21,13 @@ function mockStore(t) {
         other: null, quantity_unit: "pcs", quantity: "250.00", id_company: 2, id_inventory_location: 1 }),
     ],
   };
-  // matchWhere conditions: { field: value } or { [Op.or]: [{ field: null }, { field: "" }] }.
-  const matches = (inv, cond) => cond[Op.or]
-    ? cond[Op.or].some((option) => matches(inv, option))
-    : Object.entries(cond).every(([key, value]) => (inv[key] ?? null) === value);
+  // matchWhere conditions: { field: value }, { [Op.or]: [{ field: null }, { field: "" }] }
+  // or { [Op.and]: [...] } (item_name of a row without a master item).
+  const matches = (inv, cond) => {
+    if (cond[Op.or]) return cond[Op.or].some((option) => matches(inv, option));
+    if (cond[Op.and]) return cond[Op.and].every((option) => matches(inv, option));
+    return Object.entries(cond).every(([key, value]) => (inv[key] ?? null) === value);
+  };
   const replace = [
     [db1, "transaction", async () => ({ LOCK: { UPDATE: "UPDATE" }, commit: async () => {}, rollback: async () => {} })],
     [db.Inventory, "findByPk", async (id) => store.inventories.find((inv) => inv.id === Number(id)) || null],
@@ -157,4 +160,21 @@ test("Movement create validates the body", async (t) => {
     [400, "id_inventory_location_destination is required"]);
   assert.deepEqual(await call({ ...body, quantity: 0 }), [400, "quantity must be a positive number"]);
   assert.equal((await call(body))[0], 201);
+});
+
+test("A unit with a serial number moves as a whole and keeps its product code", async (t) => {
+  const store = mockStore(t);
+  store.inventories.push(row({ id: 3, id_master_item: 1, product_code: "LTP-00004", item_name: "Laptop", brand: "Dell",
+    model_number: "Latitude 5440", serial_number: "SN-1", size: null, material: null, other: null,
+    quantity_unit: "unit", quantity: "1.00", id_company: 2, id_inventory_location: 3, files_product: [] }));
+  const move = (quantity) => movementService.create({ ...body, id_inventory_source: 3, quantity }, 5, false);
+  await assert.rejects(move(0.5), /moves as a whole: quantity must be 1/);
+  await move(1);
+  await movementService.approve(1, 7, null, false);
+  await movementService.approve(1, 8, null, false);
+  const [source, destination] = [store.inventories[2], store.inventories[3]];
+  assert.equal(Number(source.quantity), 0);
+  assert.deepEqual([destination.product_code, destination.serial_number, destination.model_number,
+    destination.id_master_item, destination.id_inventory_location, destination.quantity],
+  ["LTP-00004", "SN-1", "Latitude 5440", 1, 1, 1]);
 });

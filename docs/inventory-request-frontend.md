@@ -6,7 +6,8 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 
 ## Konsep singkat
 
-- Satu request = **satu barang**.
+- Satu request = **satu barang** dari master barang (`GET /api/master-items`).
+- Ada 2 mode, sama seperti good receipt GA PO: **tanpa serial** (qty saja) atau **dengan serial** (`has_serial_number: true`, satu serial per unit). Lihat [master-item-unit-code.md](master-item-unit-code.md).
 - Status request:
 
 | Status    | Arti                                           | Bisa diedit?      | Tombol Approve/Reject                     |
@@ -36,9 +37,9 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 
 ```json
 {
-  "item_name": "Printer",
+  "id_master_item": 3,
   "brand": "HP",
-  "serial_number": "M404dn",
+  "model_number": "M404dn",
   "size": "A4",
   "material": "Plastic",
   "other": "Laser, duplex",
@@ -46,6 +47,8 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
   "asset_category": "asset",
   "quantity_unit": "unit",
   "quantity": 2,
+  "has_serial_number": true,
+  "units": [{ "serial_number": "SN-001" }, { "serial_number": "SN-002" }],
   "received_date": "2026-10-20",
   "id_company": 2,
   "id_inventory_location": 4,
@@ -66,19 +69,21 @@ Inventory request dipakai untuk **menambah stok inventory secara manual**. Stok 
 
 | Field                                                 | Wajib | Isi                                                                                                        |
 | ----------------------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------------- |
-| `item_name`                                           | Ya    | Nama barang                                                                                                |
+| `id_master_item`                                      | Ya    | Master barang aktif. `item_name` request selalu disalin dari master; ~~`item_name`~~ di body **dihapus** (diabaikan) |
 | `quantity_unit`                                       | Ya    | Satuan, misalnya `unit`, `pcs`, `box`                                                                      |
-| `quantity`                                            | Ya    | Angka lebih dari 0                                                                                         |
+| `quantity`                                            | Ya    | Angka lebih dari 0. Harus bilangan bulat jika `has_serial_number: true`                                    |
+| `has_serial_number`                                   | Tidak | `true` / `false` (default `false`)                                                                         |
+| `units`                                               | Jika `has_serial_number: true` | Tepat 1 per unit `quantity`: `[{ "serial_number": "..." }]`. Serial wajib, unik per master barang (tidak boleh sudah ada di stok, di draft good receipt GA PO, atau di inventory request pending lain) |
 | `received_date`                                       | Ya    | Tanggal penerimaan barang, format `YYYY-MM-DD`                                                             |
 | `id_company`                                          | Ya    | Company pemilik stok (`GET /api/companies`)                                                                |
 | `id_inventory_location`                               | Tidak | Lokasi penyimpanan (`GET /api/inventory-locations`). Jika kosong, diisi lokasi default company (`company.inventory_location`). Tampilkan default ini di form saat company dipilih |
-| `brand`, `serial_number`, `size`, `material`, `other` | Tidak | Spesifikasi barang. Dipakai untuk mencocokkan stok (lihat bagian 4)                                        |
+| `brand`, `model_number`, `size`, `material`, `other`  | Tidak | Spesifikasi barang. Dipakai untuk mencocokkan stok (lihat bagian 5). ~~`serial_number`~~ request **dihapus**: diganti `model_number` (nilai lama dipindah ke `model_number`); serial sekarang per unit lewat `units` |
 | `purchase_request_category`                           | Tidak | Kategori barang                                                                                            |
 | `asset_category`                                      | Tidak | `asset` atau `non asset`                                                                                   |
 | `note`                                                | Tidak | Catatan pembuat                                                                                            |
 | `files_product`                                       | Tidak | Foto/file produk. Upload dulu lewat endpoint upload (`/api/uploads/...`), lalu kirim hasilnya di array ini |
 
-Tips: sebelum submit, frontend bisa menampilkan stok saat ini dengan `GET /api/inventories/check-stock?item_name=...&brand=...&serial_number=...&size=...&material=...&other=...&id_company=...&id_inventory_location=...` (`id_company` dan `id_inventory_location` wajib). Jika barang belum ada, hasilnya `quantity: 0`.
+~~Tips `check-stock` sebelum submit~~ **tidak dipakai lagi**: `check-stock` belum mengenal master barang dan `model_number`. Untuk melihat stok yang ada, pakai `GET /api/inventories?id_master_item=...&id_company=...&id_inventory_location=...`.
 
 Response sukses (`201`) berisi detail request seperti di bagian 2.
 
@@ -91,8 +96,10 @@ Isi `items` dengan array berisi body yang sama seperti bagian 1 (maksimal 100 it
 ```json
 {
   "items": [
-    { "item_name": "Kursi", "quantity_unit": "unit", "quantity": 10, "received_date": "2026-10-20", "files_product": [] },
-    { "item_name": "Meja", "brand": "Olympic", "quantity_unit": "unit", "quantity": 5, "received_date": "2026-10-21", "note": "Stok awal" }
+    { "id_master_item": 7, "quantity_unit": "unit", "quantity": 10, "received_date": "2026-10-20", "id_company": 2, "files_product": [] },
+    { "id_master_item": 1, "brand": "Dell", "model_number": "Latitude 5440", "quantity_unit": "unit", "quantity": 2,
+      "has_serial_number": true, "units": [{ "serial_number": "SN-001" }, { "serial_number": "SN-002" }],
+      "received_date": "2026-10-21", "id_company": 2, "note": "Stok awal" }
   ]
 }
 ```
@@ -119,9 +126,11 @@ Isi `items` dengan array berisi body yang sama seperti bagian 1 (maksimal 100 it
   "data": [
     {
       "id": 3,
+      "id_master_item": 3,
       "item_name": "Printer",
       "brand": "HP",
-      "serial_number": "M404dn",
+      "model_number": "M404dn",
+      "has_serial_number": true,
       "size": "A4",
       "material": "Plastic",
       "other": "Laser, duplex",
@@ -139,6 +148,11 @@ Isi `items` dengan array berisi body yang sama seperti bagian 1 (maksimal 100 it
       "inventory_location": { "id": 4, "location_code": "GDG-01", "location_name": "Gudang Utama" },
       "user_request": { "id": 5, "name": "Budi", "email": "budi@example.com" },
       "inventory": null,
+      "master_item": { "id": 3, "item_code": "PRN", "item_name": "Printer" },
+      "units": [
+        { "id": 1, "serial_number": "SN-001", "id_inventory": null, "inventory": null },
+        { "id": 2, "serial_number": "SN-002", "id_inventory": null, "inventory": null }
+      ],
       "files_product": [],
       "verification_progress": [
         {
@@ -160,7 +174,7 @@ Tanpa `page` dan `limit`, `data` berisi semua request tanpa `pagination`.
 Catatan field:
 
 - `quantity` dikirim sebagai string desimal (`"2.00"`). Ubah ke angka sebelum ditampilkan atau dihitung.
-- `inventory` terisi setelah request di-approve: `{ id, item_name, quantity, quantity_unit }`. `quantity` di sini adalah **total stok inventory saat ini**, bukan jumlah dari request ini. Bisa dipakai untuk link ke halaman detail inventory (`/inventories/:id`).
+- `inventory` terisi setelah request **tanpa serial** di-approve: `{ id, product_code, item_name, quantity, quantity_unit }`. Untuk request dengan serial, `inventory` tetap `null` dan setiap `units[]` terisi `id_inventory` dan `inventory: { id, product_code }` (satu baris inventory per unit). `quantity` di sini adalah **total stok inventory saat ini**, bukan jumlah dari request ini. Bisa dipakai untuk link ke halaman detail inventory (`/inventories/:id`).
 - `verification_progress` adalah riwayat (dibuat, diedit, approve, reject) dan bisa ditampilkan sebagai timeline.
 
 ## 3. Tombol dan aturan tampilan
@@ -179,6 +193,8 @@ Jangan menentukan tombol Approve/Reject dari posisi user sendiri. Cukup pakai `i
 `PUT /api/inventory-requests/:id`
 
 Kirim **hanya field yang diubah**. Field yang tidak dikirim tetap seperti semula.
+
+Jika `quantity`, `has_serial_number`, `units`, atau `id_master_item` dikirim untuk request dengan serial, kirim juga `units` lengkap (sebanyak `quantity`): semua unit lama diganti. Mengirim `has_serial_number: false` menghapus semua unit.
 
 ```json
 { "quantity": 3, "note": "Revisi jumlah" }
@@ -227,7 +243,9 @@ Keduanya mengembalikan detail request terbaru.
 
 Yang terjadi saat approve:
 
-- Jika sudah ada inventory dengan `item_name`, `brand`, `serial_number`, `size`, `material`, `other`, `id_company`, dan `id_inventory_location` yang **sama persis** (kosong dianggap sama), `quantity` request ditambahkan ke inventory tersebut. Barang yang sama di company atau lokasi lain menjadi data inventory terpisah.
+- **Tanpa serial**: jika sudah ada inventory tanpa serial dengan master barang (`id_master_item`), `brand`, `model_number`, `size`, `material`, `other`, `id_company`, dan `id_inventory_location` yang **sama persis** (kosong dianggap sama), `quantity` request ditambahkan ke inventory tersebut. Stok dari GA PO dan dari request memakai aturan yang sama, jadi bisa tergabung. Barang yang sama di company atau lokasi lain menjadi data inventory terpisah.
+- **Dengan serial**: setiap unit menjadi baris inventory sendiri (qty 1) dengan kode produk sendiri. Serial dicek lagi terhadap stok saat approve.
+- Baris inventory baru mendapat kode produk `KODE-00001`. Request lama tanpa master barang tetap dicocokkan dengan `item_name` ke inventory lama tanpa master, tanpa kode.
 - Request lama (dibuat sebelum ada company/lokasi) harus diedit dulu untuk mengisi `id_company` sebelum bisa di-approve.
 - Jika tidak ada yang sama, dibuat data inventory baru dengan `received_date` dari request.
 - `files_product` request disalin ke inventory, dan penambahan stok tercatat di `histories` inventory beserta `received_date` request.
@@ -236,7 +254,11 @@ Yang terjadi saat approve:
 
 | HTTP | Pesan                                                                                      | Kapan                                           |
 | ---- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| 400  | `item_name is required`, `quantity_unit is required`, `quantity must be a positive number` | Validasi form                                   |
+| 400  | `id_master_item is required`, `quantity_unit is required`, `quantity must be a positive number` | Validasi form                              |
+| 404  | `Master item ... not found`                                                                | Master tidak ada atau nonaktif                  |
+| 400  | `has_serial_number must be a boolean`, `units must be an array`, `model_number must be a string` | Validasi form                             |
+| 400  | `quantity (N) must be a whole number to use serial numbers`, `units must have N entries, one serial number per unit`, `units[i].serial_number is required`, `serial_number ... is duplicated` | Request dengan serial |
+| 409  | `serial_number ... already exists in inventory (...)`, `... is already in another draft goods receipt`, `... is already in a pending inventory request` | Serial sudah dipakai |
 | 400  | `received_date must be a valid date`                                                       | `received_date` kosong atau bukan tanggal       |
 | 400  | `id_company is required`                                                                   | Create tanpa company                            |
 | 400  | `id_inventory_location is required: the company has no default inventory location`        | Lokasi kosong dan company belum punya lokasi default |

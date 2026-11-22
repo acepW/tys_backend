@@ -60,13 +60,16 @@ Siapa yang boleh approve diatur di approval flow dengan `approval_for` = `invent
 
 Cara mengisi `id_inventory_source` dari form:
 
-- **Stock Allocation**: pilih baris inventory (`GET /api/inventories`, misalnya difilter lokasi default company). `id` baris itu adalah `id_inventory_source`.
-- **Stock Transfer**: setelah barang dan **Source Location** dipilih, cari barisnya dengan `GET /api/inventories/check-stock?item_name=...&brand=...&serial_number=...&size=...&material=...&other=...&id_company=...&id_inventory_location=<lokasi sumber>`. `id_inventory` dari hasilnya adalah `id_inventory_source`. Kalau `id_inventory` `null`, stok sumber 0.
+- **Stock Allocation**: pilih baris inventory (`GET /api/inventories?in_stock=true`, misalnya difilter lokasi default company). `id` baris itu adalah `id_inventory_source`.
+- **Stock Transfer**: sama seperti Stock Allocation, pilih baris inventory dari `GET /api/inventories?id_company=...&id_inventory_location=<lokasi sumber>&in_stock=true`. Pakai `search` untuk mencari nama barang, `product_code`, `serial_number`, atau `model_number`, dan `id_master_item` untuk memfilter barang. `id` baris itu adalah `id_inventory_source`. Tampilkan `product_code` dan `serial_number` di pilihan, karena barang dengan serial punya satu baris per unit (qty 1).
+- ~~Stock Transfer lewat `GET /api/inventories/check-stock`~~ **tidak dipakai lagi**: `check-stock` belum mengenal master barang dan `model_number`, sehingga bisa menunjuk baris yang salah. Lihat [master-item-unit-code.md](master-item-unit-code.md).
 
 ### Stock Movement Preview
 
 - **Source Stock**: `quantity` baris sumber. After = source − qty.
-- **Destination Stock**: `check-stock` dengan field barang yang sama, `id_company` sumber, dan `id_inventory_location` = lokasi tujuan. After = destination + qty.
+- **Destination Stock**: barang dengan serial selalu 0 di tujuan (unit itu pindah sebagai satu baris). Barang tanpa serial: ambil `GET /api/inventories?id_master_item=<master sumber>&id_company=<company sumber>&id_inventory_location=<lokasi tujuan>`, lalu cari baris tanpa `serial_number` yang `brand`, `model_number`, `size`, `material`, dan `other`-nya sama dengan sumber (kosong dianggap sama). Kalau tidak ada, destination 0. After = destination + qty.
+- Barang lama tanpa master barang (`id_master_item` kosong) masih bisa memakai `check-stock` seperti sebelumnya.
+- Baris dengan `serial_number` adalah satu unit: qty harus sama dengan stok baris itu (1), tidak bisa dipindah sebagian. API menolak dengan `A unit with a serial number moves as a whole: quantity must be 1`.
 - Nonaktifkan Submit jika qty > source stock. API juga menolak dengan `Insufficient stock: source only has N <satuan>`.
 
 Stok dicek saat dibuat dan **dicek lagi** saat Manager GA approve, karena stok sumber bisa berubah selama menunggu approval.
@@ -76,7 +79,7 @@ Stok dicek saat dibuat dan **dicek lagi** saat Manager GA approve, karena stok s
 Setiap movement berisi field di atas, `movement_no`, `id_company`, `id_inventory_location_source`, `id_inventory_destination` (terisi setelah `approved`), `item_name`, `quantity_unit`, `status`, dan relasi berikut:
 
 - `company`: `{ id, company_name }`
-- `inventory_source`, `inventory_destination`: `{ id, item_name, brand, serial_number, size, material, other, quantity, quantity_unit }`. `quantity` di sini adalah **stok saat ini**.
+- `inventory_source`, `inventory_destination`: `{ id, id_master_item, product_code, item_name, brand, model_number, serial_number, size, material, other, quantity, quantity_unit }`. `quantity` di sini adalah **stok saat ini**. Baris tujuan yang baru dibuat membawa `product_code`, `id_master_item`, `model_number`, dan `serial_number` baris sumber.
 - `inventory_location_source`, `inventory_location_destination`: `{ id, location_code, location_name }`
 - `user_request`, `verification_progress` (`request spv ga`, `approved spv ga`, `approved manager ga`, `rejected spv ga`, `rejected manager ga`)
 - `is_can_approve_reject`, `action_label`

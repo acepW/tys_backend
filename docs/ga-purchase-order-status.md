@@ -60,29 +60,35 @@ Qty item:
 | Aksi                                 | Endpoint                                        | `receiving_status` yang diizinkan        | Hasil                                          |
 | ------------------------------------ | ----------------------------------------------- | ---------------------------------------- | ---------------------------------------------- |
 | GA Staff simpan purchase realization | `PATCH /ga-staff/realization/:id/items/:itemId` | semua (selama order `request receiving` atau `finished`) | Realisasi baru ditambahkan ke `realizations[]`; status tidak berubah |
-| GA Staff Accepted                    | `PATCH /ga-staff/accept/:id/items/:itemId`      | `pending`, `returned`                    | `accepted`                                     |
-| GA Staff Returned                    | `PATCH /ga-staff/return/:id/items/:itemId`      | `pending`, `returned`                    | `returned`                                     |
+| GA Staff Accepted (langsung)         | `PATCH /ga-staff/accept/:id/items/:itemId`      | `pending`, `returned`, tanpa draft receipt | `accepted`                                   |
+| GA Staff simpan / edit good receipt (draft) | `PATCH /ga-staff/receipt/:id/items/:itemId` | `pending`, `returned`                  | Draft receipt dibuat atau diubah; status tidak berubah, belum masuk inventory |
+| GA Staff hapus draft good receipt    | `DELETE /ga-staff/receipt/:id/items/:itemId`    | `pending`, `returned`, ada draft         | Draft dihapus; status tidak berubah            |
+| GA Staff Accepted semua dari draft   | `PATCH /ga-staff/receipt/accept/:id/items/:itemId` | `pending`, `returned`, ada draft      | `accepted`                                     |
+| GA Staff Returned (dari draft)       | `PATCH /ga-staff/return/:id/items/:itemId`      | `pending`, `returned`, ada draft         | `returned`                                     |
 | GA Staff ajukan refund               | `PATCH /ga-staff/refund/:id/items/:itemId`      | `returned`                               | `refund requested`                             |
 | FAT SPV/Manager approve refund       | `PATCH /fat/refund/approve/:id/items/:itemId`   | `refund requested`                       | `refunded`                                     |
 | FAT SPV/Manager reject refund        | `PATCH /fat/refund/reject/:id/items/:itemId`    | `refund requested`                       | kembali `returned`                             |
 
 `:itemId` adalah `id` item GA Purchase Order (`items[].id`). Semua aksi hanya bisa saat order berstatus `request receiving`, kecuali simpan purchase realization yang juga bisa saat order `finished` (misalnya realisasi diisi lagi setelah refund menyelesaikan order). Kalau dipanggil dari status yang tidak sesuai, API mengembalikan error 409.
 
-**Accept dan return hanya bisa dilakukan setelah item tersebut punya minimal satu purchase realization.**
+**Accept, simpan good receipt, dan return hanya bisa dilakukan setelah item tersebut punya minimal satu purchase realization.**
+
+**Return dilakukan 2 langkah**: simpan good receipt dulu sebagai draft (qty tersisa, serial per unit jika ada, tanggal, status, file), lalu dari draft itu pilih **Accepted semua** atau **Returned**. Selama item punya draft, Accepted langsung dan ajukan refund untuk item itu ditolak (409) sampai draft di-accept, di-return, atau dihapus.
 
 ### Contoh skenario
 
 Beli 5 unit, datang 3 bagus dan 2 rusak:
 
 1. Simpan purchase realization item.
-2. **Returned** dengan `quantity_good: 3`, `quantity_returned: 2` → 5 - 2 = 3 unit masuk inventory, status `returned`.
-3. Pilih salah satu:
-   - Barang pengganti datang → **Accepted** → seluruh qty tersisa (2 unit) masuk inventory, status `accepted`. Kalau pengganti masih ada yang rusak, **Returned** lagi dengan `quantity_returned`-nya.
+2. **Simpan good receipt** (draft) untuk 5 unit. Belum ada yang masuk inventory.
+3. **Returned** dari draft: tanpa serial isi `quantity_returned: 2`; dengan serial pilih 2 unit di `returned_unit_ids`. 5 - 2 = 3 unit masuk inventory, status `returned`.
+4. Pilih salah satu:
+   - Barang pengganti datang → **Accepted** langsung → seluruh qty tersisa (2 unit) masuk inventory, status `accepted`. Kalau pengganti masih ada yang rusak, simpan good receipt lagi lalu **Returned**.
    - Vendor tidak mengganti → **Ajukan refund**, lalu FAT approve → status `refunded`.
 
 Stok masuk ke company GA PO di lokasi default company tersebut (`companies.id_inventory_location`). Kalau company belum punya lokasi default, Accepted/Returned item `item_category` = `item` ditolak (409); isi dulu lokasinya di master company.
 
-Beli 12 unit, 11 bagus tapi semuanya harus dikembalikan: **Returned** dengan `quantity_good: 11`, `quantity_returned: 12` → tidak ada yang masuk inventory, status `returned`. `quantity_good` hanya dicatat sebagai riwayat pemeriksaan di goods receipt; yang masuk inventory selalu qty tersisa dikurangi `quantity_returned`.
+Beli 12 unit, semuanya harus dikembalikan: simpan good receipt, lalu **Returned** dengan `quantity_returned: 12` (atau semua unit dipilih) → tidak ada yang masuk inventory, status `returned`.
 
 ## Endpoint persetujuan order
 
@@ -135,11 +141,15 @@ Beli 12 unit, 11 bagus tapi semuanya harus dikembalikan: **Returned** dengan `qu
 }
 ```
 
-**GA Staff Accepted**: semua field wajib kecuali `note` dan `quantity_good`. Seluruh qty tersisa masuk inventory. `quantity_good` hanya riwayat (default qty tersisa, tidak boleh melebihi qty tersisa); kalau ada yang harus dikirim balik, pakai Returned.
+**GA Staff Accepted**: semua field wajib kecuali `note`. Accepted selalu menerima **seluruh qty tersisa**; frontend menampilkan qty tersisa sebagai qty (tidak bisa diubah). Kalau ada yang harus dikirim balik, pakai Returned. Ada 2 mode, dipilih per penerimaan dengan `has_serial_number`:
+
+- **Tanpa serial** (`has_serial_number: false` atau tidak dikirim): seperti alur sebelumnya. Qty tersisa masuk inventory sebagai satu qty dengan satu kode produk (atau ditambahkan ke baris yang cocok).
+- **Dengan serial** (`has_serial_number: true`): `units` wajib berisi tepat satu `serial_number` per unit qty tersisa. Setiap unit masuk inventory sebagai baris sendiri (qty 1) dengan kode produk sendiri. Hanya untuk `item_category` = `item`, dan qty tersisa harus bilangan bulat. Serial number harus unik per master barang (lihat [master-item-unit-code.md](master-item-unit-code.md)).
 
 ```json
 {
-  "quantity_good": 5,
+  "has_serial_number": true,
+  "units": [{ "serial_number": "SN-001" }, { "serial_number": "SN-002" }],
   "goods_in_date": "2026-10-12",
   "goods_status": "Good Without Exception",
   "note": "Catatan (opsional)",
@@ -148,17 +158,24 @@ Beli 12 unit, 11 bagus tapi semuanya harus dikembalikan: **Returned** dengan `qu
 }
 ```
 
-**GA Staff Returned**: semua field wajib. `quantity_returned` harus lebih dari 0 dan **tidak boleh melebihi qty tersisa**; qty tersisa dikurangi `quantity_returned` masuk inventory. `quantity_good` (boleh 0, tidak boleh melebihi qty tersisa) hanya riwayat hasil pemeriksaan, tidak memengaruhi stok.
+~~`quantity_good`~~ di body Accepted **dihapus**: nilainya diabaikan, dan goods receipt mencatat `quantity_good` = qty tersisa.
+
+**GA Staff simpan / edit good receipt (draft)** `PATCH /ga-staff/receipt/:id/items/:itemId`: body sama seperti Accepted (`has_serial_number`, `units`, `goods_in_date`, `goods_status`, `note`, `files_goods_in`, `files_goods_receipt`), untuk seluruh qty tersisa. Belum ada yang masuk inventory. Memanggil lagi saat draft sudah ada akan **mengubah draft itu**: semua `units` diganti dengan yang baru dikirim, dan untuk file sertakan `id` file lama yang ingin dipertahankan. Serial di draft juga tidak boleh dipakai draft lain untuk master barang yang sama.
+
+**GA Staff hapus draft** `DELETE /ga-staff/receipt/:id/items/:itemId`: tanpa body. Draft, unit, dan filenya dihapus.
+
+**GA Staff Accepted semua dari draft** `PATCH /ga-staff/receipt/accept/:id/items/:itemId`: tanpa body. Seluruh qty draft (atau semua unitnya) masuk inventory, status `accepted`.
+
+**GA Staff Returned** `PATCH /ga-staff/return/:id/items/:itemId`: harus ada draft good receipt. Semua field wajib. Unit/qty yang tidak di-return masuk inventory.
+
+- Draft **dengan serial**: `returned_unit_ids` wajib berisi minimal satu `id` dari `receipts[].units[]` draft itu. `quantity_returned` = jumlah unit yang dipilih (field `quantity_returned` diabaikan).
+- Draft **tanpa serial**: `quantity_returned` harus lebih dari 0 dan **tidak boleh melebihi qty draft**.
 
 ```json
 {
-  "quantity_good": 3,
+  "returned_unit_ids": [305],
   "quantity_returned": 2,
-  "goods_in_date": "2026-10-12",
-  "goods_status": "Not Good",
   "note": "2 unit rusak, dikirim balik",
-  "files_goods_in": [],
-  "files_goods_receipt": [],
   "return_delivery_date": "2026-10-13",
   "return_shipping_cost": 25000,
   "files_return_delivery_proof": [],
@@ -168,16 +185,15 @@ Beli 12 unit, 11 bagus tapi semuanya harus dikembalikan: **Returned** dengan `qu
 
 | Field                         | Isi                                                                                      |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
-| `quantity_good`               | Qty baik hasil pemeriksaan pada penerimaan ini (riwayat saja)                            |
-| `quantity_returned`           | Qty yang dikirim balik ke vendor (return saja); qty tersisa dikurangi nilai ini masuk inventory jika `item_category` = `item` |
-| `goods_in_date`               | Tanggal barang masuk                                                                     |
-| `goods_status`                | `Good Without Exception`, `Good With Notes`, atau `Not Good`                             |
-| `files_goods_in`              | File barang masuk                                                                        |
-| `files_goods_receipt`         | File penerimaan barang (good receipt)                                                    |
-| `return_delivery_date`        | Tanggal pengiriman balik ke vendor (return saja)                                         |
-| `return_shipping_cost`        | Biaya pengiriman balik, boleh 0 (return saja)                                            |
-| `files_return_delivery_proof` | Bukti pengiriman balik / proof of return delivery (return saja)                          |
-| `files_return_waybill`        | File resi pengiriman balik (return saja)                                                 |
+| `returned_unit_ids`           | Unit draft yang dikirim balik (draft dengan serial saja)                                 |
+| `quantity_returned`           | Qty yang dikirim balik ke vendor (draft tanpa serial saja); qty draft dikurangi nilai ini masuk inventory jika `item_category` = `item` |
+| `note`                        | Alasan return, disimpan di `return_note` receipt                                         |
+| `return_delivery_date`        | Tanggal pengiriman balik ke vendor                                                       |
+| `return_shipping_cost`        | Biaya pengiriman balik, boleh 0                                                          |
+| `files_return_delivery_proof` | Bukti pengiriman balik / proof of return delivery                                        |
+| `files_return_waybill`        | File resi pengiriman balik                                                               |
+
+~~Returned satu langkah~~ (`goods_in_date`, `goods_status`, file goods receipt, dan `quantity_good` dikirim bersama data return) **dihapus**: data penerimaan sekarang disimpan lewat good receipt draft. ~~`quantity_good`~~ di body Returned **dihapus**; receipt mencatat `quantity_good` = qty yang masuk inventory.
 
 **GA Staff ajukan refund**: refund selalu menutup seluruh `quantity_returned` item. `refund_amount` harus lebih dari 0 dan `files_refund_proof` wajib berisi minimal satu file.
 
@@ -243,7 +259,7 @@ Setiap item (`items[]`):
 
 Setiap purchase realization (`items[].realizations[]`): `purchase_realization_date`, `purchase_realization_amount`, `note`, `user`, dan file `files_purchase_proof`, `files_invoice`.
 
-Setiap goods receipt (`items[].receipts[]`): `type` (`accept` / `return`), `quantity_received` (qty tersisa saat itu), `quantity_good` (riwayat pemeriksaan), `quantity_returned` (qty dikirim balik; qty masuk inventory = `quantity_received - quantity_returned`), `goods_in_date`, `goods_status`, `return_delivery_date`, `return_shipping_cost`, `note`, `user`, dan file `files_goods_in`, `files_goods_receipt`, `files_return_delivery_proof`, `files_return_waybill`.
+Setiap goods receipt (`items[].receipts[]`): `type` (`draft` = good receipt tersimpan yang belum di-accept/return dan belum masuk inventory, `accept`, `return`), `has_serial_number`, `units[]` (hanya untuk receipt dengan serial: `id`, `serial_number`, `is_returned`, `id_inventory`, `inventory: { id, product_code }`), `quantity_received` (qty tersisa saat itu), `quantity_good` (receipt baru: qty yang masuk inventory; receipt return lama: riwayat pemeriksaan), `quantity_returned` (qty dikirim balik; qty masuk inventory = `quantity_received - quantity_returned`), `goods_in_date`, `goods_status`, `return_delivery_date`, `return_shipping_cost`, `note`, `return_note` (alasan return), `user`, dan file `files_goods_in`, `files_goods_receipt`, `files_return_delivery_proof`, `files_return_waybill`.
 
 Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`, `mime_type`, `size`. `indonesian_name` dan `mandarin_name` opsional. Saat update (refund), sertakan `id` file lama yang ingin dipertahankan. File yang tidak dikirim akan dihapus.
 
@@ -253,8 +269,11 @@ Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`,
 | --------------------------------- | ------------------------ |
 | `purchase realization saved`      | Tambah realisasi         |
 | `purchase realization updated`    | Koreksi realisasi (data lama, sebelum realisasi berupa array) |
-| `goods accepted`                  | Accepted                 |
-| `goods returned`                  | Returned                 |
+| `goods receipt saved`             | Simpan good receipt (draft) |
+| `goods receipt updated`           | Edit draft good receipt  |
+| `goods receipt deleted`           | Hapus draft good receipt |
+| `goods accepted`                  | Accepted (langsung atau dari draft) |
+| `goods returned`                  | Returned (dari draft)    |
 | `refund requested`                | Ajukan refund            |
 | `refund approved spv/manager fat` | FAT approve refund       |
 | `refund rejected spv/manager fat` | FAT reject refund        |
@@ -265,12 +284,14 @@ Format setiap file sama dengan file lain: `original_name`, `stored_name`, `url`,
 - API belum membatasi role. Frontend yang perlu menampilkan tombol sesuai role user.
 - Saat order `request receiving`, per item:
   - Tampilkan riwayat `realizations[]` dan form tambah purchase realization. Tombol Accepted / Returned baru aktif setelah `realizations[]` tidak kosong.
-  - Accepted / Returned tampil jika `receiving_status` = `pending` atau `returned`. Isi default `quantity_good` dengan qty tersisa. Form Returned juga punya input `quantity_returned` (boleh lebih besar dari qty yang tidak baik).
+  - Accepted / Returned tampil jika `receiving_status` = `pending` atau `returned`. Form Accepted menampilkan qty tersisa (tidak bisa diubah) dan pilihan "punya serial number". Jika dipilih, tampilkan input serial sebanyak qty tersisa dan kirim `has_serial_number: true` + `units`. Untuk return, tombol **Simpan good receipt** memakai form yang sama dengan Accepted (dikirim ke `/ga-staff/receipt`). Setelah ada draft (`receipts[]` dengan `type` = `draft`), tampilkan draft itu dengan tombol **Edit**, **Hapus**, **Accepted semua**, dan **Returned**, dan sembunyikan Accepted langsung serta ajukan refund. Form Returned: draft dengan serial menampilkan daftar unit (`receipts[].units[]`) untuk dipilih (`returned_unit_ids`); draft tanpa serial punya input `quantity_returned`.
   - Ajukan refund tampil jika `receiving_status` = `returned`.
   - Approve / Reject refund (FAT) tampil jika `receiving_status` = `refund requested`.
 - Saat order `finished`, form tambah purchase realization tetap ditampilkan per item.
 - Belum ada notifikasi otomatis. Untuk menampilkan riwayat gunakan `verification_progress`.
 
 ## Migrasi database
+
+Untuk master barang, serial number per unit, draft good receipt, dan kode produk, jalankan juga `npm run db:sync-master-item` (lihat [master-item-unit-code.md](master-item-unit-code.md#setup)).
 
 Jalankan sekali setelah deploy: `npm run db:sync-ga-purchase-order`. Script ini aman dijalankan ulang. Isinya: membuat tabel `ga_purchase_order_item_receipts` dan `ga_purchase_order_item_realizations`, menambah kolom baru, memperluas enum `receiving_status`, mengubah index `inventory_histories` agar satu item bisa punya beberapa riwayat stok, lalu mengisi total order, qty item, dan satu goods receipt untuk item yang di-accept dengan alur lama (file `files_goods_in` / `files_goods_receipt` item lama dipindah ke receipt tersebut), serta satu realization untuk item yang realisasinya tersimpan di kolom item lama (file `files_purchase_proof` / `files_invoice` ikut dipindah).

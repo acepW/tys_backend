@@ -5,16 +5,33 @@ module.exports = (sequelize) => {
     "Inventory",
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+      id_master_item: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "master_items", key: "id" },
+        comment: "Master item; NULL for rows created before the master existed",
+      },
+      product_code: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+        comment:
+          "Product code <item_code>-00001, given when the row is created from a master item; a moved row keeps it",
+      },
       item_name: { type: DataTypes.STRING(500), allowNull: false },
       brand: {
         type: DataTypes.STRING(255),
         allowNull: true,
         comment: "Brand (merk) of the item",
       },
+      model_number: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Model number of the item",
+      },
       serial_number: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        comment: "Serial number (no seri) of the item",
+        comment: "Serial number (no seri) of one unit, from the goods receipt; a row with one holds quantity 1",
       },
       size: {
         type: DataTypes.STRING(255),
@@ -77,10 +94,16 @@ module.exports = (sequelize) => {
       indexes: [
         { fields: ["item_name"] },
         { fields: ["id_company", "id_inventory_location"] },
+        { fields: ["product_code"] },
+        { fields: ["id_master_item", "serial_number"] },
       ],
     },
   );
   Inventory.associate = (models) => {
+    Inventory.belongsTo(models.MasterItem, {
+      foreignKey: "id_master_item",
+      as: "master_item",
+    });
     Inventory.belongsTo(models.Company, {
       foreignKey: "id_company",
       as: "company",

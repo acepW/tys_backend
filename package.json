@@ -14,6 +14,7 @@
     "db:sync-customer-code": "node scripts/sync-customer-code.js",
     "db:sync-inventory-received-date": "node scripts/sync-inventory-received-date.js",
     "db:sync-inventory-location": "node scripts/sync-inventory-location.js",
+    "db:sync-master-item": "node scripts/sync-master-item.js",
     "db:sync-inventory-movement": "node scripts/sync-inventory-movement.js",
     "db:sync-leave-request-sick-letter": "node scripts/sync-leave-request-sick-letter.js",
     "db:sync-leave-request-fields": "node scripts/sync-leave-request-fields.js",

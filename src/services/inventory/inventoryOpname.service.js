@@ -10,8 +10,10 @@ const {
 
 // Inventory fields copied onto each opname item when the opname is created.
 const itemFields = [
+  "product_code",
   "item_name",
   "brand",
+  "model_number",
   "serial_number",
   "size",
   "material",
@@ -234,8 +236,10 @@ class InventoryOpnameService {
           `Inventory opname ${open.opname_no} is still ${open.status}; finish it before creating a new one`,
           409,
         );
+      // Rows with no stock left (e.g. a unit that moved to another location)
+      // are not counted.
       const inventories = await models.db1.Inventory.findAll({
-        where: place,
+        where: { ...place, quantity: { [Op.gt]: 0 } },
         order: [
           ["item_name", "ASC"],
           ["id", "ASC"],

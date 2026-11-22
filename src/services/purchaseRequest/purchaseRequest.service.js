@@ -10,10 +10,10 @@ const {
   documentNumbers,
 } = require("../procurement/shared");
 
+// item_name is not taken from the input; it is copied from the master item.
 const itemFields = [
-  "item_name",
   "brand",
-  "serial_number",
+  "model_number",
   "size",
   "material",
   "other",
@@ -25,10 +25,19 @@ const itemFields = [
 ];
 const assetCategories = ["asset", "non asset"];
 
-function itemPayload(item, parent, userId) {
+// Master item of a purchase request or GA purchase order item.
+const masterItemInclude = () => ({
+  model: models.db1.MasterItem,
+  as: "master_item",
+  attributes: ["id", "item_code", "item_name"],
+});
+
+function itemPayload(item, parent, master, userId) {
   const data = {
     id_purchase_request: parent.id,
     purchase_request_category: parent.purchase_request_category,
+    id_master_item: master.id,
+    item_name: master.item_name,
   };
   for (const field of itemFields)
     if (item[field] !== undefined) data[field] = item[field];
@@ -72,6 +81,7 @@ class PurchaseRequestService {
             as: "requester",
             attributes: ["id", "name", "email"],
           },
+          masterItemInclude(),
           {
             model: db.File,
             as: "files_product",
@@ -124,6 +134,20 @@ class PurchaseRequestService {
     );
   }
 
+  // Active master items by id; fails when one of ids is missing or inactive.
+  async activeMasters(ids, t1) {
+    const unique = [...new Set(ids.map(Number))];
+    const rows = await models.db1.MasterItem.findAll({
+      where: { id: unique, is_active: true },
+      attributes: ["id", "item_code", "item_name"],
+      transaction: t1,
+    });
+    const byId = new Map(rows.map((row) => [Number(row.id), row]));
+    for (const id of unique)
+      if (!byId.has(id)) fail(`Master item ${id} not found`, 404);
+    return byId;
+  }
+
   async syncItems(parent, items, userId, t1, t2) {
     const existing = await models.db1.PurchaseRequestItem.findAll({
       where: { id_purchase_request: parent.id },
@@ -131,8 +155,13 @@ class PurchaseRequestService {
     });
     const existingIds = new Set(existing.map((row) => row.id));
     const kept = new Set();
+    const masters = await this.activeMasters(
+      items.map((item) => item.id_master_item),
+      t1,
+    );
     for (const item of items) {
-      const data = itemPayload(item, parent, userId);
+      const master = masters.get(Number(item.id_master_item));
+      const data = itemPayload(item, parent, master, userId);
       let id;
       if (item.id != null) {
         id = Number(item.id);
@@ -350,6 +379,7 @@ class PurchaseRequestService {
             as: "requester",
             attributes: ["id", "name", "email"],
           },
+          masterItemInclude(),
           {
             model: db.File,
             as: "files_product",

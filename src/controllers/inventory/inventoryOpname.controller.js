@@ -77,7 +77,11 @@ class InventoryOpnameController {
   async getItems(req, res) {
     try {
       const where = {};
-      if (req.query?.search) where.item_name = { [Op.like]: `%${req.query.search}%` };
+      if (req.query?.search) {
+        const like = { [Op.like]: `%${req.query.search}%` };
+        where[Op.or] = ["item_name", "product_code", "serial_number", "model_number"]
+          .map((field) => ({ [field]: like }));
+      }
       if (req.query?.status) where.status = req.query.status;
       if (req.query?.purchase_request_category)
         where.purchase_request_category = req.query.purchase_request_category;

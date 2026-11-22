@@ -17,8 +17,18 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "inventories", key: "id" },
       },
+      product_code: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+        comment: "Copied from the inventory row",
+      },
       item_name: { type: DataTypes.STRING(500), allowNull: false },
       brand: { type: DataTypes.STRING(255), allowNull: true },
+      model_number: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Copied from the inventory row",
+      },
       serial_number: { type: DataTypes.STRING(255), allowNull: true },
       size: { type: DataTypes.STRING(255), allowNull: true },
       material: { type: DataTypes.STRING(255), allowNull: true },

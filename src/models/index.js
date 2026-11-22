@@ -124,14 +124,17 @@ const GaPurchaseOrderItemModel = require("./gaPurchaseOrder/gaPurchaseOrderItem.
 const GaPurchaseOrderVerificationProgressModel = require("./gaPurchaseOrder/gaPurchaseOrderVerificationProgress.model");
 const GaPurchaseOrderItemReceiptModel = require("./gaPurchaseOrder/gaPurchaseOrderItemReceipt.model");
 const GaPurchaseOrderItemRealizationModel = require("./gaPurchaseOrder/gaPurchaseOrderItemRealization.model");
+const GaPurchaseOrderItemReceiptUnitModel = require("./gaPurchaseOrder/gaPurchaseOrderItemReceiptUnit.model");
 
 //inventory
 const InventoryModel = require("./inventory/inventory.model");
 const InventoryLocationModel = require("./inventory/inventoryLocation.model");
+const MasterItemModel = require("./inventory/masterItem.model");
 const InventoryMovementModel = require("./inventory/inventoryMovement.model");
 const InventoryMovementVerificationProgressModel = require("./inventory/inventoryMovementVerificationProgress.model");
 const InventoryHistoryModel = require("./inventory/inventoryHistory.model");
 const InventoryRequestModel = require("./inventory/inventoryRequest.model");
+const InventoryRequestUnitModel = require("./inventory/inventoryRequestUnit.model");
 const InventoryRequestVerificationProgressModel = require("./inventory/inventoryRequestVerificationProgress.model");
 const InventoryOpnameModel = require("./inventory/inventoryOpname.model");
 const InventoryOpnameItemModel = require("./inventory/inventoryOpnameItem.model");
@@ -305,14 +308,17 @@ const initializeModels = (sequelize) => {
     GaPurchaseOrderVerificationProgress: GaPurchaseOrderVerificationProgressModel(sequelize),
     GaPurchaseOrderItemReceipt: GaPurchaseOrderItemReceiptModel(sequelize),
     GaPurchaseOrderItemRealization: GaPurchaseOrderItemRealizationModel(sequelize),
+    GaPurchaseOrderItemReceiptUnit: GaPurchaseOrderItemReceiptUnitModel(sequelize),
 
     //inventory
     Inventory: InventoryModel(sequelize),
     InventoryLocation: InventoryLocationModel(sequelize),
+    MasterItem: MasterItemModel(sequelize),
     InventoryMovement: InventoryMovementModel(sequelize),
     InventoryMovementVerificationProgress: InventoryMovementVerificationProgressModel(sequelize),
     InventoryHistory: InventoryHistoryModel(sequelize),
     InventoryRequest: InventoryRequestModel(sequelize),
+    InventoryRequestUnit: InventoryRequestUnitModel(sequelize),
     InventoryRequestVerificationProgress: InventoryRequestVerificationProgressModel(sequelize),
     InventoryOpname: InventoryOpnameModel(sequelize),
     InventoryOpnameItem: InventoryOpnameItemModel(sequelize),
@@ -427,6 +433,7 @@ const syncModel = async (
 /** Create procurement tables in foreign-key dependency order. Existing tables are left intact. */
 const syncProcurementModels = async () => {
   const order = [
+    "MasterItem",
     "PurchaseRequest",
     "GaPurchaseOrder",
     "PurchaseRequestItem",
@@ -437,7 +444,9 @@ const syncProcurementModels = async () => {
     "GaPurchaseOrderItemRealization",
     "InventoryLocation",
     "Inventory",
+    "GaPurchaseOrderItemReceiptUnit",
     "InventoryRequest",
+    "InventoryRequestUnit",
     "InventoryRequestVerificationProgress",
     "InventoryOpname",
     "InventoryOpnameItem",

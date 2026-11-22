@@ -34,7 +34,8 @@ function mockStore(t, inventories) {
       return [1];
     }],
     [db.Inventory, "findAll", async ({ where }) => store.inventories.filter((row) =>
-      row.id_company === where.id_company && row.id_inventory_location === where.id_inventory_location)],
+      row.id_company === where.id_company && row.id_inventory_location === where.id_inventory_location &&
+      (where.quantity === undefined || Number(row.quantity) > where.quantity[Op.gt]))],
     [db.Inventory, "findByPk", async (id) => store.inventories.find((row) => row.id === id) || null],
     [db.Inventory, "update", async (data, { where }) => {
       Object.assign(store.inventories.find((row) => row.id === where.id), data);
@@ -117,6 +118,24 @@ test("Creating an opname copies every inventory row as a pending item with an au
   assert.equal(abadi.opname_no, `SO-TYS-A-${month}-${year}-0001`);
   assert.deepEqual([abadi.id_company, abadi.id_inventory_location], [3, 4]);
   assert.deepEqual(store.items.filter((item) => item.id_inventory_opname === abadi.id).map((item) => item.id_inventory), [4]);
+});
+
+test("Opname skips rows with no stock left and copies the product code and model number", async (t) => {
+  const store = mockStore(t, [
+    ...inventoryRows(),
+    // A laptop unit that moved to another location, and a sold-out item without a serial number.
+    { id: 5, product_code: "LTP-00001", item_name: "Laptop", brand: "Dell", model_number: "Latitude 5440",
+      serial_number: "SN-1", quantity_unit: "unit", quantity: "0.00", id_company: 2, id_inventory_location: 4 },
+    { id: 6, product_code: "ATK-00001", item_name: "Pulpen", quantity_unit: "pcs", quantity: "0.00",
+      id_company: 2, id_inventory_location: 4 },
+    { id: 7, product_code: "LTP-00002", item_name: "Laptop", brand: "Dell", model_number: "Latitude 5440",
+      serial_number: "SN-2", quantity_unit: "unit", quantity: "1.00", id_company: 2, id_inventory_location: 4 },
+  ]);
+  await opnameService.create(place, 5, false);
+  assert.deepEqual(store.items.map((item) => [item.id_inventory, item.product_code ?? null, item.model_number ?? null,
+    item.serial_number, item.quantity_system]), [
+    [1, null, null, null, "10.00"], [2, null, null, null, "4.00"], [7, "LTP-00002", "Latitude 5440", "SN-2", "1.00"],
+  ]);
 });
 
 test("Opname creation checks the company and location", async (t) => {

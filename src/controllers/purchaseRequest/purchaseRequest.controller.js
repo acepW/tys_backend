@@ -31,7 +31,11 @@ function validateItems(items) {
     const item = items[i];
     if (!item || typeof item !== "object" || Array.isArray(item))
       return `items[${i}] must be an object`;
-    if (!item.item_name?.trim()) return `items[${i}].item_name is required`;
+    const masterId = Number(item.id_master_item);
+    if (!Number.isInteger(masterId) || masterId <= 0)
+      return `items[${i}].id_master_item is required`;
+    if (item.model_number != null && typeof item.model_number !== "string")
+      return `items[${i}].model_number must be a string`;
     if (!item.quantity_unit?.trim())
       return `items[${i}].quantity_unit is required`;
     if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0)

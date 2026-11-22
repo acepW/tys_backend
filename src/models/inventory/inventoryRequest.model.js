@@ -6,9 +6,29 @@ module.exports = (sequelize) => {
     "InventoryRequest",
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-      item_name: { type: DataTypes.STRING(500), allowNull: false },
+      id_master_item: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "master_items", key: "id" },
+        comment: "Master item; required on create, NULL for requests created before the master existed",
+      },
+      item_name: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
+        comment: "Copied from the master item",
+      },
       brand: { type: DataTypes.STRING(255), allowNull: true },
-      serial_number: { type: DataTypes.STRING(255), allowNull: true },
+      model_number: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Model number of the item (replaces the old serial_number column)",
+      },
+      has_serial_number: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: "Made with one serial number per unit (see units); otherwise by quantity only",
+      },
       size: { type: DataTypes.STRING(255), allowNull: true },
       material: { type: DataTypes.STRING(255), allowNull: true },
       other: { type: DataTypes.TEXT, allowNull: true },
@@ -77,6 +97,14 @@ module.exports = (sequelize) => {
     InventoryRequest.belongsTo(models.Inventory, {
       foreignKey: "id_inventory",
       as: "inventory",
+    });
+    InventoryRequest.belongsTo(models.MasterItem, {
+      foreignKey: "id_master_item",
+      as: "master_item",
+    });
+    InventoryRequest.hasMany(models.InventoryRequestUnit, {
+      foreignKey: "id_inventory_request",
+      as: "units",
     });
     InventoryRequest.belongsTo(models.Company, {
       foreignKey: "id_company",

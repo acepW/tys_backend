@@ -26,16 +26,22 @@ module.exports = (sequelize) => {
         allowNull: true,
         references: { model: "vendors", key: "id" },
       },
+      id_master_item: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "master_items", key: "id" },
+        comment: "Copied from purchase request item",
+      },
       item_name: { type: DataTypes.STRING(500), allowNull: false },
       brand: {
         type: DataTypes.STRING(255),
         allowNull: true,
         comment: "Brand (merk) of the item",
       },
-      serial_number: {
+      model_number: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        comment: "Serial number (no seri) of the item",
+        comment: "Model number, copied from purchase request item (replaces the old serial_number column)",
       },
       size: {
         type: DataTypes.STRING(255),
@@ -225,6 +231,10 @@ module.exports = (sequelize) => {
     GaPurchaseOrderItem.belongsTo(models.User, {
       foreignKey: "id_requester",
       as: "requester",
+    });
+    GaPurchaseOrderItem.belongsTo(models.MasterItem, {
+      foreignKey: "id_master_item",
+      as: "master_item",
     });
     GaPurchaseOrderItem.hasMany(models.GaPurchaseOrderItemReceipt, {
       foreignKey: "id_ga_purchase_order_item",

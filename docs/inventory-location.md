@@ -10,7 +10,7 @@ Inventory sekarang dicatat per **company** dan per **lokasi**. Semua endpoint be
 | Master company             | Kolom baru `id_inventory_location` = lokasi default company                                                                        |
 | Inventory                  | Kolom baru `id_company` dan `id_inventory_location`                                                                                |
 | Inventory request          | Kolom baru `id_company` (wajib) dan `id_inventory_location` (default: lokasi default company)                                      |
-| Pencocokan stok            | `item_name`, `brand`, `serial_number`, `size`, `material`, `other` **+ `id_company` + `id_inventory_location`** harus sama persis  |
+| Pencocokan stok            | `item_name`, `brand`, `serial_number`, `size`, `material`, `other` **+ `id_company` + `id_inventory_location`** harus sama persis. Sekarang `id_master_item` menggantikan `item_name` dan `model_number` ikut dicocokkan, lihat [master-item-unit-code.md](master-item-unit-code.md) |
 | GA PO (Accepted/Returned)  | `id_company` dari GA PO, `id_inventory_location` dari lokasi default company GA PO                                                 |
 | Stock opname               | Kolom baru `id_company` (wajib) dan `id_inventory_location` (default: lokasi default company); hanya inventory company & lokasi itu yang di-opname. Nomor `SO-<initial_company>-MM-YYYY-0001`, lihat [inventory-opname-frontend.md](inventory-opname-frontend.md) |
 

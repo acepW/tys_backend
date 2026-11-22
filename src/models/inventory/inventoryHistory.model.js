@@ -25,9 +25,9 @@ module.exports = (sequelize) => {
       id_ga_purchase_order_item_receipt: {
         type: DataTypes.INTEGER,
         allowNull: true,
-        unique: true,
         references: { model: "ga_purchase_order_item_receipts", key: "id" },
-        comment: "Goods receipt that added the stock (one item can have several)",
+        comment:
+          "Goods receipt that added the stock (one item can have several; a receipt with serial numbers has one history per unit)",
       },
       id_inventory_request: {
         type: DataTypes.INTEGER,
@@ -78,6 +78,9 @@ module.exports = (sequelize) => {
       indexes: [
         { fields: ["id_inventory"] },
         { fields: ["id_ga_purchase_order_item"] },
+        // Same name as npm run db:sync-master-item gives it (the generated name
+        // belonged to the old unique index).
+        { name: "inventory_histories_receipt", fields: ["id_ga_purchase_order_item_receipt"] },
       ],
     },
   );

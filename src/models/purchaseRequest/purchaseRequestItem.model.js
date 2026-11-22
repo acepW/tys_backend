@@ -10,16 +10,26 @@ module.exports = (sequelize) => {
         allowNull: false,
         references: { model: "purchase_requests", key: "id" },
       },
-      item_name: { type: DataTypes.STRING(500), allowNull: false },
+      id_master_item: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "master_items", key: "id" },
+        comment: "Master item picked by the requester; NULL for items created before the master existed",
+      },
+      item_name: {
+        type: DataTypes.STRING(500),
+        allowNull: false,
+        comment: "Copied from the master item",
+      },
       brand: {
         type: DataTypes.STRING(255),
         allowNull: true,
         comment: "Brand (merk) of the item",
       },
-      serial_number: {
+      model_number: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        comment: "Serial number (no seri) of the item",
+        comment: "Model number of the item (replaces the old serial_number column)",
       },
       size: {
         type: DataTypes.STRING(255),
@@ -93,6 +103,10 @@ module.exports = (sequelize) => {
     PurchaseRequestItem.belongsTo(models.User, {
       foreignKey: "id_requester",
       as: "requester",
+    });
+    PurchaseRequestItem.belongsTo(models.MasterItem, {
+      foreignKey: "id_master_item",
+      as: "master_item",
     });
     PurchaseRequestItem.belongsTo(models.GaPurchaseOrder, {
       foreignKey: "id_ga_purchase_order",

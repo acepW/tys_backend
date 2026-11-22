@@ -71,16 +71,18 @@ Selain itu setiap item punya `input_status`: teks bebas yang diisi user, misalny
 
 `opname_no` dibuat otomatis dengan format `SO-<initial_company>-MM-YYYY-0001`, misalnya `SO-TYS-11-2026-0001`. Bulan dan tahun diambil dari tanggal tiket dibuat. Nomor urut dihitung per inisial company (semua lokasi company itu memakai urutan yang sama) dan di-reset setiap tahun. Company wajib punya `initial_company`. Opname lama tetap memakai nomor `OPN-...`. `id_user_opname` adalah user yang login. Response (`201`) berisi detail opname seperti di bagian 2.
 
+Item opname dibuat dari semua baris inventory company dan lokasi itu yang **qty-nya lebih dari 0**. Baris dengan qty 0 (mis. unit ber-serial yang sudah dipindah ke lokasi lain, atau barang yang habis) tidak ikut. Barang yang ternyata masih ada fisiknya tapi tercatat 0 dicatat lewat inventory request. Barang dengan serial number muncul satu baris per unit (qty sistem 1).
+
 ## 2. List dan detail
 
 - `GET /api/inventory-opnames?search=SO-TYS&status=pending&id_company=2&id_inventory_location=4&page=1&limit=10`: `search` mencari `opname_no`; `id_company` dan `id_inventory_location` opsional. Response tidak berisi item.
 - List dan detail berisi `id_company`, `id_inventory_location`, `company: { id, company_name, initial_company }`, dan `inventory_location: { id, location_code, location_name }`.
 - `GET /api/inventory-opnames/:id`: detail beserta `user_opname`, semua `items` (urut nama barang), dan `verification_progress`.
-- `GET /api/inventory-opnames/:id/items?search=kursi&status=reject&page=1&limit=50`: item saja dengan pagination, untuk opname yang itemnya banyak. `search` mencari nama barang. Bisa juga difilter dengan `purchase_request_category`.
+- `GET /api/inventory-opnames/:id/items?search=kursi&status=reject&page=1&limit=50`: item saja dengan pagination, untuk opname yang itemnya banyak. `search` mencari nama barang, `product_code`, `serial_number`, atau `model_number`. Bisa juga difilter dengan `purchase_request_category`.
 
 List dan detail berisi `is_can_approve_reject` (user boleh review item/approve tiket) dan `action_label`.
 
-Field item: `id`, `id_inventory`, `item_name`, `brand`, `serial_number`, `size`, `material`, `other`, `purchase_request_category` (disalin dari inventory saat opname dibuat), `quantity_unit`, `quantity_system`, `quantity_actual`, `quantity_difference`, `input_status`, `note`, `status`, `review_note`, dan `details` (rincian status, lihat bagian 3).
+Field item: `id`, `id_inventory`, `product_code`, `item_name`, `brand`, `model_number`, `serial_number`, `size`, `material`, `other`, `purchase_request_category` (disalin dari inventory saat opname dibuat), `quantity_unit`, `quantity_system`, `quantity_actual`, `quantity_difference`, `input_status`, `note`, `status`, `review_note`, dan `details` (rincian status, lihat bagian 3).
 
 ## 3. Simpan hitungan (banyak sekaligus)
 

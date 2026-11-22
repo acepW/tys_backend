@@ -174,9 +174,10 @@ function buildItem(source, input, orderId) {
     id_purchase_request: source.id_purchase_request,
     id_purchase_request_item: source.id,
     id_vendor: input.id_vendor ?? null,
+    id_master_item: source.id_master_item,
     item_name: source.item_name,
     brand: source.brand,
-    serial_number: source.serial_number,
+    model_number: source.model_number,
     size: source.size,
     material: source.material,
     other: source.other,
@@ -198,6 +199,12 @@ function buildItem(source, input, orderId) {
     total,
   };
 }
+
+// Quantity still to be received: ordered minus stocked and refunded.
+const outstandingOf = (item) =>
+  round2(item.quantity - item.quantity_good - item.quantity_refunded);
+
+const plain = (row) => (row?.toJSON ? row.toJSON() : row);
 
 class GaPurchaseOrderService {
   async getNo(isDoubleDatabase = true) {
@@ -231,6 +238,11 @@ class GaPurchaseOrderService {
         as: "requester",
         attributes: ["id", "name", "email"],
       },
+      {
+        model: db.MasterItem,
+        as: "master_item",
+        attributes: ["id", "item_code", "item_name"],
+      },
       ...itemFileCategories.map(activeFiles),
       {
         model: db.GaPurchaseOrderItemRealization,
@@ -252,6 +264,20 @@ class GaPurchaseOrderService {
           ...[...receiptFileCategories, ...returnFileCategories].map(
             activeFiles,
           ),
+          {
+            model: db.GaPurchaseOrderItemReceiptUnit,
+            as: "units",
+            separate: true,
+            order: [["id", "ASC"]],
+            attributes: ["id", "serial_number", "is_returned", "id_inventory"],
+            include: [
+              {
+                model: db.Inventory,
+                as: "inventory",
+                attributes: ["id", "product_code"],
+              },
+            ],
+          },
         ],
       },
     ];
@@ -791,132 +817,345 @@ class GaPurchaseOrderService {
     return this.getById(id);
   }
 
-  // Records a goods receipt for the item's outstanding quantity (quantity minus
-  // stocked and refunded). Accept stocks all of it; return ships quantity_returned
-  // back to the vendor, to be accepted again or refunded, and stocks the rest.
-  // quantity_good is only the inspection result kept on the receipt, so a return
-  // may send back more than the bad units. Stocked quantity of item_category
-  // "item" goes into inventory.
-  async receiveItem(type, id, itemId, userId, data, isDoubleDatabase) {
-    const isReturn = type === "return";
-    if (isReturn && !data.note?.trim()) fail("note is required for return");
+  // Common goods receipt input; returns whether it uses serial numbers.
+  receiptInput(data) {
     if (!data.goods_in_date) fail("goods_in_date is required");
     if (!goodsStatuses.includes(data.goods_status))
       fail(`goods_status must be one of: ${goodsStatuses.join(", ")}`);
-    // Optional on accept, where it defaults to the outstanding quantity.
-    const quantityGood =
-      isReturn || (data.quantity_good != null && data.quantity_good !== "")
-        ? parseAmount(data.quantity_good, "quantity_good")
-        : null;
-    let quantityReturned = 0;
-    let shippingCost = null;
-    if (isReturn) {
-      quantityReturned = parseAmount(
-        data.quantity_returned,
-        "quantity_returned",
-        true,
+    if (data.has_serial_number !== undefined && typeof data.has_serial_number !== "boolean")
+      fail("has_serial_number must be a boolean");
+    return data.has_serial_number === true;
+  }
+
+  // Locks the order and loads an item that can receive goods: pending or
+  // returned, with at least one purchase realization.
+  async receivableItem(id, itemId, t1) {
+    const item = await this.receivingItem(id, itemId, t1, ["pending", "returned"]);
+    const realizations = await models.db1.GaPurchaseOrderItemRealization.count({
+      where: { id_ga_purchase_order_item: item.id },
+      transaction: t1,
+    });
+    if (!realizations)
+      fail("Purchase realization must be saved before receiving the item", 409);
+    return item;
+  }
+
+  // The item's draft goods receipt (saved, not yet accepted or returned), locked.
+  async findDraft(itemId, t1) {
+    return models.db1.GaPurchaseOrderItemReceipt.findOne({
+      where: { id_ga_purchase_order_item: itemId, type: "draft" },
+      transaction: t1,
+      lock: t1.LOCK.UPDATE,
+    });
+  }
+
+  // A draft blocks every other receiving action on the item until it is
+  // accepted, returned or deleted.
+  async assertNoDraft(itemId, t1) {
+    if (await this.findDraft(itemId, t1))
+      fail("The item has a draft goods receipt; accept, return or delete it first", 409);
+  }
+
+  // The draft to accept or return. Its quantity is the outstanding one when it was
+  // saved; the draft blocks other actions, so a mismatch means it is stale.
+  async requireDraft(item, t1) {
+    const draft = await this.findDraft(item.id, t1);
+    if (!draft) fail("The item has no draft goods receipt; save the goods receipt first", 409);
+    if (Number(draft.quantity_received) !== outstandingOf(item))
+      fail("The outstanding quantity changed; save the goods receipt again", 409);
+    return draft;
+  }
+
+  // Serial numbers of a receipt with has_serial_number: one per outstanding unit.
+  // Only for item_category "item" with a whole outstanding quantity. They must be
+  // free in inventory, in every other draft receipt and in every pending inventory
+  // request of the same master item.
+  async receiptSerials(item, outstanding, units, t1, draftId = null) {
+    if (item.item_category !== "item")
+      fail("has_serial_number is only allowed for item_category item");
+    if (!Number.isInteger(outstanding))
+      fail(`The outstanding quantity (${outstanding}) must be a whole number to receive with serial numbers`);
+    if (!Array.isArray(units) || units.length !== outstanding)
+      fail(`units must have ${outstanding} entries, one serial number per unit`);
+    const serials = units.map((unit, i) => {
+      const serial = typeof unit?.serial_number === "string" ? unit.serial_number.trim() : "";
+      if (!serial) fail(`units[${i}].serial_number is required`);
+      return serial;
+    });
+    await inventoryService.assertSerialsAvailable(item.id_master_item, serials, t1);
+    await inventoryService.assertSerialsNotReserved(item.id_master_item, serials, t1, {
+      draftReceiptId: draftId,
+    });
+    return serials;
+  }
+
+  receiptFields(item, userId, data, hasSerialNumber, outstanding) {
+    return {
+      id_ga_purchase_order: item.id_ga_purchase_order,
+      id_ga_purchase_order_item: item.id,
+      id_user: userId,
+      has_serial_number: hasSerialNumber,
+      quantity_received: outstanding,
+      quantity_good: outstanding,
+      quantity_returned: 0,
+      goods_in_date: data.goods_in_date,
+      goods_status: data.goods_status,
+      note: data.note || null,
+    };
+  }
+
+  async createUnits(receiptId, itemId, serials, t1, t2) {
+    const units = [];
+    for (const serial of serials)
+      units.push(
+        await mirrorCreate(
+          "GaPurchaseOrderItemReceiptUnit",
+          {
+            id_ga_purchase_order_item_receipt: receiptId,
+            id_ga_purchase_order_item: itemId,
+            serial_number: serial,
+          },
+          t1,
+          t2,
+        ),
       );
-      if (!data.return_delivery_date) fail("return_delivery_date is required");
-      shippingCost = parseAmount(
-        data.return_shipping_cost,
-        "return_shipping_cost",
+    return units;
+  }
+
+  async receiptUnits(receiptId, t1) {
+    return models.db1.GaPurchaseOrderItemReceiptUnit.findAll({
+      where: { id_ga_purchase_order_item_receipt: receiptId },
+      order: [["id", "ASC"]],
+      transaction: t1,
+    });
+  }
+
+  async destroyUnits(receiptId, t1, t2) {
+    const where = { id_ga_purchase_order_item_receipt: receiptId };
+    await models.db1.GaPurchaseOrderItemReceiptUnit.destroy({ where, transaction: t1 });
+    if (t2)
+      await models.db2.GaPurchaseOrderItemReceiptUnit.destroy({ where, transaction: t2 });
+  }
+
+  // Settles the item with a completed receipt: accept stocks all of it; return
+  // ships quantityReturned back (to be accepted again or refunded) and stocks the
+  // rest. Stocked quantity of item_category "item" goes into inventory: as one
+  // quantity, or as one row per unit when units are given.
+  async settleReceipt(id, item, receipt, units, userId, { isReturn, quantityReturned, note }, t1, t2) {
+    const quantityStocked = round2(Number(receipt.quantity_received) - quantityReturned);
+    await mirrorUpdate(
+      "GaPurchaseOrderItem",
+      item.id,
+      {
+        receiving_status: isReturn ? "returned" : "accepted",
+        quantity_good: round2(Number(item.quantity_good) + quantityStocked),
+        quantity_returned: quantityReturned,
+        receiving_note: note || null,
+        ...(isReturn && { return_count: item.return_count + 1 }),
+      },
+      t1,
+      t2,
+    );
+    if (item.item_category === "item" && quantityStocked > 0)
+      await inventoryService.addFromGaPurchaseOrderReceipt(
+        item.id_ga_purchase_order,
+        item.id,
+        receipt,
+        userId,
+        t1,
+        t2,
+        units,
       );
-    }
+    await this.addProgress(
+      id,
+      userId,
+      isReturn ? "goods returned" : "goods accepted",
+      note,
+      item.id,
+      t1,
+      t2,
+    );
+    if (!isReturn) await this.finishIfSettled(id, userId, t1, t2);
+  }
+
+  // GA staff accepts the whole outstanding quantity in one step. With
+  // has_serial_number, units holds one serial number per unit and each unit
+  // becomes its own inventory row. Not allowed while the item has a draft.
+  async acceptItem(id, itemId, userId, data = {}, isDoubleDatabase = true) {
+    const hasSerialNumber = this.receiptInput(data);
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      const item = await this.receivingItem(id, itemId, t1, [
-        "pending",
-        "returned",
-      ]);
-      const realizations = await models.db1.GaPurchaseOrderItemRealization.count({
-        where: { id_ga_purchase_order_item: item.id },
-        transaction: t1,
-      });
-      if (!realizations)
-        fail("Purchase realization must be saved before receiving the item", 409);
-      const outstanding = round2(
-        item.quantity - item.quantity_good - item.quantity_refunded,
-      );
-      if (quantityGood > outstanding)
-        fail(
-          `quantity_good must not exceed the outstanding quantity (${outstanding})`,
-        );
-      if (quantityReturned > outstanding)
-        fail(
-          `quantity_returned must not exceed the outstanding quantity (${outstanding})`,
-        );
-      const quantityStocked = round2(outstanding - quantityReturned);
+      const item = await this.receivableItem(id, itemId, t1);
+      await this.assertNoDraft(item.id, t1);
+      const outstanding = outstandingOf(item);
+      const serials = hasSerialNumber
+        ? await this.receiptSerials(item, outstanding, data.units, t1)
+        : null;
       const receipt = await mirrorCreate(
         "GaPurchaseOrderItemReceipt",
-        {
-          id_ga_purchase_order: item.id_ga_purchase_order,
-          id_ga_purchase_order_item: item.id,
-          id_user: userId,
-          type,
-          quantity_received: outstanding,
-          quantity_good: quantityGood ?? outstanding,
-          quantity_returned: quantityReturned,
-          goods_in_date: data.goods_in_date,
-          goods_status: data.goods_status,
-          return_delivery_date: isReturn ? data.return_delivery_date : null,
-          return_shipping_cost: shippingCost,
-          note: data.note || null,
-        },
+        { ...this.receiptFields(item, userId, data, hasSerialNumber, outstanding), type: "accept" },
         t1,
         t2,
       );
       await syncRequiredFiles(
         "ga_purchase_order_item_receipts",
         receipt.id,
-        isReturn
-          ? [...receiptFileCategories, ...returnFileCategories]
-          : receiptFileCategories,
+        receiptFileCategories,
         data,
         userId,
         t1,
         t2,
       );
-      await mirrorUpdate(
-        "GaPurchaseOrderItem",
-        item.id,
-        {
-          receiving_status: isReturn ? "returned" : "accepted",
-          quantity_good: round2(Number(item.quantity_good) + quantityStocked),
-          quantity_returned: quantityReturned,
-          receiving_note: data.note || null,
-          ...(isReturn && { return_count: item.return_count + 1 }),
-        },
+      const units = await this.createUnits(receipt.id, item.id, serials ?? [], t1, t2);
+      await this.settleReceipt(id, item, plain(receipt), serials ? units : null, userId,
+        { isReturn: false, quantityReturned: 0, note: data.note }, t1, t2);
+    });
+    return this.getById(id);
+  }
+
+  // GA staff saves (or edits) the item's draft goods receipt for the whole
+  // outstanding quantity, the first step of a return. Nothing is stocked yet.
+  // Editing replaces the units; files keep the ids that are sent.
+  async saveReceipt(id, itemId, userId, data = {}, isDoubleDatabase = true) {
+    const hasSerialNumber = this.receiptInput(data);
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const item = await this.receivableItem(id, itemId, t1);
+      const draft = await this.findDraft(item.id, t1);
+      const outstanding = outstandingOf(item);
+      const serials = hasSerialNumber
+        ? await this.receiptSerials(item, outstanding, data.units, t1, draft?.id)
+        : null;
+      const fields = {
+        ...this.receiptFields(item, userId, data, hasSerialNumber, outstanding),
+        type: "draft",
+      };
+      let receiptId;
+      if (draft) {
+        receiptId = draft.id;
+        await mirrorUpdate("GaPurchaseOrderItemReceipt", receiptId, fields, t1, t2);
+        await this.destroyUnits(receiptId, t1, t2);
+      } else {
+        receiptId = (await mirrorCreate("GaPurchaseOrderItemReceipt", fields, t1, t2)).id;
+      }
+      await syncRequiredFiles(
+        "ga_purchase_order_item_receipts",
+        receiptId,
+        receiptFileCategories,
+        data,
+        userId,
         t1,
         t2,
       );
-      if (item.item_category === "item" && quantityStocked > 0)
-        await inventoryService.addFromGaPurchaseOrderReceipt(
-          item.id_ga_purchase_order,
-          item.id,
-          receipt,
-          userId,
-          t1,
-          t2,
-        );
+      await this.createUnits(receiptId, item.id, serials ?? [], t1, t2);
       await this.addProgress(
         id,
         userId,
-        isReturn ? "goods returned" : "goods accepted",
+        draft ? "goods receipt updated" : "goods receipt saved",
         data.note,
         item.id,
         t1,
         t2,
       );
-      if (!isReturn) await this.finishIfSettled(id, userId, t1, t2);
     });
     return this.getById(id);
   }
 
-  async acceptItem(id, itemId, userId, data = {}, isDoubleDatabase = true) {
-    return this.receiveItem("accept", id, itemId, userId, data, isDoubleDatabase);
+  // GA staff deletes the item's draft goods receipt, with its units and files.
+  async deleteReceipt(id, itemId, userId, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const item = await this.receivingItem(id, itemId, t1, ["pending", "returned"]);
+      const draft = await this.findDraft(item.id, t1);
+      if (!draft) fail("The item has no draft goods receipt", 404);
+      await this.destroyUnits(draft.id, t1, t2);
+      await deactivateFiles("ga_purchase_order_item_receipts", draft.id, t1, t2);
+      await mirrorDestroy("GaPurchaseOrderItemReceipt", draft.id, t1, t2);
+      await this.addProgress(id, userId, "goods receipt deleted", null, item.id, t1, t2);
+    });
+    return this.getById(id);
   }
 
+  // GA staff accepts the whole draft goods receipt: everything is stocked.
+  async acceptReceipt(id, itemId, userId, data = {}, isDoubleDatabase = true) {
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const item = await this.receivableItem(id, itemId, t1);
+      const draft = await this.requireDraft(item, t1);
+      const units = draft.has_serial_number ? await this.receiptUnits(draft.id, t1) : null;
+      // Stock may have changed since the draft was saved.
+      if (units)
+        await inventoryService.assertSerialsAvailable(
+          item.id_master_item,
+          units.map((unit) => unit.serial_number),
+          t1,
+        );
+      await mirrorUpdate("GaPurchaseOrderItemReceipt", draft.id, { type: "accept" }, t1, t2);
+      await this.settleReceipt(id, item, { ...plain(draft), type: "accept" }, units, userId,
+        { isReturn: false, quantityReturned: 0, note: draft.note }, t1, t2);
+    });
+    return this.getById(id);
+  }
+
+  // GA staff returns part or all of the draft goods receipt to the vendor: the
+  // picked units (receipt with serial numbers) or quantity_returned (without).
+  // The rest is stocked. The returned quantity waits for a replacement (a new
+  // receipt) or a refund.
   async returnItem(id, itemId, userId, data = {}, isDoubleDatabase = true) {
-    return this.receiveItem("return", id, itemId, userId, data, isDoubleDatabase);
+    if (!data.note?.trim()) fail("note is required for return");
+    if (!data.return_delivery_date) fail("return_delivery_date is required");
+    const shippingCost = parseAmount(data.return_shipping_cost, "return_shipping_cost");
+    await withTransactions(isDoubleDatabase, async (t1, t2) => {
+      const item = await this.receivableItem(id, itemId, t1);
+      const draft = await this.requireDraft(item, t1);
+      const received = Number(draft.quantity_received);
+      let quantityReturned;
+      let stockUnits = null;
+      if (draft.has_serial_number) {
+        const units = await this.receiptUnits(draft.id, t1);
+        const byId = new Map(units.map((unit) => [Number(unit.id), unit]));
+        const ids = data.returned_unit_ids;
+        if (!Array.isArray(ids) || !ids.length)
+          fail("returned_unit_ids must list at least one unit of the goods receipt");
+        const picked = new Set();
+        for (const raw of ids) {
+          const unitId = Number(raw);
+          if (!byId.has(unitId) || picked.has(unitId))
+            fail(`returned_unit_ids contains an invalid or duplicate unit ${raw}`);
+          picked.add(unitId);
+        }
+        quantityReturned = picked.size;
+        stockUnits = units.filter((unit) => !picked.has(Number(unit.id)));
+        await inventoryService.assertSerialsAvailable(
+          item.id_master_item,
+          stockUnits.map((unit) => unit.serial_number),
+          t1,
+        );
+        for (const unitId of picked)
+          await mirrorUpdate("GaPurchaseOrderItemReceiptUnit", unitId, { is_returned: true }, t1, t2);
+      } else {
+        quantityReturned = parseAmount(data.quantity_returned, "quantity_returned", true);
+        if (quantityReturned > received)
+          fail(`quantity_returned must not exceed the received quantity (${received})`);
+      }
+      const returnData = {
+        type: "return",
+        quantity_returned: quantityReturned,
+        quantity_good: round2(received - quantityReturned),
+        return_delivery_date: data.return_delivery_date,
+        return_shipping_cost: shippingCost,
+        return_note: data.note.trim(),
+      };
+      await mirrorUpdate("GaPurchaseOrderItemReceipt", draft.id, returnData, t1, t2);
+      await syncRequiredFiles(
+        "ga_purchase_order_item_receipts",
+        draft.id,
+        returnFileCategories,
+        data,
+        userId,
+        t1,
+        t2,
+      );
+      await this.settleReceipt(id, item, { ...plain(draft), ...returnData }, stockUnits, userId,
+        { isReturn: true, quantityReturned, note: data.note }, t1, t2);
+    });
+    return this.getById(id);
   }
 
   // GA staff asks to settle the returned quantity with a refund instead of a
@@ -926,6 +1165,8 @@ class GaPurchaseOrderService {
     const amount = parseAmount(data.refund_amount, "refund_amount", true);
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const item = await this.receivingItem(id, itemId, t1, ["returned"]);
+      // A draft means a replacement is being received.
+      await this.assertNoDraft(item.id, t1);
       await syncRequiredFiles(
         "ga_purchase_order_items",
         item.id,

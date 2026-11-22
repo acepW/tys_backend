@@ -38,8 +38,11 @@ class InventoryMovementService {
       as,
       attributes: [
         "id",
+        "id_master_item",
+        "product_code",
         "item_name",
         "brand",
+        "model_number",
         "serial_number",
         "size",
         "material",
@@ -141,6 +144,9 @@ class InventoryMovementService {
     const quantity = round2(input.quantity);
     const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const source = await this.lockSource(input.id_inventory_source, quantity, t1);
+      // A row with a serial number is one unit; it can only move as a whole.
+      if (source.serial_number && quantity !== Number(source.quantity))
+        fail(`A unit with a serial number moves as a whole: quantity must be ${Number(source.quantity)}`);
       if (!source.id_company || !source.id_inventory_location)
         fail("Source inventory has no company or location yet", 409);
       if (Number(input.id_inventory_location_destination) === source.id_inventory_location)

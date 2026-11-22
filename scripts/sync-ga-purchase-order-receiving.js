@@ -64,8 +64,8 @@ async function migrateSchema(name, dbModels) {
     console.log("  ~ ga_purchase_order_item_receipts.goods_status merged into Not Good");
   }
 
-  // The receipt link is unique; the item link no longer is. Add the plain index
-  // first so the foreign key keeps an index while the unique one is dropped.
+  // The item link is no longer unique. Add the plain index first so the foreign
+  // key keeps an index while the unique one is dropped.
   const indexes = await queryInterface.showIndex("inventory_histories");
   const onlyColumn = (index, column) =>
     index.fields.length === 1 && index.fields[0].attribute === column;
@@ -76,9 +76,11 @@ async function migrateSchema(name, dbModels) {
       await queryInterface.removeIndex("inventory_histories", index.name);
       console.log(`  - unique index ${index.name}`);
     }
-  if (!indexes.some((index) => index.unique && onlyColumn(index, "id_ga_purchase_order_item_receipt")))
+  // The receipt link is a plain index: a receipt with serial numbers adds one
+  // history per unit (npm run db:sync-master-item drops the old unique index).
+  if (!indexes.some((index) => onlyColumn(index, "id_ga_purchase_order_item_receipt")))
     await queryInterface.addIndex("inventory_histories", ["id_ga_purchase_order_item_receipt"], {
-      unique: true,
+      name: "inventory_histories_receipt",
     });
 }
 

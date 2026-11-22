@@ -104,7 +104,17 @@ class GaPurchaseOrderController {
   saveRealization = this.itemAction((...args) => service.saveRealization(...args),
     "GA purchase order item realization saved");
   acceptItem = this.itemAction((...args) => service.acceptItem(...args), "GA purchase order item accepted");
+  saveReceipt = this.itemAction((...args) => service.saveReceipt(...args), "GA purchase order goods receipt saved");
+  acceptReceipt = this.itemAction((...args) => service.acceptReceipt(...args),
+    "GA purchase order goods receipt accepted");
   returnItem = this.itemAction((...args) => service.returnItem(...args), "GA purchase order item returned");
+
+  async deleteReceipt(req, res) {
+    try {
+      return successResponse(res, await service.deleteReceipt(req.params.id, req.params.itemId, req.user.id,
+        req.query?.is_double_database !== "false"), "GA purchase order goods receipt deleted");
+    } catch (error) { return respondError(res, error); }
+  }
   requestRefund = this.itemAction((...args) => service.requestRefund(...args),
     "GA purchase order item refund requested");
   approveRefund = this.itemAction((id, itemId, userId, body, isDouble) =>

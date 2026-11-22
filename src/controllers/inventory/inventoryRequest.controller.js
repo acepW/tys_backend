@@ -13,7 +13,15 @@ function respondError(res, error) {
 // partial: only validate the fields that were sent (edit).
 function validate(body, partial = false) {
   const has = (key) => !partial || body[key] !== undefined;
-  if (has("item_name") && !body.item_name?.trim()) return "item_name is required";
+  if (has("id_master_item")) {
+    const masterId = Number(body.id_master_item);
+    if (!Number.isInteger(masterId) || masterId <= 0) return "id_master_item is required";
+  }
+  if (body.model_number != null && typeof body.model_number !== "string")
+    return "model_number must be a string";
+  if (body.has_serial_number !== undefined && typeof body.has_serial_number !== "boolean")
+    return "has_serial_number must be a boolean";
+  if (body.units !== undefined && !Array.isArray(body.units)) return "units must be an array";
   if (has("id_company") && !body.id_company) return "id_company is required";
   if (has("quantity_unit") && !body.quantity_unit?.trim()) return "quantity_unit is required";
   if (has("quantity")) {
