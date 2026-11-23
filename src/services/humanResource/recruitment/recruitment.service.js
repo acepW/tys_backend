@@ -7,6 +7,7 @@ const {
 } = require("../../procurement/shared");
 const { RecruitmentDocumentService, check, revisionValue } = require("./recruitmentDocument.service");
 const approvalAccess = require("../../approvalFlow/approvalAccess.service");
+const org = require("../../orgHierarchy");
 const {
   REQUEST_TYPES,
   HIRING_STATUSES,
@@ -208,6 +209,9 @@ const request = new RecruitmentDocumentService({
     for (const key of [...requestMasterIds, "number_of_people", "current_division_member", "request_type"])
       if (!existing || data[key] !== undefined) check.required(data, key);
     for (const key of requestMasterIds) check.id(data, key);
+    // Department, division and position must fit together (candidates copy them).
+    if (org.changesPlacement(data, existing))
+      await org.assertPlacement(org.mergePlacement(data, existing), existing);
     check.positiveInteger(data, "number_of_people");
     check.nonNegativeInteger(data, "current_division_member");
     if (data.request_type != null) check.oneOf(data, "request_type", REQUEST_TYPES);

@@ -20,6 +20,12 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Division code",
       },
+      id_department: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: { model: "departments", key: "id" },
+        comment: "Department the division belongs to",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -39,6 +45,10 @@ module.exports = (sequelize) => {
           name: "idx_is_active",
           fields: ["is_active"],
         },
+        {
+          name: "idx_division_department",
+          fields: ["id_department"],
+        },
       ],
     }
   );
@@ -47,6 +57,20 @@ module.exports = (sequelize) => {
   Division.associate = (models) => {
     // Contoh: Division dapat memiliki relasi dengan Order, dll
     // Division.hasMany(models.Order, { ... });
+
+    Division.belongsTo(models.Department, {
+      foreignKey: "id_department",
+      as: "department",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    Division.hasMany(models.Position, {
+      foreignKey: "id_division",
+      as: "positions",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     //Division has many Service Pricing
     Division.hasMany(models.ServicePricing, {

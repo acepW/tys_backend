@@ -12,6 +12,8 @@
     "db:sync-inventory-opname": "node scripts/sync-inventory-opname.js",
     "db:sync-invoice-payments": "node scripts/sync-invoice-payments.js",
     "db:sync-customer-code": "node scripts/sync-customer-code.js",
+    "db:sync-org-hierarchy": "node scripts/sync-org-hierarchy.js",
+    "db:report-org-hierarchy": "node scripts/report-org-hierarchy.js",
     "db:sync-inventory-received-date": "node scripts/sync-inventory-received-date.js",
     "db:sync-inventory-location": "node scripts/sync-inventory-location.js",
     "db:sync-master-item": "node scripts/sync-master-item.js",

@@ -43,6 +43,20 @@ module.exports = (sequelize) => {
     // Contoh: Department dapat memiliki relasi dengan Order, dll
     // Department.hasMany(models.Order, { ... });
 
+    Department.hasMany(models.Division, {
+      foreignKey: "id_department",
+      as: "divisions",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    Department.hasMany(models.Position, {
+      foreignKey: "id_department",
+      as: "positions",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
     //Department has many Users
     Department.hasMany(models.User, {
       foreignKey: "id_department",

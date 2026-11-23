@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const userService = require("../services/user.service");
 const positionMenuService = require("../services/position/positionMenu.service");
+const org = require("../services/orgHierarchy");
 const { successResponse, errorResponse } = require("../utils/response");
 
 // Cookie config
@@ -231,6 +232,7 @@ class UserController {
       if (!id_department)
         return errorResponse(res, "Department is required", 400);
       if (!id_position) return errorResponse(res, "Position is required", 400);
+      await org.assertPlacement({ id_department, id_division, id_position });
 
       // Password minimum length
       if (password.length < 6) {
@@ -266,7 +268,7 @@ class UserController {
 
       return successResponse(res, user, "User created successfully", 201);
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -296,6 +298,10 @@ class UserController {
       }
 
       const data = {};
+
+      // Department, division and position must fit together once one of them changes.
+      if (org.changesPlacement(req.body, existing))
+        await org.assertPlacement(org.mergePlacement(req.body, existing), existing);
 
       if (id_division !== undefined) data.id_division = id_division;
       if (name !== undefined) data.name = name;
@@ -331,7 +337,7 @@ class UserController {
 
       return successResponse(res, user, "User updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 

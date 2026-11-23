@@ -71,8 +71,8 @@ File mengikuti format file lain (`original_name`, `stored_name`, `url`, `mime_ty
 | -                         | -     | Request Number            | `request_no`, dibuat backend saat create (lihat di bawah). Jangan dikirim |
 | `id_company`              | Ya    | Company                   | Dari `GET /api/companies` |
 | `id_department`           | Ya    | Department                | Dari `GET /api/departments` |
-| `id_division`             | Ya    | Division                  | Dari `GET /api/divisions` |
-| `id_position`             | Ya    | Position                  | Dari `GET /api/positions` |
+| `id_division`             | Ya    | Division                  | Dari `GET /api/divisions?id_department=` (sejak 2026-11-24 harus divisi milik department itu) |
+| `id_position`             | Ya    | Position                  | Dari `GET /api/positions?id_department=&id_division=` (sejak 2026-11-24 harus cocok dengan department/divisi) |
 | `id_level`                | Ya    | Level                     | Dari `GET /api/levels` (lihat bagian 7) |
 | `request_type`            | Ya    | Type of Request           | `replacement` (Replacement) atau `additional member` (Additional) |
 | `current_division_member` | Ya    | Current Division Member   | Bilangan bulat ≥ 0. Baru sejak 2026-11-18 |
@@ -91,7 +91,7 @@ Field lama `job_title` (Jabatan teks) diganti `id_level` dan tidak diterima lagi
 
 **Request Number** (`request_no`): `REC-{initial company}-{MM}-{YYYY}-{0001}`, misalnya `REC-TYS-11-2026-0001`. Urutannya per initial company dan mulai lagi dari 0001 setiap tahun. Nomor tidak berubah walaupun company diedit. Request lama diberi nomor oleh script migrasi; request lama yang tidak punya company tetap tanpa nomor.
 
-Company, department, dan division sementara tetap dipilih manual dari master, tanpa filter. Pengisian otomatis dari data pengaju masih didiskusikan dengan klien ([recruitment-requirement.md](recruitment-requirement.md), pertanyaan 1–3).
+Company, department, dan division masih dipilih manual; pengisian otomatis dari data pengaju masih didiskusikan dengan klien ([recruitment-requirement.md](recruitment-requirement.md), pertanyaan 1–3). Sejak 2026-11-24 department → division → position dipilih berantai dan backend menolak kombinasi yang tidak cocok (400), lihat [org-hierarchy-frontend.md](org-hierarchy-frontend.md). Saat update, kombinasi hanya dicek kalau salah satu dari ketiganya berubah.
 
 Response list/detail membawa `request_no`, `company`, `department`, `division`, `position`, `level`, dan `revisions` (riwayat revisi). Filter list: `id_company`, `id_department`, `id_division`, `id_position`, `id_level`, `request_type`, `hiring_status`, `status`, `search` (job description).
 

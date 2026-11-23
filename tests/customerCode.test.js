@@ -5,15 +5,15 @@ const customerService = require("../src/services/customer.service");
 const fileService = require("../src/services/file.service");
 const { models, db1 } = require("../src/models");
 
-test("customer code uses C, the company initial, the Jakarta year and month, and a three-digit sequence", () => {
+test("customer code uses C, the company initial, the Jakarta year and month, and a five-digit sequence", () => {
   assert.deepEqual(
     getNextCustomerCode("tyscs", ["C-TYSCS-2026-11004"], new Date("2026-11-18T00:00:00Z")),
-    { next_number: "005", customer_code: "C-TYSCS-2026-11005" },
+    { next_number: "00005", customer_code: "C-TYSCS-2026-1100005" },
   );
   // 31 Oct 20:00 UTC is already November in Jakarta.
   assert.equal(
     getNextCustomerCode("TYSCS", [], new Date("2026-10-31T20:00:00Z")).customer_code,
-    "C-TYSCS-2026-11001",
+    "C-TYSCS-2026-1100001",
   );
 });
 
@@ -22,7 +22,7 @@ test("customer sequence never resets across months and years", () => {
     getNextCustomerCode("TYSCS",
       ["C-TYSCS-2025-12041", "C-TYSCS-2026-01042", "C-TYSCS-2026-11007"],
       new Date("2027-01-05T00:00:00Z")).customer_code,
-    "C-TYSCS-2027-01043",
+    "C-TYSCS-2027-0100043",
   );
 });
 
@@ -31,16 +31,23 @@ test("customer sequence is per company initial and ignores malformed codes", () 
     getNextCustomerCode("TYS",
       ["C-TYSCS-2026-11099", "C-TYS-2026-1X003", "C-TYS-26-11050", "C-TYS-2026-11002"],
       new Date("2026-11-18T00:00:00Z")).customer_code,
-    "C-TYS-2026-11003",
+    "C-TYS-2026-1100003",
   );
 });
 
-test("customer sequence grows past 999", () => {
+test("customer sequence grows past 99999", () => {
   assert.equal(
-    getNextCustomerCode("TYS", ["C-TYS-2026-10999"], new Date("2026-11-18T00:00:00Z")).customer_code,
-    "C-TYS-2026-111000",
+    getNextCustomerCode("TYS", ["C-TYS-2026-1099999"], new Date("2026-11-18T00:00:00Z")).customer_code,
+    "C-TYS-2026-11100000",
   );
-  assert.equal(formatCustomerCode("TYS", 7n, new Date("2026-03-01T00:00:00Z")).customer_code, "C-TYS-2026-03007");
+  assert.equal(formatCustomerCode("TYS", 7n, new Date("2026-03-01T00:00:00Z")).customer_code, "C-TYS-2026-0300007");
+});
+
+test("customer sequence continues after older three-digit codes", () => {
+  assert.equal(
+    getNextCustomerCode("TYS", ["C-TYS-2026-10999", "C-TYS-2026-11042"], new Date("2026-11-18T00:00:00Z")).customer_code,
+    "C-TYS-2026-1101000",
+  );
 });
 
 // Single-database create against in-memory rows.
@@ -70,7 +77,7 @@ test("creating a customer assigns the next code of its company and ignores a cod
     { customer_type: "company", company_name_indo: "PT A", id_company: "3", customer_code: "C-X-2026-11999" },
     7, false);
   assert.equal(customer.id_company, 3);
-  assert.match(customer.customer_code, /^C-TYSCS-\d{4}-\d{2}042$/);
+  assert.match(customer.customer_code, /^C-TYSCS-\d{4}-\d{2}00042$/);
   // Read under lock, only the codes of this initial.
   assert.equal(state.lookups[0].lock, "UPDATE");
   assert.match(String(state.lookups[0].where.customer_code[Object.getOwnPropertySymbols(

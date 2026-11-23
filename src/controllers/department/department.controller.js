@@ -1,6 +1,8 @@
 const departmentService = require("../../services/department/department.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
+const fromError = (res, error) => errorResponse(res, error.message, error.statusCode || 500);
+
 class DepartmentController {
   /**
    * Get all departments
@@ -19,7 +21,7 @@ class DepartmentController {
         "Departments retrieved successfully",
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
@@ -47,7 +49,7 @@ class DepartmentController {
         "Department retrieved successfully",
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
@@ -56,122 +58,41 @@ class DepartmentController {
    */
   async create(req, res) {
     try {
-      const { is_double_database, department_name } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
-
-      // Validation
-      if (!department_name) {
-        return errorResponse(res, "Department name is required", 400);
-      }
-
-      // Check if department already exists
-      const departmentExists = await departmentService.checkDepartmentExists(
-        department_name,
-        null,
-        isDoubleDatabase,
-      );
-
-      if (departmentExists) {
-        return errorResponse(res, "Department already exists", 400);
-      }
-
-      const data = {
-        department_name: department_name,
-        is_active: req.body.is_active !== undefined ? req.body.is_active : true,
-      };
-
-      const department = await departmentService.create(data, isDoubleDatabase);
-
-      return successResponse(
-        res,
-        department,
-        "Department created successfully",
-        201,
-      );
+      const isDoubleDatabase = req.body.is_double_database !== false;
+      const department = await departmentService.createDepartment(req.body, isDoubleDatabase);
+      return successResponse(res, department, "Department created successfully", 201);
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Update department
+   * Update department. Deactivating needs no active divisions or positions left.
    */
   async update(req, res) {
     try {
-      const { id } = req.params;
-      const { is_double_database = true, department_name } = req.body;
-      const isDoubleDatabase = is_double_database;
-
-      // Check if department exists
-      const existing = await departmentService.findById(
-        id,
-        {},
+      const isDoubleDatabase = req.body.is_double_database !== false;
+      const department = await departmentService.updateDepartment(
+        Number(req.params.id),
+        req.body,
         isDoubleDatabase,
       );
-      if (!existing) {
-        return errorResponse(res, "Department not found", 404);
-      }
-
-      // Check if department name already exists (exclude current id)
-      if (department_name) {
-        const departmentExists = await departmentService.checkDepartmentExists(
-          department_name,
-          id,
-          isDoubleDatabase,
-        );
-
-        if (departmentExists) {
-          return errorResponse(res, "Department already exists", 400);
-        }
-      }
-
-      const data = {};
-      if (department_name) data.department_name = department_name;
-      if (req.body.is_active !== undefined) data.is_active = req.body.is_active;
-
-      const department = await departmentService.update(
-        id,
-        data,
-        isDoubleDatabase,
-      );
-
-      return successResponse(
-        res,
-        department,
-        "Department updated successfully",
-      );
+      return successResponse(res, department, "Department updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Delete department
+   * Delete (deactivate) department. Needs no active divisions or positions left.
    */
   async delete(req, res) {
     try {
-      const { id } = req.params;
       const isDoubleDatabase = req.query.is_double_database !== "false";
-
-      // Check if department exists
-      const existing = await departmentService.findById(
-        id,
-        {},
-        isDoubleDatabase,
-      );
-      if (!existing) {
-        return errorResponse(res, "Department not found", 404);
-      }
-
-      await departmentService.update(
-        id,
-        { is_active: false },
-        isDoubleDatabase,
-      );
-
+      await departmentService.deactivateDepartment(Number(req.params.id), isDoubleDatabase);
       return successResponse(res, null, "Department deleted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 }

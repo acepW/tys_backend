@@ -19,7 +19,7 @@ Panduan endpoint untuk frontend ada di [recruitment-frontend.md](recruitment-fro
 | A     | Candidate Database: tanpa approval, field lisensi, CV wajib                             | Selesai (2026-11-18) |
 | B     | Field Recruitment Request: Request Number, Current Division Member, Job Requirement dipecah 3, Salary Range | Selesai (2026-11-18) |
 | C     | Approval Recruitment Request: 4 tahap, reject ke tahap tertentu, hak edit per tahap      | Selesai (2026-11-18) |
-| D     | Company/Department otomatis dari pengaju, HR & Direktur memilih, hierarki Company → Department → Division | Ditunda, menunggu klien (pertanyaan 1–3) |
+| D     | Company/Department otomatis dari pengaju, HR & Direktur memilih, hierarki Company → Department → Division | Ditunda, menunggu klien (pertanyaan 1–3). Hierarki Department → Division → Position sudah ada sejak 2026-11-24 ([org-hierarchy.md](org-hierarchy.md)); Company → Department belum |
 
 ## Form Recruitment Request
 
@@ -30,7 +30,7 @@ Panduan endpoint untuk frontend ada di [recruitment-frontend.md](recruitment-fro
 | 1  | Request Number (otomatis) | `request_no`                                      | B     | Selesai   | Keputusan 1 |
 | 2  | Company (otomatis dari pengaju; Divisi HR dan Direktur bisa memilih) | `id_company`, dipilih manual | D | Ditunda | Pertanyaan 1 dan 2 |
 | 3  | Departemen (otomatis dari pengaju; Divisi HR dan Direktur memilih departemen di company itu) | `id_department`, dipilih manual | D | Ditunda | Pertanyaan 1–3 |
-| 4  | Divisi (sesuai divisi di departemen itu) | `id_division`, dipilih manual | D | Ditunda | Pertanyaan 3 |
+| 4  | Divisi (sesuai divisi di departemen itu) | `id_division`, dipilih dari `GET /api/divisions?id_department=`; divisi di luar department ditolak | D | Sebagian (2026-11-24) | Divisi sudah terikat ke department lewat [org-hierarchy.md](org-hierarchy.md). Bagian yang terkait company tetap menunggu pertanyaan 3 |
 | 5  | Position (manual)         | `id_position` dari master Position                | -     | Sudah ada | Keputusan 4 |
 | 6  | Level (Junior Staff s.d. Senior Manager) | `id_level` dari master Level       | -     | Tidak dikerjakan | Keputusan 5 |
 | 7  | Type of Request (Additional / Replacement) | `request_type`: `additional member` / `replacement` | - | Sudah ada | |

@@ -1,16 +1,18 @@
 const divisionService = require("../services/division.service");
 const { successResponse, errorResponse } = require("../utils/response");
 
+const fromError = (res, error) => errorResponse(res, error.message, error.statusCode || 500);
+
 class DivisionController {
   /**
-   * Get all divisions
+   * Get all active divisions, optionally of one department (?id_department=)
    */
   async getAll(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const divisions = await divisionService.findAll(
-        { where: { is_active: true } },
-        isDoubleDatabase
+      const divisions = await divisionService.list(
+        { id_department: req.query.id_department },
+        isDoubleDatabase,
       );
 
       return successResponse(
@@ -19,7 +21,7 @@ class DivisionController {
         "Divisions retrieved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
@@ -31,7 +33,7 @@ class DivisionController {
       const { id } = req.params;
       const isDoubleDatabase = req.query.is_double_database !== "false";
 
-      const division = await divisionService.findById(id, {}, isDoubleDatabase);
+      const division = await divisionService.getById(id, isDoubleDatabase);
 
       if (!division) {
         return errorResponse(res, "Division not found", 404);
@@ -39,114 +41,50 @@ class DivisionController {
 
       return successResponse(res, division, "Division retrieved successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Create new division
+   * Create new division (id_department is required)
    */
   async create(req, res) {
     try {
-      const { is_double_database, division_name, division_code } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
-
-      // Validation
-      if (!division_name) {
-        return errorResponse(res, "Division name is required", 400);
-      }
-
-      // Check if division already exists
-      if (division_name) {
-        const divisionExists = await divisionService.checkDivisionExists(
-          division_name,
-          null,
-          isDoubleDatabase
-        );
-
-        if (divisionExists) {
-          return errorResponse(res, "Division already exists", 400);
-        }
-      }
-
-      const data = {
-        division_name: division_name,
-        division_code: division_code !== undefined ? division_code : null,
-        is_active: req.body.is_active !== undefined ? req.body.is_active : true,
-      };
-
-      const division = await divisionService.create(data, isDoubleDatabase);
-
-      return successResponse(
-        res,
-        division,
-        "Division created successfully",
-        201
-      );
+      const isDoubleDatabase = req.body.is_double_database !== false;
+      const division = await divisionService.createDivision(req.body, isDoubleDatabase);
+      return successResponse(res, division, "Division created successfully", 201);
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Update customer
+   * Update division. Changing id_department moves its positions along.
    */
   async update(req, res) {
     try {
-      const { id } = req.params;
-      const { is_double_database, division_name, division_code } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
-
-      // Check if division exists
-      const existing = await divisionService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Division not found", 404);
-      }
-
-      // Check if division name already exists
-      if (division_name) {
-        const divisionExists = await divisionService.checkDivisionExists(
-          division_name,
-          id,
-          isDoubleDatabase
-        );
-
-        if (divisionExists) {
-          return errorResponse(res, "Division already exists", 400);
-        }
-      }
-
-      const data = {};
-      if (division_name) data.division_name = division_name;
-      if (division_code) data.division_code = division_code;
-
-      const division = await divisionService.update(id, data, isDoubleDatabase);
-
+      const isDoubleDatabase = req.body.is_double_database !== false;
+      const division = await divisionService.updateDivision(
+        Number(req.params.id),
+        req.body,
+        isDoubleDatabase,
+      );
       return successResponse(res, division, "Division updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Delete customer
+   * Delete (deactivate) division. Needs no active positions left.
    */
   async delete(req, res) {
     try {
-      const { id } = req.params;
       const isDoubleDatabase = req.query.is_double_database !== "false";
-
-      // Check if division exists
-      const existing = await divisionService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Division not found", 404);
-      }
-
-      await divisionService.update(id, { is_active: false }, isDoubleDatabase);
-
+      await divisionService.deactivateDivision(Number(req.params.id), isDoubleDatabase);
       return successResponse(res, null, "Division deleted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 }

@@ -64,9 +64,14 @@ Cookie: token=<application JWT>
   "device_user_id": "1001",
   "full_name": "Example Employee",
   "id_company": 1,
+  "id_department": 3,
   "id_division": 1
 }
 ```
+
+Since 2026-11-24 the division must belong to the department sent with it (and a
+position, if any, must fit both); otherwise the request fails with 400. See
+[org-hierarchy-frontend.md](org-hierarchy-frontend.md).
 
 If a device transaction arrived before its employee was registered, link and
 process those unmatched transactions afterward:

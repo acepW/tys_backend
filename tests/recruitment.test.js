@@ -19,6 +19,14 @@ const users = {
   9: { id: 9, id_division: 2, division: { division_code: "HR", division_name: "Human Resources" } },
 };
 const companies = { 1: { initial_company: "tys" }, 2: { initial_company: "TYSCS" } };
+const orgMasters = {
+  Department: { 3: { id: 3, department_name: "Sales & Marketing", is_active: true } },
+  Division: { 1: { id: 1, division_name: "Sales & Marketing", id_department: 3, is_active: true } },
+  Position: {
+    2: { id: 2, position_name: "Staff", id_department: null, id_division: null, is_active: true },
+    7: { id: 7, position_name: "Internal FAT Staff", id_department: 2, id_division: 5, is_active: true },
+  },
+};
 
 // LIKE pattern as a regular expression: _ is one character, % any characters.
 const likePattern = (pattern) =>
@@ -71,6 +79,9 @@ function mockStore(t) {
   }]);
   replaced.push([models.db1.User, "findByPk", async (id) => users[id] ?? null]);
   replaced.push([models.db1.Company, "findOne", async ({ where }) => companies[where.id] ?? null]);
+  // Department -> division -> position masters checked on a request (orgHierarchy).
+  for (const [name, rows] of Object.entries(orgMasters))
+    replaced.push([models.db1[name], "findByPk", async (id) => rows[id] ?? null]);
   replaced.push([approvalAccess, "authorize", async (...args) => { authorizations.push(args); }]);
   replaced.push([fileService, "syncFiles", async () => {}]);
   for (const service of Object.values(recruitment.services))
@@ -422,4 +433,14 @@ test("A rejected step can be created again; a not accepted user interview clears
     [null, null]);
   await recruitment.userInterview.decide(1, "approve", 7, null, false);
   await assert.rejects(recruitment.offering.create({ id_recruitment_candidate: 1 }, 5, false), /user interview that accepted/);
+});
+
+test("A request's department, division and position must fit together", async (t) => {
+  const { tables } = mockStore(t);
+  // Internal FAT Staff belongs to Internal FAT, not to Sales & Marketing.
+  await assert.rejects(recruitment.request.create({ ...requestBody, id_position: 7 }, 5, false),
+    (error) => error.statusCode === 400 && /Internal FAT Staff belongs to department 2, not 3/.test(error.message));
+  await assert.rejects(recruitment.request.create({ ...requestBody, id_department: 4 }, 5, false),
+    (error) => error.statusCode === 404 && /Department not found/.test(error.message));
+  assert.equal(tables.RecruitmentRequest.length, 0);
 });

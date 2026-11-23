@@ -1,7 +1,8 @@
-// Customer code: C-<company initial>-<YYYY>-<MM><sequence>, e.g. C-TYSCS-2026-11001.
+// Customer code: C-<company initial>-<YYYY>-<MM><sequence>, e.g. C-TYSCS-2026-1100001.
 // Year and month are when the customer is created (Asia/Jakarta). The sequence
 // is per company initial and never resets: it continues across months and years,
-// padded to three digits and growing past 999.
+// padded to five digits and growing past 99999. Older codes with a three-digit
+// sequence (e.g. C-TYS-2026-11042) are still read, so the sequence carries on.
 const jakartaYearMonth = (date) => {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
@@ -36,7 +37,7 @@ const highestCustomerSequence = (initialCompany, customerCodes = []) => {
 
 const formatCustomerCode = (initialCompany, sequence, date = new Date()) => {
   const { year, month } = jakartaYearMonth(date);
-  const number = String(sequence).padStart(3, "0");
+  const number = String(sequence).padStart(5, "0");
   return {
     next_number: number,
     customer_code: `C-${normalizeInitial(initialCompany)}-${year}-${month}${number}`,

@@ -5,8 +5,8 @@ Sejak 2026-11-18 setiap customer punya **company** (`id_company`) dan **Customer
 ## Format kode
 
 ```text
-C-TYSCS-2026-11001
-│ │     │    │ └── nomor urut, minimal 3 digit
+C-TYSCS-2026-1100001
+│ │     │    │ └── nomor urut, minimal 5 digit
 │ │     │    └──── bulan customer dibuat (MM)
 │ │     └───────── tahun customer dibuat (YYYY)
 │ └─────────────── initial company customer (companies.initial_company)
@@ -14,8 +14,9 @@ C-TYSCS-2026-11001
 ```
 
 - Tahun dan bulan mengikuti waktu Jakarta saat customer disimpan.
-- Nomor urut dihitung **per initial company** dan **tidak pernah reset**, walaupun bulan atau tahun berganti. Contoh untuk TYSCS: `C-TYSCS-2026-11001`, `C-TYSCS-2026-12002`, `C-TYSCS-2027-01003`.
-- Setelah 999, nomor lanjut menjadi 4 digit (`C-TYSCS-2027-051000`).
+- Nomor urut dihitung **per initial company** dan **tidak pernah reset**, walaupun bulan atau tahun berganti. Contoh untuk TYSCS: `C-TYSCS-2026-1100001`, `C-TYSCS-2026-1200002`, `C-TYSCS-2027-0100003`.
+- Setelah 99999, nomor lanjut menjadi 6 digit (`C-TYSCS-2027-05100000`).
+- Sejak 2026-11-24 nomor urut 5 digit (sebelumnya 3 digit). Kode lama 3 digit (mis. `C-TYS-2026-11042`) tetap berlaku dan tidak diubah; nomor berikutnya melanjutkan urutannya (`C-TYS-2026-1100043`).
 - Customer yang dihapus tetap memegang kodenya, jadi nomornya tidak dipakai ulang.
 
 ## Form create
@@ -33,8 +34,8 @@ GET /api/customers/next-customer-code
   "success": true,
   "message": "Next customer codes retrieved successfully",
   "data": [
-    { "id_company": 1, "company_name": "PT TYS ...", "initial_company": "TYS", "next_number": "042", "customer_code": "C-TYS-2026-11042" },
-    { "id_company": 3, "company_name": "PT TYSCS ...", "initial_company": "TYSCS", "next_number": "001", "customer_code": "C-TYSCS-2026-11001" }
+    { "id_company": 1, "company_name": "PT TYS ...", "initial_company": "TYS", "next_number": "00042", "customer_code": "C-TYS-2026-1100042" },
+    { "id_company": 3, "company_name": "PT TYSCS ...", "initial_company": "TYSCS", "next_number": "00001", "customer_code": "C-TYSCS-2026-1100001" }
   ]
 }
 ```

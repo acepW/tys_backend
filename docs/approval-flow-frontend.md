@@ -292,6 +292,8 @@ Alur form yang disarankan:
 }
 ```
 
+Untuk memilih posisi approver, `GET /api/positions` sejak 2026-11-24 membawa `department` dan `division` setiap posisi, jadi nama posisi bisa ditampilkan bersama department/divisinya ([org-hierarchy-frontend.md](org-hierarchy-frontend.md)).
+
 `PUT /api/approval-flows/:id` memakai body yang sama. Untuk `approval_flow_positions`:
 
 - Item dengan `id` akan di-update.

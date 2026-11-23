@@ -1,4 +1,5 @@
 const employeeService = require("../../services/humanResource/employee.service");
+const org = require("../../services/orgHierarchy");
 const { successResponse, errorResponse } = require("../../utils/response");
 const {
   isValidDateOnly,
@@ -267,6 +268,7 @@ class EmployeeController {
       data.device_user_id = deviceUserId;
       data.full_name = fullName;
       data.is_active = req.body.is_active !== false;
+      await org.assertPlacement(org.mergePlacement(data));
       applyContractReminder(data);
       const relations = Object.fromEntries(
         relationFields.map((field) => [field, req.body[field] || []]),
@@ -317,6 +319,9 @@ class EmployeeController {
       for (const field of editableFields) {
         if (req.body[field] !== undefined) data[field] = req.body[field];
       }
+      // Department, division and position must fit together once one of them changes.
+      if (org.changesPlacement(data, existing))
+        await org.assertPlacement(org.mergePlacement(data, existing), existing);
       applyContractReminder(data, existing);
       const relations = {};
       for (const field of relationFields) {

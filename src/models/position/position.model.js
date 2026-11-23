@@ -15,6 +15,21 @@ module.exports = (sequelize) => {
         allowNull: false,
         comment: "Position name",
       },
+      // Both null: a position across the organisation (e.g. Direktur).
+      // Only id_department: a department-level position (e.g. HRGA Supervisor).
+      // id_division: a division position; id_department is copied from the division.
+      id_department: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "departments", key: "id" },
+        comment: "Department of the position; null for positions across departments",
+      },
+      id_division: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "divisions", key: "id" },
+        comment: "Division of the position; null for department-level or global positions",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
@@ -34,6 +49,14 @@ module.exports = (sequelize) => {
           name: "idx_is_active",
           fields: ["is_active"],
         },
+        {
+          name: "idx_position_department",
+          fields: ["id_department"],
+        },
+        {
+          name: "idx_position_division",
+          fields: ["id_division"],
+        },
       ],
     },
   );
@@ -42,6 +65,20 @@ module.exports = (sequelize) => {
   Position.associate = (models) => {
     // Contoh: Position dapat memiliki relasi dengan Order, dll
     // Position.hasMany(models.Order, { ... });
+
+    Position.belongsTo(models.Department, {
+      foreignKey: "id_department",
+      as: "department",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    Position.belongsTo(models.Division, {
+      foreignKey: "id_division",
+      as: "division",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
 
     //Position has many Users
     Position.hasMany(models.User, {

@@ -1,16 +1,19 @@
-const { where } = require("sequelize");
 const positionService = require("../../services/position/position.service");
 const { successResponse, errorResponse } = require("../../utils/response");
 
+const fromError = (res, error) => errorResponse(res, error.message, error.statusCode || 500);
+
 class PositionController {
   /**
-   * Get all positions
+   * Get all active positions. With ?id_department= and/or ?id_division=: the
+   * positions of that division, of that department without a division, and the
+   * global ones.
    */
   async getAll(req, res) {
     try {
       const isDoubleDatabase = req.query.is_double_database !== "false";
-      const positions = await positionService.findAll(
-        { where: { is_active: true } },
+      const positions = await positionService.list(
+        { id_department: req.query.id_department, id_division: req.query.id_division },
         isDoubleDatabase,
       );
 
@@ -20,7 +23,7 @@ class PositionController {
         "Positions retrieved successfully",
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
@@ -40,111 +43,50 @@ class PositionController {
 
       return successResponse(res, position, "Position retrieved successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Create new position
+   * Create new position (id_department / id_division optional)
    */
   async create(req, res) {
     try {
-      const { is_double_database, position_name } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
-
-      // Validation
-      if (!position_name) {
-        return errorResponse(res, "Position name is required", 400);
-      }
-
-      // Check if position already exists
-      const positionExists = await positionService.checkPositionExists(
-        position_name,
-        null,
-        isDoubleDatabase,
-      );
-
-      if (positionExists) {
-        return errorResponse(res, "Position already exists", 400);
-      }
-
-      const data = {
-        position_name: position_name,
-        is_active: req.body.is_active !== undefined ? req.body.is_active : true,
-      };
-
-      const position = await positionService.create(data, isDoubleDatabase);
-
-      return successResponse(
-        res,
-        position,
-        "Position created successfully",
-        201,
-      );
+      const isDoubleDatabase = req.body.is_double_database !== false;
+      const position = await positionService.createPosition(req.body, isDoubleDatabase);
+      return successResponse(res, position, "Position created successfully", 201);
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Update position
+   * Update position. Sending id_department or id_division replaces both.
    */
   async update(req, res) {
     try {
-      const { id } = req.params;
-      const { is_double_database, position_name } = req.body;
-      const isDoubleDatabase = is_double_database !== false;
-
-      // Check if position exists
-      const existing = await positionService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Position not found", 404);
-      }
-
-      // Check if position name already exists (exclude current id)
-      if (position_name) {
-        const positionExists = await positionService.checkPositionExists(
-          position_name,
-          id,
-          isDoubleDatabase,
-        );
-
-        if (positionExists) {
-          return errorResponse(res, "Position already exists", 400);
-        }
-      }
-
-      const data = {};
-      if (position_name) data.position_name = position_name;
-      if (req.body.is_active !== undefined) data.is_active = req.body.is_active;
-
-      const position = await positionService.update(id, data, isDoubleDatabase);
-
+      const isDoubleDatabase = req.body.is_double_database !== false;
+      const position = await positionService.updatePosition(
+        Number(req.params.id),
+        req.body,
+        isDoubleDatabase,
+      );
       return successResponse(res, position, "Position updated successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 
   /**
-   * Delete position
+   * Delete (deactivate) position
    */
   async delete(req, res) {
     try {
-      const { id } = req.params;
       const isDoubleDatabase = req.query.is_double_database !== "false";
-
-      // Check if position exists
-      const existing = await positionService.findById(id, {}, isDoubleDatabase);
-      if (!existing) {
-        return errorResponse(res, "Position not found", 404);
-      }
-
-      await positionService.update(id, { is_active: false }, isDoubleDatabase);
-
+      await positionService.deactivatePosition(Number(req.params.id), isDoubleDatabase);
       return successResponse(res, null, "Position deleted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return fromError(res, error);
     }
   }
 }
