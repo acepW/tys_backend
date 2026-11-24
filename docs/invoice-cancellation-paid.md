@@ -238,6 +238,7 @@ Default dipakai kalau tidak dijawab lain. **2026-11-24: semua default disetujui,
 | P18 | Report Credit Note: export Excel dikerjakan frontend dari JSON (seperti report invoice), atau backend menyediakan file Excel? | Frontend, seperti report invoice |
 | P19 | Siapa yang boleh membuka report Credit Note? | Semua user yang login, akses menu diatur lewat menu/posisi seperti report lain. Catatan: `/api/report-invoices` saat ini tidak memakai `authenticate`, perlu ditambahkan |
 | P20 | Mutasi per customer perlu juga dalam bentuk PDF/surat untuk dikirim ke customer? | Tidak, hanya report internal |
+| P21 | (Dibuka 2026-11-24, **belum dibahas**) Credit Note dipakai saat membuat invoice? Saat ini deposit baru bisa dipakai setelah SPV approve (`waiting for payment`). Opsi A: AR & AP memilih Credit Note di form create, otomatis dicatat sebagai pembayaran saat SPV approve; total dan pajak tetap, dokumen bisa menampilkan "Dikurangi Credit Note". Opsi B: `sub_total` dipotong sebelum pajak (DPP/PPN/FP dari nilai bersih, tidak cocok lagi dengan termin CT/PO; perlu persetujuan tim FAT/pajak) | **Jawaban klien 2026-11-24:** "Pajaknya terhitung dari nilai invoice/DN sebelum dipotong credit note" → **opsi A** (sama dengan cara kerja sekarang: Credit Note = pembayaran, total dan pajak tetap). Opsi B gugur. Diputuskan 2026-11-24: cara sekarang sudah cukup (deposit dipakai setelah SPV approve). Pemilihan Credit Note sejak invoice dibuat bisa dibahas lagi nanti |
 
 ## Catatan dari pengecekan alur invoice approval (2026-11-24)
 

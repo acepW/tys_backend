@@ -48,6 +48,10 @@ const RecruitmentUserInterviewModel = require("./humanResource/recruitment/recru
 const RecruitmentOfferingModel = require("./humanResource/recruitment/recruitmentOffering.model");
 const RecruitmentContractModel = require("./humanResource/recruitment/recruitmentContract.model");
 const RecruitmentVerificationProgressModel = require("./humanResource/recruitment/recruitmentVerificationProgress.model");
+const RecruitmentReportItemModel = require("./humanResource/recruitment/recruitmentReportItem.model");
+const RecruitmentPsychotestModel = require("./humanResource/recruitment/recruitmentPsychotest.model");
+const RecruitmentInterviewScoreModel = require("./humanResource/recruitment/recruitmentInterviewScore.model");
+const RecruitmentUserInterviewerModel = require("./humanResource/recruitment/recruitmentUserInterviewer.model");
 
 const GovernmentCostFieldsModel = require("./masterGovernmentCost/governmentCostField.model");
 
@@ -232,6 +236,10 @@ const initializeModels = (sequelize) => {
     RecruitmentOffering: RecruitmentOfferingModel(sequelize),
     RecruitmentContract: RecruitmentContractModel(sequelize),
     RecruitmentVerificationProgress: RecruitmentVerificationProgressModel(sequelize),
+    RecruitmentReportItem: RecruitmentReportItemModel(sequelize),
+    RecruitmentPsychotest: RecruitmentPsychotestModel(sequelize),
+    RecruitmentInterviewScore: RecruitmentInterviewScoreModel(sequelize),
+    RecruitmentUserInterviewer: RecruitmentUserInterviewerModel(sequelize),
 
     // Service Pricing
     ServicePricing: ServicePricingModel(sequelize),

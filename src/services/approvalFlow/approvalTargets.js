@@ -161,7 +161,8 @@ module.exports = {
   // A request (candidate request) is created at "request hr staff", or "request spv
   // hr" from the HR division; a request returned to the requester waits for them,
   // not for an approval flow. The candidate database has no approval since
-  // 2026-11-18, so it has no target.
+  // 2026-11-18, and the HR and user interviews since 2026-11-24 (scheduled, then
+  // their results), so none of them has a target.
   "recruitment request": {
     model: "RecruitmentRequest",
     label: "Recruitment Request",
@@ -172,18 +173,6 @@ module.exports = {
       "request manager hr": "Approve / Reject Recruitment Request by Manager HR",
       "request director": "Approve / Reject Recruitment Request by Director",
     },
-  },
-  "recruitment hr interview": {
-    model: "RecruitmentHrInterview",
-    label: "Recruitment HR Interview",
-    numberField: "candidate_name",
-    statuses: { pending: "Approve / Reject HR Interview" },
-  },
-  "recruitment user interview": {
-    model: "RecruitmentUserInterview",
-    label: "Recruitment User Interview",
-    numberField: "candidate_name",
-    statuses: { pending: "Approve / Reject User Interview" },
   },
   "recruitment offering": {
     model: "RecruitmentOffering",

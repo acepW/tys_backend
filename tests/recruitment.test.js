@@ -8,7 +8,8 @@ const { models, db1 } = require("../src/models");
 
 const modelNames = [
   "RecruitmentRequest", "RecruitmentRequestRevision", "RecruitmentCandidate", "RecruitmentHrInterview",
-  "RecruitmentUserInterview", "RecruitmentOffering", "RecruitmentContract",
+  "RecruitmentUserInterview", "RecruitmentOffering", "RecruitmentContract", "RecruitmentPsychotest",
+  "RecruitmentInterviewScore", "RecruitmentReportItem", "RecruitmentUserInterviewer",
 ];
 
 // Users by id; 5 and 8 are outside HR, 7 and 9 are in the HR division.
@@ -78,6 +79,12 @@ function mockStore(t) {
     return data;
   }]);
   replaced.push([models.db1.User, "findByPk", async (id) => users[id] ?? null]);
+  replaced.push([models.db1.User, "findOne", async ({ where }) => users[where.id] ?? null]);
+  // Report master: one required and one optional (*) item.
+  tables.RecruitmentReportItem.push(
+    { id: 1, section: "Hasil Interview", group_name: "Faktor Utama", item_name: "Motivasi", is_optional: false, sort_order: 10, is_active: true },
+    { id: 2, section: "Hasil Interview", group_name: "Faktor Lain", item_name: "Kemampuan Memimpin", is_optional: true, sort_order: 20, is_active: true },
+  );
   replaced.push([models.db1.Company, "findOne", async ({ where }) => companies[where.id] ?? null]);
   // Department -> division -> position masters checked on a request (orgHierarchy).
   for (const [name, rows] of Object.entries(orgMasters))
@@ -341,11 +348,22 @@ test("A candidate is saved without approval, needs a CV and a professional licen
   assert.deepEqual([candidate.license_type, candidate.license_type_other], ["other", "Ahli gizi"]);
   await recruitment.candidate.update(1, { has_professional_license: false }, 5, false);
   assert.deepEqual([candidate.license_type, candidate.license_type_other], [null, null]);
-  // Hiring status is free text HR fills and changes; empty clears it.
-  await recruitment.candidate.update(1, { hiring_status: "Menunggu jadwal interview" }, 5, false);
-  assert.equal(candidate.hiring_status, "Menunggu jadwal interview");
-  await recruitment.candidate.update(1, { hiring_status: "" }, 5, false);
-  assert.equal(candidate.hiring_status, null);
+  // Hiring status (2026-11-24): a new candidate is "contacting"; edits ignore it and
+  // HR changes it with setHiringStatus to any of the 15 values, kept in the history.
+  assert.equal(candidate.hiring_status, "contacting");
+  await recruitment.candidate.update(1, { hiring_status: "onboarding" }, 5, false);
+  assert.equal(candidate.hiring_status, "contacting");
+  await assert.rejects(recruitment.candidate.setHiringStatus(1, "Menunggu jadwal", 5, null, false),
+    /hiring_status must be one of: contacting, no response/);
+  await recruitment.candidate.setHiringStatus(1, "no response", 5, "Tidak mengangkat telepon", false);
+  assert.equal(candidate.hiring_status, "no response");
+  assert.ok(candidate.hiring_status_updated_at instanceof Date);
+  assert.deepEqual(progress.at(-1), ["candidate", 1, "hiring status no response",
+    "Hiring status contacting → no response: Tidak mengangkat telepon"]);
+  await assert.rejects(recruitment.candidate.setHiringStatus(1, "no response", 5, null, false),
+    (error) => error.statusCode === 409 && /already no response/.test(error.message));
+  await recruitment.candidate.setHiringStatus(1, "contacting", 5, null, false); // back again (H1)
+  assert.equal(candidate.hiring_status, "contacting");
   await assert.rejects(recruitment.candidate.update(1, { files_cv: [] }, 5, false), /files_cv cannot be emptied/);
   // A candidate from before the license fields can be edited without answering it.
   tables.RecruitmentCandidate.push({ id: 2, is_active: true, id_recruitment_request: 1, name: "Lama",
@@ -357,82 +375,226 @@ test("A candidate is saved without approval, needs a CV and a professional licen
   // No approval at all.
   await assert.rejects(recruitment.candidate.decide(1, "approve", 7, null, false), /has no approval/);
   assert.deepEqual(progress.filter(([module]) => module === "candidate").map(([, , status]) => status),
-    ["created", "edited", "edited", "edited", "edited", "edited"]);
+    ["created", "edited", "edited", "edited", "hiring status no response", "hiring status contacting", "edited"]);
 });
 
-test("Candidate goes through HR interview, user interview, offering and contract in order", async (t) => {
+// HR interview (2026-11-24): scheduled, then its result; no approval.
+const schedule = (data = {}) => ({
+  id_recruitment_candidate: 1, interview_date: "2026-11-25", interview_time: "09:00", method: "offline",
+  meeting_room: "Ruang Meeting 2", ...data,
+});
+// User interview (2026-11-24): one or more interviewers, each with a schedule.
+const interviewerRow = (idUser, data = {}) => ({
+  id_user: idUser, interview_date: "2026-11-28", interview_time: "10:00", method: "online",
+  meeting_link: "https://meet.google.com/xyz", ...data,
+});
+const userSchedule = (data = {}) => ({ id_recruitment_candidate: 1, interviewers: [interviewerRow(7)], ...data });
+const decision = (value, data = {}) => ({ decision: value, scores: [{ id_report_item: 1, score: "B" }], description: "Cocok", ...data });
+const recommended = (data = {}) => ({
+  attendance: "attended", recommendation: "recommended", description: "Komunikatif",
+  scores: [{ id_report_item: 1, score: "B" }, { id_report_item: 2, score: null }],
+  psychotests: [{ tool_name: "DISC", description: "Dominan", files_result: [] }], ...data,
+});
+
+test("HR schedules an HR interview, then fills its result, which moves the hiring status", async (t) => {
+  const { tables, progress } = mockStore(t);
+  addOpenRequest(tables);
+  const candidate = await recruitment.candidate.create(candidateBody(), 5, false);
+  for (const [data, message] of [
+    [{ interview_time: undefined }, /interview_time is required/],
+    [{ method: "hybrid" }, /method must be one of: online, offline/],
+    [{ meeting_room: " " }, /meeting_room is required for an offline interview/],
+    [{ method: "online" }, /meeting_link is required for an online interview/],
+    [{ interview_date: "25-11-2026" }, /YYYY-MM-DD/],
+    [{ id_user_interviewer: 99 }, /Interviewer not found/],
+  ])
+    await assert.rejects(recruitment.hrInterview.create(schedule(data), 5, false), message);
+
+  const interview = await recruitment.hrInterview.create(schedule({ meeting_link: "ignored" }), 5, false);
+  assert.deepEqual([interview.status, interview.id_user_interviewer, interview.meeting_link, interview.candidate_name],
+    ["scheduled", 5, null, "Budi"]);
+  assert.equal(candidate.hiring_status, "hr interview");
+  await assert.rejects(recruitment.hrInterview.create(schedule(), 5, false), /already has a scheduled hr interview/);
+
+  // Rescheduled while scheduled; online needs a link and clears the room.
+  await recruitment.hrInterview.update(1, { method: "online", meeting_link: "https://meet.google.com/abc", id_user_interviewer: 7 }, 5, false);
+  assert.deepEqual([interview.method, interview.meeting_room, interview.id_user_interviewer], ["online", null, 7]);
+
+  // Result: every required report item needs a score.
+  for (const [data, message] of [
+    [{ attendance: "late" }, /attendance must be one of: attended, no show/],
+    [{ recommendation: "maybe" }, /recommendation must be one of: recommended, not recommended/],
+    [{ scores: [{ id_report_item: 2, score: "B" }] }, /Every required report item needs a score: Motivasi/],
+    [{ scores: [{ id_report_item: 1, score: "A" }] }, /score must be one of: KS, K, C, B, BS/],
+    [{ scores: [{ id_report_item: 9, score: "B" }] }, /not an active report item/],
+    [{ psychotests: [{ description: "x" }] }, /psychotests\[0\].tool_name is required/],
+  ])
+    await assert.rejects(recruitment.hrInterview.submitResult(1, recommended(data), 7, false), message);
+
+  await recruitment.hrInterview.submitResult(1, recommended(), 7, false);
+  assert.deepEqual([interview.status, interview.attendance, interview.recommendation, interview.description, interview.id_user_result],
+    ["completed", "attended", "recommended", "Komunikatif", 7]);
+  assert.deepEqual(tables.RecruitmentInterviewScore.map((row) => [row.interview_type, row.id_interview, row.item_name, row.score]),
+    [["hr", 1, "Motivasi", "B"], ["hr", 1, "Kemampuan Memimpin", null]]);
+  assert.deepEqual(tables.RecruitmentPsychotest.map((row) => [row.id_recruitment_hr_interview, row.tool_name]), [[1, "DISC"]]);
+  assert.equal(candidate.hiring_status, "user interview");
+  assert.ok(progress.some(([module, , status]) => module === "hr interview" && status === "recommended"));
+  await assert.rejects(recruitment.hrInterview.submitResult(1, recommended(), 7, false), /filled once/);
+  await assert.rejects(recruitment.hrInterview.update(1, { interview_time: "10:00" }, 5, false), /cannot be edited while it is completed/);
+  await assert.rejects(recruitment.hrInterview.decide(1, "approve", 7, null, false), /HR interview is already completed/);
+});
+
+test("A no show can be scheduled again; not recommended rejects the candidate", async (t) => {
   const { tables } = mockStore(t);
   addOpenRequest(tables);
-  const candidate = await recruitment.candidate.create(candidateBody({
-    job_title: "Staff", source: "JobStreet",
-    hr_interview_mechanism: "Online", hr_interview_date: "2026-10-21", hr_interview_time: "09:00",
+  const candidate = await recruitment.candidate.create(candidateBody({ name: "Sari" }), 5, false);
+  await recruitment.hrInterview.create(schedule(), 5, false);
+  await recruitment.hrInterview.submitResult(1, { attendance: "no show", scores: [{ id_report_item: 1, score: "B" }] }, 5, false);
+  assert.deepEqual([tables.RecruitmentHrInterview[0].status, tables.RecruitmentHrInterview[0].recommendation], ["no show", null]);
+  assert.equal(tables.RecruitmentInterviewScore.length, 0);
+  assert.equal(candidate.hiring_status, "hr interview no show");
+  await assert.rejects(recruitment.userInterview.create(userSchedule(), 5, false),
+    /needs an HR interview that recommended the candidate/);
+
+  await recruitment.hrInterview.create(schedule({ interview_date: "2026-11-27" }), 5, false);
+  assert.equal(candidate.hiring_status, "hr interview");
+  await recruitment.hrInterview.submitResult(2, recommended({ recommendation: "not recommended" }), 5, false);
+  assert.equal(candidate.hiring_status, "hr interview rejected");
+  await assert.rejects(recruitment.userInterview.create(userSchedule(), 5, false),
+    /needs an HR interview that recommended the candidate/);
+  await assert.rejects(recruitment.hrInterview.create(schedule(), 5, false), /already has a completed hr interview/);
+});
+
+// A candidate recommended at the HR interview, ready for the user interview.
+async function recommendedCandidate(t, data = {}) {
+  const store = mockStore(t);
+  addOpenRequest(store.tables);
+  const candidate = await recruitment.candidate.create(candidateBody({ job_title: "Staff", source: "JobStreet", ...data }), 5, false);
+  await recruitment.hrInterview.create(schedule(), 5, false);
+  await recruitment.hrInterview.submitResult(1, recommended(), 5, false);
+  return { ...store, candidate };
+}
+
+test("HR schedules a user interview with several interviewers, each with a schedule", async (t) => {
+  const { tables, candidate } = await recommendedCandidate(t);
+  for (const [data, message] of [
+    [{ interviewers: [] }, /interviewers must be a non-empty array/],
+    [{ interviewers: [interviewerRow(7, { meeting_link: "" })] }, /interviewers\[0\]: meeting_link is required for an online interview/],
+    [{ interviewers: [interviewerRow(7), interviewerRow(7)] }, /interviewers\[1\]: the same user is listed twice/],
+    [{ interviewers: [interviewerRow(99)] }, /interviewers\[0\]: user not found/],
+  ])
+    await assert.rejects(recruitment.userInterview.create(userSchedule(data), 5, false), message);
+
+  const doc = await recruitment.userInterview.create(userSchedule({
+    interviewers: [interviewerRow(7), interviewerRow(9, { interview_date: "2026-11-29", method: "offline", meeting_room: "Ruang Direksi" })],
   }), 5, false);
-  await assert.rejects(recruitment.candidate.create(candidateBody({ name: "X", hr_interview_time: "9 pagi" }), 5, false),
-    /HH:MM/);
+  assert.equal(doc.status, "scheduled");
+  assert.deepEqual(tables.RecruitmentUserInterviewer.map((row) => [row.id_user, row.interview_date, row.method, row.meeting_room, row.meeting_link]),
+    [[7, "2026-11-28", "online", null, "https://meet.google.com/xyz"], [9, "2026-11-29", "offline", "Ruang Direksi", null]]);
+  assert.equal(candidate.hiring_status, "user interview");
+  await assert.rejects(recruitment.userInterview.create(userSchedule(), 5, false), /already has a scheduled user interview/);
 
-  // A saved candidate goes straight to the HR interview.
-  await assert.rejects(recruitment.userInterview.create({ id_recruitment_candidate: 1, decision: "accepted" }, 5, false),
-    /needs an approved HR interview that passed/);
-  await assert.rejects(recruitment.hrInterview.create({ id_recruitment_candidate: 1, decision: "maybe" }, 5, false),
-    /decision must be one of: passed, not passed/);
-  await recruitment.hrInterview.create({
-    id_recruitment_candidate: 1, decision: "passed", interview_result: "Komunikatif", work_system: "WFO",
-    user_interview_mechanism: "Onsite", user_interview_date: "2026-10-25", user_interview_time: "13:30",
-  }, 5, false);
-  assert.equal(tables.RecruitmentHrInterview[0].candidate_name, "Budi");
-  assert.deepEqual([candidate.user_interview_mechanism, candidate.user_interview_date, candidate.user_interview_time],
-    ["Onsite", "2026-10-25", "13:30"]);
-  await assert.rejects(recruitment.hrInterview.create({ id_recruitment_candidate: 1, decision: "passed" }, 5, false),
-    /already has a pending hr interview/);
-  await assert.rejects(recruitment.userInterview.create({ id_recruitment_candidate: 1, decision: "accepted" }, 5, false),
-    /needs an approved HR interview/);
-  await recruitment.hrInterview.decide(1, "approve", 7, null, false);
+  // Reschedule: update one, drop the other, add a new one.
+  await recruitment.userInterview.update(1, { interviewers: [{ id: 1, ...interviewerRow(7, { interview_time: "14:00" }) }, interviewerRow(8)] }, 5, false);
+  const active = tables.RecruitmentUserInterviewer.filter((row) => row.is_active);
+  assert.deepEqual(active.map((row) => [row.id_user, row.interview_time]), [[7, "14:00"], [8, "10:00"]]);
 
-  // HR reschedules the user interview on the candidate, even after approval.
-  await recruitment.candidate.update(1, { user_interview_date: "2026-10-26", name: "Budi Santoso" }, 5, false);
-  assert.equal(candidate.user_interview_date, "2026-10-26");
-  assert.equal(tables.RecruitmentHrInterview[0].candidate_name, "Budi Santoso");
-
-  await assert.rejects(recruitment.userInterview.create({ id_recruitment_candidate: 1, decision: "accepted" }, 5, false),
-    /active_work_date is required when accepted/);
-  await recruitment.userInterview.create({
-    id_recruitment_candidate: 1, decision: "accepted", assessment: "Baik", recommended_salary: 6000000,
-    recommended_benefit: "BPJS", active_work_date: "2026-11-02",
-  }, 5, false);
-  await assert.rejects(recruitment.offering.create({ id_recruitment_candidate: 1 }, 5, false), /needs an approved user interview/);
-  await recruitment.userInterview.decide(1, "approve", 7, null, false);
-
-  const offering = await recruitment.offering.create({ id_recruitment_candidate: 1, birth_place: "Bandung",
-    birth_date: "2000-01-15", address: "Jl. Merdeka 1" }, 5, false);
-  assert.deepEqual([offering.job_title, offering.id_department, offering.effective_date, offering.salary, offering.benefit],
-    ["Staff", 3, "2026-11-02", 6000000, "BPJS"]);
-  await assert.rejects(recruitment.contract.create({ id_recruitment_candidate: 1 }, 5, false), /needs an approved offering letter/);
-  await recruitment.offering.decide(1, "approve", 7, null, false);
-
-  const contract = await recruitment.contract.create({ id_recruitment_candidate: 1, nik: "3201", gender: "Male",
-    contract_type: "PKWT", contract_duration: "12 bulan", end_date: "2027-11-01", id_employee_supervisor: 4 }, 5, false);
-  assert.deepEqual([contract.candidate_name, contract.birth_place, contract.address, contract.salary, contract.job_title],
-    ["Budi Santoso", "Bandung", "Jl. Merdeka 1", 6000000, "Staff"]);
-  await recruitment.contract.decide(1, "approve", 7, null, false);
-  assert.equal(contract.status, "approve");
+  // Once attended, an interviewer cannot be changed or removed.
+  await recruitment.userInterview.setAttendance(1, 1, "attended", 5, false);
+  await assert.rejects(recruitment.userInterview.update(1, { interviewers: [interviewerRow(8)] }, 5, false),
+    /already has an attendance and cannot be removed/);
 });
 
-test("A rejected step can be created again; a not accepted user interview clears the offer fields", async (t) => {
-  const { tables } = mockStore(t);
-  addOpenRequest(tables);
-  await recruitment.candidate.create(candidateBody({ name: "Sari" }), 5, false);
-  await recruitment.hrInterview.create({ id_recruitment_candidate: 1, decision: "not passed" }, 5, false);
-  await recruitment.hrInterview.decide(1, "reject", 7, "Hasil psikotes belum dilampirkan", false);
-  await recruitment.hrInterview.create({ id_recruitment_candidate: 1, decision: "passed" }, 5, false);
-  assert.equal(tables.RecruitmentHrInterview.length, 2);
-  await recruitment.hrInterview.decide(2, "approve", 7, null, false);
+test("Every interviewer decides; any considered keeps the candidate 14 days, then the decision is final", async (t) => {
+  const { tables, candidate } = await recommendedCandidate(t);
+  await recruitment.userInterview.create(userSchedule({ interviewers: [interviewerRow(7), interviewerRow(9)] }), 5, false);
+  const doc = tables.RecruitmentUserInterview[0];
 
-  await recruitment.userInterview.create({ id_recruitment_candidate: 1, decision: "not accepted",
-    recommended_salary: 5000000, active_work_date: "2026-11-01" }, 5, false);
-  assert.deepEqual([tables.RecruitmentUserInterview[0].recommended_salary, tables.RecruitmentUserInterview[0].active_work_date],
-    [null, null]);
-  await recruitment.userInterview.decide(1, "approve", 7, null, false);
-  await assert.rejects(recruitment.offering.create({ id_recruitment_candidate: 1 }, 5, false), /user interview that accepted/);
+  await assert.rejects(recruitment.userInterview.submitDecision(1, 1, decision("accepted"), 7, false), /attended first/);
+  await recruitment.userInterview.setAttendance(1, 1, "attended", 5, false);
+  await assert.rejects(recruitment.userInterview.setAttendance(1, 1, "no show", 5, false), /already attended/);
+  await assert.rejects(recruitment.userInterview.submitDecision(1, 1, decision("maybe"), 7, false), /decision must be one of: accepted, considered, not accepted/);
+  await assert.rejects(recruitment.userInterview.submitDecision(1, 1, decision("accepted", { scores: [] }), 7, false),
+    /Every required report item needs a score: Motivasi/);
+  await recruitment.userInterview.submitDecision(1, 1, decision("accepted"), 7, false);
+  assert.equal(doc.status, "scheduled"); // waiting for the second interviewer
+  assert.deepEqual(tables.RecruitmentInterviewScore.filter((row) => row.interview_type === "user").map((row) => [row.id_interview, row.score]),
+    [[1, "B"], [1, null]]);
+
+  await recruitment.userInterview.setAttendance(1, 2, "attended", 5, false);
+  await recruitment.userInterview.submitDecision(1, 2, decision("considered"), 9, false);
+  const due = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  assert.deepEqual([doc.status, doc.result, doc.consideration_due_date], ["completed", "considered", due]);
+  assert.equal(candidate.hiring_status, "user interview consideration");
+  await assert.rejects(recruitment.offering.create({ id_recruitment_candidate: 1 }, 5, false), /needs a user interview that accepted/);
+
+  // Only the considering interviewer may change, and only to a final decision.
+  await assert.rejects(recruitment.userInterview.submitDecision(1, 1, decision("not accepted"), 7, false),
+    /can only change while the candidate is considered/);
+  await assert.rejects(recruitment.userInterview.submitDecision(1, 2, decision("considered"), 9, false), /already considered/);
+  await recruitment.userInterview.submitDecision(1, 2, { decision: "accepted" }, 9, false);
+  assert.deepEqual([doc.result, doc.consideration_due_date], ["accepted", null]);
+  assert.equal(candidate.hiring_status, "offering letter");
+  assert.equal(tables.RecruitmentInterviewScore.filter((row) => row.id_interview === 2).length, 2); // report kept
+
+  // The offering takes its defaults from the user interview, as before.
+  await assert.rejects(recruitment.userInterview.update(1, { recommended_salary: 6000000 }, 5, false),
+    /cannot be edited while it is completed/);
+  // The new user interview form has no start date, so the offering needs its own (H15).
+  await assert.rejects(recruitment.offering.create({ id_recruitment_candidate: 1 }, 5, false), /effective_date is required/);
+  const offering = await recruitment.offering.create({ id_recruitment_candidate: 1, birth_place: "Bandung",
+    effective_date: "2026-12-01" }, 5, false);
+  assert.deepEqual([offering.job_title, offering.id_department, offering.effective_date], ["Staff", 3, "2026-12-01"]);
+  await recruitment.offering.decide(1, "approve", 7, null, false);
+  const contract = await recruitment.contract.create({ id_recruitment_candidate: 1, nik: "3201", gender: "Male",
+    contract_type: "PKWT", end_date: "2027-11-01" }, 5, false);
+  assert.deepEqual([contract.candidate_name, contract.birth_place], ["Budi", "Bandung"]);
+});
+
+test("Any not accepted rejects; a no show ends the user interview at once and can be rescheduled", async (t) => {
+  const { tables, candidate } = await recommendedCandidate(t);
+  await recruitment.userInterview.create(userSchedule({ interviewers: [interviewerRow(7), interviewerRow(9)] }), 5, false);
+  await recruitment.userInterview.setAttendance(1, 1, "attended", 5, false);
+  await recruitment.userInterview.setAttendance(1, 2, "no show", 5, false);
+  assert.equal(tables.RecruitmentUserInterview[0].status, "no show");
+  assert.equal(candidate.hiring_status, "user interview no show");
+  await assert.rejects(recruitment.userInterview.submitDecision(1, 1, decision("accepted"), 7, false), /The user interview is no show/);
+
+  await recruitment.userInterview.create(userSchedule({ interviewers: [interviewerRow(7), interviewerRow(9)] }), 5, false);
+  assert.equal(candidate.hiring_status, "user interview");
+  for (const id of [3, 4]) await recruitment.userInterview.setAttendance(2, id, "attended", 5, false);
+  await recruitment.userInterview.submitDecision(2, 3, decision("considered"), 7, false);
+  await recruitment.userInterview.submitDecision(2, 4, decision("not accepted"), 9, false);
+  assert.deepEqual([tables.RecruitmentUserInterview[1].result, candidate.hiring_status], ["not accepted", "user interview rejected"]);
+});
+
+test("Interview saya lists what each interviewer waits for, with the reminder 3 days before the end", async (t) => {
+  const { tables } = await recommendedCandidate(t);
+  await recruitment.userInterview.create(userSchedule({ interviewers: [interviewerRow(7), interviewerRow(9)] }), 5, false);
+  const { RecruitmentUserInterviewer } = models.db1;
+  const kept = RecruitmentUserInterviewer.findAll;
+  t.after(() => { RecruitmentUserInterviewer.findAll = kept; });
+  // The in-memory store does not join: attach the user interview by hand.
+  RecruitmentUserInterviewer.findAll = async (options) => options.where.id_user === undefined
+    ? kept(options)
+    : tables.RecruitmentUserInterviewer
+      .filter((row) => row.id_user === options.where.id_user && row.is_active)
+      .map((row) => ({ toJSON: () => ({ ...row, user_interview: { ...tables.RecruitmentUserInterview.find((doc) => doc.id === row.id_recruitment_user_interview) } }) }));
+
+  assert.deepEqual((await recruitment.userInterview.mine(7)).map((row) => [row.waits_for_attendance, row.needs_report]), [[true, false]]);
+  await recruitment.userInterview.setAttendance(1, 1, "attended", 5, false);
+  await recruitment.userInterview.setAttendance(1, 2, "attended", 5, false);
+  assert.deepEqual((await recruitment.userInterview.mine(7, { pending: true })).map((row) => row.needs_report), [true]);
+  await recruitment.userInterview.submitDecision(1, 1, decision("considered"), 7, false);
+  await recruitment.userInterview.submitDecision(1, 2, decision("accepted"), 9, false);
+  assert.deepEqual((await recruitment.userInterview.mine(9, { pending: true })), []);
+  const [mine] = await recruitment.userInterview.mine(7, { pending: true });
+  assert.deepEqual([mine.needs_final_decision, mine.needs_decision_reminder], [true, false]);
+  // Three days before the end the reminder is on; after it, it is overdue.
+  tables.RecruitmentUserInterview[0].consideration_due_date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  assert.equal((await recruitment.userInterview.mine(7))[0].needs_decision_reminder, true);
+  tables.RecruitmentUserInterview[0].consideration_due_date = "2020-01-01";
+  assert.equal((await recruitment.userInterview.mine(7))[0].is_consideration_overdue, true);
 });
 
 test("A request's department, division and position must fit together", async (t) => {

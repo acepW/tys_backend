@@ -16,6 +16,26 @@ const LICENSE_TYPES = [
   "lead auditor", // Lead auditor certification (ISO, etc.)
   "other", // Other (free text in license_type_other)
 ];
+// Hiring status of a candidate (client list, 2026-11-24; docs/recruitment-interview-requirement.md).
+// 1–10 also follow the HR and user interviews; 11–15 are set by hand until the
+// offering letter and contract documents arrive. HR may set any of them by hand.
+const CANDIDATE_HIRING_STATUSES = [
+  "contacting", // 1. Menghubungi (new candidate)
+  "no response", // 2. No Respond
+  "hr interview", // 3. Interview HR
+  "hr interview no show", // 4. No Show (HR Interviews)
+  "hr interview rejected", // 5. Ditolak (HR Interviews)
+  "user interview", // 6. Interview user (recommended at the HR interview)
+  "user interview no show", // 7. No Show (User Interviews)
+  "user interview rejected", // 8. Ditolak (User Interviews)
+  "user interview consideration", // 9. Pertimbangan (User Interviews)
+  "offering letter", // 10. Offering Letter (accepted at the user interview)
+  "rejected by candidate", // 11. Ditolak oleh kandidat
+  "negotiation", // 12. Negosiasi
+  "work contract", // 13. Work Contract
+  "onboarding", // 14. Onboarding
+  "contract no show", // 15. No Show (contract not uploaded within 2 days)
+];
 const reference = (table) => ({
   type: DataTypes.INTEGER,
   allowNull: true,
@@ -99,10 +119,19 @@ module.exports = (sequelize) => {
         comment: "Free-text license type when license_type is other",
       },
       hiring_status: {
-        type: DataTypes.STRING(255),
-        allowNull: true,
-        comment: "Hiring status of the candidate, free text filled by HR (not the request's open/close)",
+        type: DataTypes.ENUM(...CANDIDATE_HIRING_STATUSES),
+        allowNull: false,
+        defaultValue: "contacting",
+        comment: "Hiring status of the candidate (not the request's open/close); set by the interviews or by hand",
       },
+      hiring_status_updated_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: "When hiring_status last changed",
+      },
+      birth_date: { type: DataTypes.DATEONLY, allowNull: true, comment: "Optional, may be filled after the HR interview" },
+      birth_place: { type: DataTypes.STRING(255), allowNull: true, comment: "Optional, may be filled after the HR interview" },
+      address: { type: DataTypes.TEXT, allowNull: true, comment: "Optional, may be filled after the HR interview" },
       id_user_request: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -149,3 +178,4 @@ module.exports = (sequelize) => {
 };
 
 module.exports.LICENSE_TYPES = LICENSE_TYPES;
+module.exports.CANDIDATE_HIRING_STATUSES = CANDIDATE_HIRING_STATUSES;

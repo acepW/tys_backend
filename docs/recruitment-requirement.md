@@ -4,6 +4,8 @@ Dokumen ini membandingkan contoh form dari klien ("Form Recruitment Request" dan
 
 Panduan endpoint untuk frontend ada di [recruitment-frontend.md](recruitment-frontend.md).
 
+**2026-11-24:** perubahan klien untuk hiring status, Interview HR, dan Interview User dianalisis di [recruitment-interview-requirement.md](recruitment-interview-requirement.md) (rancangan, menunggu persetujuan). Keputusan 16 (hiring status teks bebas) akan diganti.
+
 | Status            | Arti                                                    |
 | ----------------- | ------------------------------------------------------- |
 | Sudah ada         | Sudah berjalan sebelum pekerjaan ini                     |

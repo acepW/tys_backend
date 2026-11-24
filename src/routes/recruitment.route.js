@@ -4,7 +4,13 @@ const {
   modules,
   candidateOptions,
   setRequestHiringStatus,
+  setCandidateHiringStatus,
   resubmitRequest,
+  reportItems,
+  submitHrInterviewResult,
+  setUserInterviewAttendance,
+  submitUserInterviewDecision,
+  myUserInterviews,
 } = require("../controllers/humanResource/recruitment.controller");
 const { authenticate } = require("../middleware/auth.middleware");
 const { requireApprover } = require("../middleware/approval.middleware");
@@ -18,6 +24,19 @@ const { requireApprover } = require("../middleware/approval.middleware");
 router.get("/candidates/options", authenticate, candidateOptions);
 router.patch("/requests/hiring-status/:id", authenticate, setRequestHiringStatus);
 router.patch("/requests/resubmit/:id", authenticate, resubmitRequest);
+router.patch("/candidates/hiring-status/:id", authenticate, setCandidateHiringStatus);
+router.patch("/hr-interviews/result/:id", authenticate, submitHrInterviewResult);
+// Before the module routes: "my" is not an id.
+router.get("/user-interviews/my", authenticate, myUserInterviews);
+router.patch("/user-interviews/:id/interviewers/:interviewerId/attendance", authenticate, setUserInterviewAttendance);
+router.patch("/user-interviews/:id/interviewers/:interviewerId/decision", authenticate, submitUserInterviewDecision);
+
+// Master of the interview report form (HR and user interviews)
+router.get("/report-items", authenticate, reportItems.list);
+router.get("/report-items/form", authenticate, reportItems.form);
+router.post("/report-items", authenticate, reportItems.create);
+router.put("/report-items/:id", authenticate, reportItems.update);
+router.delete("/report-items/:id", authenticate, reportItems.remove);
 
 for (const [path, controller] of Object.entries(modules)) {
   router.get(`/${path}`, authenticate, controller.getAll);

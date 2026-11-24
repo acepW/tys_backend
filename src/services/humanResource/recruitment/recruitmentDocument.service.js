@@ -84,7 +84,7 @@ const revisionValue = (value) => (value == null || value === "" ? null : String(
  *   createOnly    fields accepted on create but not on edit
  *   fileableType, fileCategories   file arrays synced from the body
  *   includes()    extra includes for list/detail
- *   prepare(data, existing, t1)    validates and completes data before it is saved
+ *   prepare(data, existing, t1, userId)    validates and completes data before it is saved
  *   afterSave(doc, input, userId, t1, t2)   side effects after create/edit
  *   editableStatuses   statuses that may be edited (null = any)
  *   withoutApproval    the document has no status and is never approved or rejected
@@ -96,6 +96,7 @@ const revisionValue = (value) => (value == null || value === "" ? null : String(
  *                      to "reject", or with rejectTo ({ target: status }) to the status
  *                      of the chosen target (reject_to). Without approvalStages, only
  *                      "pending" can be approved or rejected.
+ *   decorate(row, isDetail)   adds computed data to each list row and to the detail
  *   revisions          { modelName, foreignKey }: every edit is a revision: its changed
  *                      fields (old and new value) are stored in that model and the
  *                      progress says "revised" instead of "edited"
@@ -134,11 +135,12 @@ class RecruitmentDocumentService {
       include: [{ model: models.db1.User, as: "user", attributes: ["id", "name"] }],
       order: [["createdAt", "ASC"]],
     });
-    return { ...row.toJSON(), verification_progress: progress.map((item) => item.toJSON()) };
+    const data = { ...row.toJSON(), verification_progress: progress.map((item) => item.toJSON()) };
+    return this.config.decorate ? this.config.decorate(data, true) : data;
   }
 
   async getAll(where = {}, page, limit) {
-    return findPage(
+    const result = await findPage(
       this.model,
       {
         where: { ...where, is_active: true },
@@ -149,6 +151,10 @@ class RecruitmentDocumentService {
       page,
       limit,
     );
+    const { decorate } = this.config;
+    if (!decorate) return result;
+    if (Array.isArray(result)) return Promise.all(result.map((row) => decorate(row, false)));
+    return { ...result, data: await Promise.all(result.data.map((row) => decorate(row, false))) };
   }
 
   pick(input, isCreate) {
@@ -185,7 +191,7 @@ class RecruitmentDocumentService {
   async create(input, userId, isDoubleDatabase = true) {
     this.config.validateInput?.(input, null);
     const id = await withTransactions(isDoubleDatabase, async (t1, t2) => {
-      const data = await this.config.prepare(this.pick(input, true), null, t1);
+      const data = await this.config.prepare(this.pick(input, true), null, t1, userId);
       const status = this.config.withoutApproval
         ? undefined
         : ((await this.config.initialStatus?.(data, userId, t1)) ?? "pending");
@@ -212,7 +218,7 @@ class RecruitmentDocumentService {
       this.config.validateInput?.(input, existing);
       const picked = this.pick(input, false);
       await this.config.checkEdit?.(existing, picked, userId);
-      const data = await this.config.prepare(picked, existing, t1);
+      const data = await this.config.prepare(picked, existing, t1, userId);
       const isRevision = Boolean(this.config.revisions);
       const changed = isRevision ? await this.addRevisions(existing, data, userId, t1, t2) : [];
       await mirrorUpdate(this.config.modelName, existing.id, data, t1, t2);
