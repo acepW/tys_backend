@@ -217,11 +217,11 @@ module.exports = (sequelize) => {
         comment: "Tax invoice date (tanggal faktur pajak)",
       },
       tax_invoice_status: {
-        type: DataTypes.ENUM("none", "requested", "issued"),
+        type: DataTypes.ENUM("none", "requested", "issued", "cancelled"),
         allowNull: false,
         defaultValue: "none",
         comment:
-          "Final invoice and tax invoice (faktur pajak) progress, separate from status: requested by sales or after a payment is accepted (final invoice only without PPN), issued once AR & AP uploads them",
+          "Final invoice and tax invoice (faktur pajak) progress, separate from status: requested by sales or after a payment is accepted (final invoice only without PPN), issued once AR & AP uploads them; cancelled when the invoice is cancelled after its tax invoice was issued",
       },
       is_final: {
         type: DataTypes.BOOLEAN,
@@ -288,11 +288,12 @@ module.exports = (sequelize) => {
           "cancellation requested",
           "cancellation reviewed",
           "cancellation verified",
+          "paid cancellation in progress",
         ),
         allowNull: false,
         defaultValue: "pending",
         comment:
-          "Status of Invoice; rejected goes back to AR & AP for the tax, cancelled (CT/PO changed, or a cancellation approved by the director) is final; once paid off it follows the withholding tax receipts until paid & clear; a cancellation request waits for AR & AP (requested), SPV FAT Internal (reviewed) and the director (verified)",
+          "Status of Invoice; rejected goes back to AR & AP for the tax, cancelled (CT/PO changed, or a cancellation approved by the director) is final; once paid off it follows the withholding tax receipts until paid & clear; a cancellation request waits for AR & AP (requested), SPV FAT Internal (reviewed) and the director (verified); paid cancellation in progress locks a paid invoice (or one with a tax invoice) while invoice_paid_cancellations runs, and ends in cancelled",
       },
       id_invoice_converted_from: {
         type: DataTypes.INTEGER,
@@ -510,6 +511,14 @@ module.exports = (sequelize) => {
     Invoice.hasMany(models.InvoiceCancellation, {
       foreignKey: "id_invoice",
       as: "cancellations",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    });
+
+    // Cancellation requests once the invoice is paid or its tax invoice requested
+    Invoice.hasMany(models.InvoicePaidCancellation, {
+      foreignKey: "id_invoice",
+      as: "paid_cancellations",
       onDelete: "RESTRICT",
       onUpdate: "CASCADE",
     });

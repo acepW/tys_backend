@@ -123,7 +123,9 @@ test("only an unpaid proforma without a tax invoice request, and not a conversio
     [{ status: "payment verification" }, {}, 409, /not allowed while the invoice is payment verification/],
     [{ tax_invoice_status: "requested" }, {}, 409, /after its tax invoice was requested/],
     [{ id_invoice_converted_from: 9 }, {}, 409, /converted to 50% cannot be cancelled or converted again/],
-    [{}, { InvoicePayment: [{ id: 1, id_invoice: 1, status: "rejected" }] }, 409, /after a payment proof was uploaded/],
+    // Decision 45, changed 2026-11-24: only a payment in verification or accepted blocks it;
+    // an accepted one goes to the paid invoice cancellation.
+    [{}, { InvoicePayment: [{ id: 1, id_invoice: 1, status: "accepted" }] }, 409, /use the paid invoice cancellation/],
   ]) {
     const state = mockDb(t, tables(data, extra));
     await assert.rejects(request(), fails(status, message));
@@ -256,14 +258,20 @@ test("a debit note paid during the request blocks the director's approval", asyn
 });
 
 test("a cancelled debit note is final, and cannot be paid while its invoice cancellation is in process", async (t) => {
-  const { DebitNote, InvoiceCancellation } = models.db1;
-  const originals = { find: DebitNote.findByPk, count: InvoiceCancellation.count };
-  t.after(() => { DebitNote.findByPk = originals.find; InvoiceCancellation.count = originals.count; });
+  const { DebitNote, InvoiceCancellation, InvoicePaidCancellation } = models.db1;
+  const originals = { find: DebitNote.findByPk, count: InvoiceCancellation.count, paid: InvoicePaidCancellation.count };
+  t.after(() => {
+    DebitNote.findByPk = originals.find;
+    InvoiceCancellation.count = originals.count;
+    InvoicePaidCancellation.count = originals.paid;
+  });
   let status = "cancelled";
   let pending = 0;
   let countWhere;
   DebitNote.findByPk = async (id) => ({ id, status });
   InvoiceCancellation.count = async (options) => { countWhere = options; return pending; };
+  // The cancellation of a paid invoice is covered in invoicePaidCancellation.test.js.
+  InvoicePaidCancellation.count = async () => 0;
 
   await assert.rejects(debitNoteService.assertChangeable(21), fails(409, /Debit note is cancelled/));
   await assert.rejects(debitNoteService.approveDebitNote(21, null, 9, false), fails(409, /Debit note is cancelled/));

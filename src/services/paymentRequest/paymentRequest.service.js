@@ -686,7 +686,22 @@ class PaymentRequestService extends DualDatabaseService {
     }
   }
 
+  /**
+   * A refund for a cancelled paid invoice is made by AR & AP from the approved
+   * cancellation: it cannot be edited or deleted, only paid or rejected by the
+   * cashier (docs/invoice-cancellation-paid.md, fase D).
+   */
+  async assertEditable(id) {
+    const row = await models.db1.PaymentRequest.findByPk(id, { attributes: ["id", "id_invoice_paid_cancellation"] });
+    if (row?.id_invoice_paid_cancellation) {
+      const error = new Error("A refund payment request of a cancelled invoice cannot be edited or deleted");
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   async updateWithRelations(id, data, files, expenses, idUser, isDoubleDatabase = true, services) {
+    await this.assertEditable(id);
     let transaction1 = null;
     let transaction2 = null;
     try {
@@ -725,6 +740,7 @@ class PaymentRequestService extends DualDatabaseService {
   }
 
   async updateFiles(id, files, idUser, isDoubleDatabase = true) {
+    await this.assertEditable(id);
     let transaction1 = null;
     let transaction2 = null;
 
@@ -904,6 +920,25 @@ class PaymentRequestService extends DualDatabaseService {
    * @param {Boolean} isDoubleDatabase
    * @returns {Object} Updated payment request
    */
+  // A refund payment request settles its paid invoice cancellation: paid completes
+  // it, a cashier rejection sends it back to AR & AP. Required lazily: the
+  // invoice services load after this one.
+  async _settleRefund(id, status, note, idUser, t1, t2) {
+    const row = await models.db1.PaymentRequest.findByPk(id, {
+      attributes: ["id", "id_invoice_paid_cancellation"],
+      transaction: t1,
+    });
+    if (!row?.id_invoice_paid_cancellation) return;
+    await require("../invoice/invoicePaidCancellation.service").onRefundPaymentRequest(
+      row.id,
+      status,
+      note,
+      idUser,
+      t1,
+      t2,
+    );
+  }
+
   async _changeStatus(id, status, options = {}, isDoubleDatabase = true) {
     const { cost_bearer, note, id_user, total_payment, file_proof_payment, progress_status } =
       options;
@@ -971,6 +1006,8 @@ class PaymentRequestService extends DualDatabaseService {
           `✅ Created PaymentRequestVerificationProgress with status "${status}"`
         );
 
+        await this._settleRefund(id, status, note, id_user, transaction1, transaction2);
+
         if (status === "paid" && dataPayment.id_contract_project_plan_cost) {
           await models.db1.ContractProjectPlanCost.update(
             { is_checked: true, file: file_proof_payment, remarks: note },
@@ -980,7 +1017,7 @@ class PaymentRequestService extends DualDatabaseService {
             }
           );
 
-          await models.dbb.ContractProjectPlanCost.update(
+          await models.db2.ContractProjectPlanCost.update(
             { is_checked: true, file: file_proof_payment, remarks: note },
             {
               where: { id: dataPayment.id_contract_project_plan_cost },
@@ -1013,6 +1050,8 @@ class PaymentRequestService extends DualDatabaseService {
           { transaction: transaction1 }
         );
 
+        await this._settleRefund(id, status, note, id_user, transaction1, null);
+
         await transaction1.commit();
         console.log(
           `✅ PaymentRequest status changed to "${status}" in DB1 only`
@@ -1024,9 +1063,11 @@ class PaymentRequestService extends DualDatabaseService {
       console.error(`❌ Error changing PaymentRequest status:`, error.message);
       if (transaction1) await transaction1.rollback();
       if (transaction2) await transaction2.rollback();
-      throw new Error(
+      const wrapped = new Error(
         `Failed to change PaymentRequest status: ${error.message}`
       );
+      wrapped.statusCode = error.statusCode;
+      throw wrapped;
     }
   }
 }

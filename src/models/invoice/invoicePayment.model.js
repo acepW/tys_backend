@@ -35,10 +35,16 @@ module.exports = (sequelize) => {
         comment: "Receiving bank (nama bank penerima); required for transfers",
       },
       payment_method: {
-        type: DataTypes.ENUM("transfer", "cash"),
+        type: DataTypes.ENUM("transfer", "cash", "credit note"),
         allowNull: false,
         defaultValue: "transfer",
-        comment: "Payment method",
+        comment: "Payment method; credit note: paid by AR & AP from the credit note of a cancelled paid invoice",
+      },
+      id_credit_note: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "credit_notes", key: "id" },
+        comment: "Credit note the payment came from (payment_method credit note)",
       },
       status: {
         type: DataTypes.ENUM("verification", "accepted", "rejected"),
@@ -103,6 +109,10 @@ module.exports = (sequelize) => {
       constraints: false,
       scope: { fileable_type: "invoice_payments", category: "payment_proof" },
       as: "payment_proof",
+    });
+    InvoicePayment.belongsTo(models.CreditNote, {
+      foreignKey: "id_credit_note",
+      as: "credit_note",
     });
   };
 

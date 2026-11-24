@@ -3,6 +3,7 @@ const router = express.Router();
 const DebitNoteController = require("../controllers/debitNote/debitNote.controller");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 const { requireApprover } = require("../middleware/approval.middleware");
+const CreditNoteController = require("../controllers/creditNote/creditNote.controller");
 
 // GET routes
 router.get("/incoming", authenticate, DebitNoteController.getIncoming);
@@ -35,5 +36,7 @@ router.patch("/reject/:id", authenticate, requireApprover("debit note", ["on ver
 
 //PATCH paid
 router.patch("/paid/:id", authenticate, requireApprover("debit note", ["approved"]), DebitNoteController.paid);
+// Paid in full from the deposit of a credit note (docs/invoice-cancellation-paid.md, fase E)
+router.patch("/credit-note-payment/:id", authenticate, requireApprover("debit note", ["approved"]), CreditNoteController.payDebitNote);
 
 module.exports = router;

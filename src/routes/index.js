@@ -143,6 +143,9 @@ router.use("/recruitment", recruitmentRoutes);
 
 //report
 router.use("/report-invoices", reportInvoiceRoutes);
+router.use("/report-credit-notes", require("./reportCreditNote.route"));
+router.use("/invoice-paid-cancellations", require("./invoicePaidCancellation.route"));
+router.use("/credit-notes", require("./creditNote.route"));
 
 //approval flow
 router.use("/approval-flows", approvalFlowRoutes);
@@ -212,6 +215,7 @@ router.get("/", (req, res) => {
 
       //report
       reportInvoice: "/api/report-invoices",
+      reportCreditNote: "/api/report-credit-notes",
 
       //approval flow
       approvalFlow: "/api/approval-flows",

@@ -31,6 +31,11 @@ Pembatalan / konversi 50% (dari waiting for payment, belum ada bukti bayar dan F
 
 waiting for payment ─Sales ajukan─► cancellation requested ─AR & AP approve─► cancellation reviewed ─SPV approve─► cancellation verified ─Direktur approve─► cancelled
                                     (ditolak di tahap mana pun ─► waiting for payment)                                    (konversi: invoice baru 50% dibuat, langsung waiting for payment)
+
+Pembatalan invoice yang sudah bayar / FP sudah diminta atau terbit (sejak 2026-11-24):
+
+status sebelumnya ─Sales ajukan─► paid cancellation in progress ─(AR & AP, SPV, Wakil Direktur, Direktur, lalu pengalihan / refund)─► cancelled
+                                  (pengajuan ditarik ─► status sebelumnya)
 ```
 
 | Status                   | Arti                                                     | Siapa yang beraksi | Tombol yang tampil                 |
@@ -50,7 +55,8 @@ waiting for payment ─Sales ajukan─► cancellation requested ─AR & AP appr
 | `cancellation requested` | Pembatalan/konversi diajukan Sales, menunggu AR & AP     | AR & AP            | Approve, Reject Pembatalan         |
 | `cancellation reviewed`  | Disetujui AR & AP, menunggu SPV FAT Internal             | SPV FAT Internal   | Approve, Reject Pembatalan         |
 | `cancellation verified`  | Disetujui SPV, menunggu Direktur                         | Direktur           | Approve, Reject Pembatalan         |
-| `cancelled`              | Ditolak SPV karena CT/PO di-addendum/batal/revisi, atau pembatalan/konversi di-approve Direktur | - | Tidak ada              |
+| `paid cancellation in progress` | Invoice yang sudah bayar / FP-nya sudah diminta sedang dibatalkan (sejak 2026-11-24). Semua aksi invoice lain ditolak | Lihat pengajuannya | Tidak ada; tampilkan tautan ke pengajuan ([invoice-cancellation-paid-frontend.md](invoice-cancellation-paid-frontend.md)) |
+| `cancelled`              | Ditolak SPV karena CT/PO di-addendum/batal/revisi, atau pembatalan/konversi di-approve Direktur, atau pembatalan invoice yang sudah bayar selesai | - | Tidak ada              |
 
 - `paid & clear` dan `cancelled` adalah status akhir. Status `paid` sudah tidak dipakai; invoice lama yang `paid` dipindahkan ke `paid & clear`.
 - SPV memilih jenis reject (`reject_type`): `tax` → `rejected`, AR & AP memperbaiki lalu submit ulang ke `on verification`; `ct/po cancelled` → `cancelled`, Sales membuat request invoice baru dari CT/PO yang sudah diubah. Lihat bagian 5.
@@ -69,6 +75,7 @@ none ─Sales request FP (1x) / bukti bayar pertama diterima─► requested ─
 | `none`               | Final Invoice dan FP belum diminta                | Request Faktur Pajak (Sales)    |
 | `requested`          | Menunggu AR & AP meng-upload Final Invoice (dan FP) | Upload Final Invoice & Faktur Pajak (AR & AP) |
 | `issued`             | Final Invoice (dan FP) sudah terbit, bisa di-download | Download Final Invoice / Faktur Pajak |
+| `cancelled`          | FP dibatalkan karena invoice dibatalkan setelah FP terbit (sejak 2026-11-24) | Download FP lama, tandai batal |
 
 - **Hanya invoice dengan PPN** (`tax_ppn === true`) yang butuh FP. Invoice tanpa PPN tetap butuh Final Invoice, tetapi tidak bisa di-request Sales (tombol Request FP disembunyikan).
 - Sales bisa request FP **satu kali**, kapan pun setelah invoice di-approve SPV (termasuk saat bukti bayar sedang dicek), selama `tax_invoice_status === "none"`. Final Invoice ikut diterbitkan saat itu, walaupun belum ada pembayaran.
@@ -195,6 +202,9 @@ Riwayat untuk bukti potong:
 | Ajukan pembatalan/konversi | `PATCH /api/invoices/cancellation-request/:id`    | `status` = `waiting for payment`, belum ada bukti bayar, `tax_invoice_status` = `none`, bukan invoice hasil konversi |
 | Approve pembatalan         | `PATCH /api/invoices/cancellation-approve/:id`    | `status` = `cancellation requested` / `reviewed` / `verified` |
 | Reject pembatalan          | `PATCH /api/invoices/cancellation-reject/:id`     | `status` = `cancellation requested` / `reviewed` / `verified` |
+| Preview pembatalan invoice yang sudah bayar | `GET /api/invoices/:id/paid-cancellation/preview` | Lihat [invoice-cancellation-paid-frontend.md](invoice-cancellation-paid-frontend.md) |
+| Ajukan pembatalan invoice yang sudah bayar | `PATCH /api/invoices/paid-cancellation-request/:id` | Ada pembayaran diterima ≥ 50% total atau FP sudah diminta/terbit; approval lanjut di `/api/invoice-paid-cancellations` |
+| Bayar dari deposit Credit Note | `PATCH /api/invoices/credit-note-payment/:id`    | `status` = `waiting for payment` / `payment proof rejected` |
 
 Semua aksi `PATCH` mengembalikan detail invoice terbaru (bentuknya sama dengan `GET /api/invoices/:id`), jadi halaman detail bisa langsung di-refresh dari response.
 
@@ -220,7 +230,7 @@ File di-upload dulu, lalu metadata hasilnya dikirim ke endpoint invoice.
 }
 ```
 
-Untuk field berbentuk **array file** (`payment_proof`, `tax_invoice_attachment`, `file_final_invoice`, `revision_attachment`, `withholding_tax_receipt`, `wht_reject_attachment`), kirim objek ini apa adanya.
+Untuk field berbentuk **array file** (`payment_proof`, `tax_invoice_attachment`, `file_final_invoice`, `revision_attachment`, `withholding_tax_receipt`, `wht_reject_attachment`, dan sejak 2026-11-24 `cancellation_attachment`, `refund_letter`, `tax_return_note`, `transfer_proof`, `reject_attachment` di pembatalan invoice yang sudah bayar), kirim objek ini apa adanya.
 
 ## 1. Buat dan edit invoice (AR & AP)
 
@@ -820,6 +830,8 @@ PATCH /api/invoices/21/withholding-taxes/51/reject
 
 ## 11. Cancel dan konversi Proforma Invoice
 
+> Bagian ini untuk invoice yang **belum** dibayar dan FP-nya belum diminta. Invoice yang sudah punya pembayaran diterima, atau FP-nya sudah diminta/terbit, dibatalkan lewat alur terpisah: [invoice-cancellation-paid-frontend.md](invoice-cancellation-paid-frontend.md).
+
 Untuk invoice yang **belum dibayar** dan **FP-nya belum diminta**. Sales klik **Cancel Invoice**, lalu frontend menampilkan:
 
 - **(A) Peringatan**: ketentuannya, klien wajib membayar 50% dari nominal Proforma Invoice sebelum dibatalkan.
@@ -831,7 +843,7 @@ B dan C sama-sama wajib alasan dan bukti, lalu melewati AR & AP, SPV FAT Interna
 Syarat tombol **Cancel Invoice** (backend juga mengeceknya):
 
 - `status === "waiting for payment"`.
-- `payments` kosong, termasuk bukti bayar yang ditolak.
+- ~~`payments` kosong, termasuk bukti bayar yang ditolak.~~ Sejak 2026-11-24: tidak ada `payments` berstatus `verification` atau `accepted`; bukti bayar yang ditolak tidak lagi menghalangi. Invoice yang sudah punya pembayaran diterima, atau FP-nya sudah diminta, dibatalkan lewat alur pembatalan invoice yang sudah bayar ([invoice-cancellation-paid.md](invoice-cancellation-paid.md)).
 - `tax_invoice_status === "none"`.
 - `id_invoice_converted_from` kosong. Invoice hasil konversi tidak bisa dibatalkan atau dikonversi lagi.
 
@@ -993,7 +1005,7 @@ Debit note dengan status `cancelled` adalah status akhir. Edit, hapus, submit, a
 | 409  | `<aksi> is not allowed while the invoice is <status>`                 | Aksi revisi di status yang salah                       |
 | 400  | `type must be one of: cancel, convert`, `reason is required`, `cancellation_attachment must be a non-empty array` | Pengajuan pembatalan tidak lengkap |
 | 400  | `cancel_debit_note must be a boolean: the invoice has a debit note`  | Pengajuan pembatalan tanpa pilihan debit note          |
-| 409  | `Invoice cannot be cancelled after a payment proof was uploaded`, `Invoice cannot be cancelled after its tax invoice was requested`, `An invoice converted to 50% cannot be cancelled or converted again` | Syarat pengajuan pembatalan tidak terpenuhi |
+| 409  | ~~`Invoice cannot be cancelled after a payment proof was uploaded`~~ `Invoice cannot be cancelled here after a payment was accepted: use the paid invoice cancellation` (sejak 2026-11-24), `Invoice cannot be cancelled after its tax invoice was requested`, `An invoice converted to 50% cannot be cancelled or converted again` | Syarat pengajuan pembatalan tidak terpenuhi |
 | 409  | `A paid debit note cannot be cancelled with the invoice`, `The debit note has been paid; it cannot be cancelled with the invoice` | Debit note sudah dibayar (saat mengajukan, atau dibayar sebelum Direktur approve) |
 | 409  | `Cancellation request is not allowed while the invoice is <status>`, `Approving the cancellation is not allowed ...`, `Rejecting the cancellation is not allowed ...` | Aksi pembatalan di status yang salah |
 | 409  | `Debit note is cancelled`, `Debit note cannot be paid while the cancellation of its invoice, which cancels the debit note too, is in process` | Aksi pada debit note yang dibatalkan / sedang diajukan batal |
@@ -1018,6 +1030,7 @@ Pesan error ada di field `message` pada response. Error 403 dan 409 dengan pesan
 | `PUT /:id` (edit draft) menimpa hampir semua kolom yang dikirim, termasuk `invoice_services` | `PUT /:id` hanya mengubah `date`, `due_date`, `note`, dan 4 checkbox pajak; pajak dan `total` dihitung ulang backend (2026-11-18) |
 | Checklist bukti potong: tiap item boolean (`"dpp": true`); saat tolak opsional | Tiap item `{ "checked", "note" }`; saat tolak wajib 10 item, catatan wajib di item `false`, minimal satu `false` (2026-11-18) |
 | Tidak ada pembatalan invoice | `PATCH /cancellation-request/:id`, `/cancellation-approve/:id`, `/cancellation-reject/:id`: cancel atau konversi 50% lewat AR & AP, SPV, Direktur; status baru `cancellation requested` / `reviewed` / `verified`; debit note bisa ikut `cancelled` (2026-11-18) |
+| Invoice yang sudah bayar / FP terbit tidak bisa dibatalkan | Alur pembatalan invoice yang sudah bayar (2026-11-24): status `paid cancellation in progress`, `tax_invoice_status` `cancelled`, pembayaran bermetode `credit note` (`payments[].credit_note`), detail memuat `paid_cancellations`. Panduan: [invoice-cancellation-paid-frontend.md](invoice-cancellation-paid-frontend.md) |
 | Revisi hanya mengubah PPh (`tax_pph_23`, `tax_pp_20`, `tax_pph_4_ayat_2`) | Revisi mengubah semua pajak, termasuk `tax_ppn` (2026-11-18). PPN dihapus → data FP dikosongkan; PPN ditambahkan ke invoice Final → upload ulang wajib membawa FP baru |
 
 Endpoint `/signing/:id`, `/waiting-for-payment/:id`, dan `/pay/:id` sudah dihapus dan akan mengembalikan 404.

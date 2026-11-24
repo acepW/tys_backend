@@ -27,6 +27,17 @@
 //   8. Tahap 5 (2026-11-18): adds the cancellation statuses of invoices and
 //      their progress, invoices.id_invoice_converted_from, the
 //      invoice_cancellations table and the "cancelled" debit note status.
+//   9. Cancellation of a paid invoice, fase A–B (2026-11-24,
+//      docs/invoice-cancellation-paid.md): adds the "paid cancellation in progress"
+//      invoice status, the "cancelled" tax invoice status, the paid cancellation
+//      progress statuses and the invoice_paid_cancellations table.
+//  10. Fase C (2026-11-24): creates credit_notes and credit_note_allocations, and
+//      adds the "credit note" payment method and invoice_payments.id_credit_note.
+//  11. Fase D (2026-11-24): refund through a payment request. Adds the "refund"
+//      payment type, payment_requests.id_invoice_paid_cancellation,
+//      invoice_paid_cancellations.id_payment_request and the "refund requested"
+//      progress status, and widens payment_requests.total_payment_request and
+//      total_payment from DECIMAL(10,2) to DECIMAL(20,2) (a refund may pass 100 million).
 const { DataTypes, Op } = require("sequelize");
 const { models, db1, db2 } = require("../src/models");
 
@@ -66,19 +77,19 @@ async function moveRemovedStatuses(name, model) {
 }
 
 // Matches the column to the model's ENUM when it lacks `marker` or still has `removed`.
-async function syncStatus(name, model, table, marker, removed = null) {
+async function syncStatus(name, model, table, marker, removed = null, field = "status") {
   const queryInterface = model.sequelize.getQueryInterface();
   const columns = await queryInterface.describeTable(table);
-  const type = columns.status.type.toLowerCase();
+  const type = columns[field].type.toLowerCase();
   if (type.includes(marker) && !(removed && type.includes(`'${removed}'`))) return;
-  const { status } = model.rawAttributes;
-  await queryInterface.changeColumn(table, "status", {
-    type: status.type,
-    allowNull: status.allowNull,
-    defaultValue: status.defaultValue,
-    comment: status.comment,
+  const attribute = model.rawAttributes[field];
+  await queryInterface.changeColumn(table, field, {
+    type: attribute.type,
+    allowNull: attribute.allowNull,
+    defaultValue: attribute.defaultValue,
+    comment: attribute.comment,
   });
-  console.log(`[${name}] ~ ${table}.status matches the model`);
+  console.log(`[${name}] ~ ${table}.${field} matches the model`);
 }
 
 async function migrateSchema(name, dbModels) {
@@ -101,6 +112,48 @@ async function migrateSchema(name, dbModels) {
   await syncStatus(name, dbModels.DebitNote, "debit_notes", "'cancelled'");
   await syncStatus(name, dbModels.DebitNoteVerificationProgress,
     "debit_note_verification_progress", "'cancelled'");
+  // Cancellation of a paid invoice, fase A–B (2026-11-24)
+  await syncStatus(name, dbModels.Invoice, "invoices", "paid cancellation in progress");
+  await syncStatus(name, dbModels.Invoice, "invoices", "'cancelled'", null, "tax_invoice_status");
+  await syncStatus(name, dbModels.InvoiceVerificationProgress,
+    "invoice_verification_progress", "paid cancellation completed");
+  await dbModels.InvoicePaidCancellation.sync({ alter: false });
+  // Fase C: payment transfer with credit notes (2026-11-24)
+  await dbModels.CreditNote.sync({ alter: false });
+  await dbModels.CreditNoteAllocation.sync({ alter: false });
+  await syncStatus(name, dbModels.InvoicePayment, "invoice_payments", "'credit note'", null, "payment_method");
+  await addTableColumn(name, dbModels.InvoicePayment, "invoice_payments", "id_credit_note");
+  // Fase D: refund through a payment request (2026-11-24)
+  await syncStatus(name, dbModels.PaymentRequest, "payment_requests", "'refund'", null, "payment_type");
+  await addTableColumn(name, dbModels.PaymentRequest, "payment_requests", "id_invoice_paid_cancellation");
+  await addTableColumn(name, dbModels.InvoicePaidCancellation, "invoice_paid_cancellations", "id_payment_request");
+  await syncStatus(name, dbModels.InvoiceVerificationProgress,
+    "invoice_verification_progress", "paid cancellation refund requested");
+  for (const column of ["total_payment_request", "total_payment"])
+    await widenDecimal(name, dbModels.PaymentRequest, "payment_requests", column, "decimal(20,2)");
+}
+
+// Changes a column to the model's type when the database still has another one.
+async function widenDecimal(name, model, table, column, wanted) {
+  const queryInterface = model.sequelize.getQueryInterface();
+  const columns = await queryInterface.describeTable(table);
+  if (columns[column].type.toLowerCase() === wanted) return;
+  const attribute = model.rawAttributes[column];
+  await queryInterface.changeColumn(table, column, {
+    type: attribute.type,
+    allowNull: attribute.allowNull,
+    defaultValue: attribute.defaultValue,
+    comment: attribute.comment,
+  });
+  console.log(`[${name}] ~ ${table}.${column} is now ${wanted}`);
+}
+
+async function addTableColumn(name, model, table, column) {
+  const queryInterface = model.sequelize.getQueryInterface();
+  const columns = await queryInterface.describeTable(table);
+  if (columns[column]) return;
+  await queryInterface.addColumn(table, column, model.rawAttributes[column]);
+  console.log(`[${name}] + ${table}.${column}`);
 }
 
 // Withholding tax checklists stored as { item: boolean } become

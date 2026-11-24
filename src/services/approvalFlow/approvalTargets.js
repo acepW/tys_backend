@@ -5,6 +5,9 @@
 // statusField: document column holding that status, when it is not "status".
 // scopes: document column compared with the approver's own department/division.
 // A scope a feature does not list falls back to "all".
+// baseWhere: extra document filter for My Task.
+const { Op } = require("sequelize");
+
 module.exports = {
   "service pricing": {
     model: "ServicePricing",
@@ -68,6 +71,26 @@ module.exports = {
     numberField: "invoice_no",
     statusField: "tax_invoice_status",
     statuses: { requested: "Upload Final Invoice & Tax Invoice (FP)" },
+    // Not while a paid cancellation locks the invoice: it will be cancelled.
+    baseWhere: { status: { [Op.ne]: "paid cancellation in progress" } },
+  },
+  // Cancellation of an invoice already paid (at least 50%) or with a tax invoice
+  // (docs/invoice-cancellation-paid.md). Sales acts on "rejected"; the cashier pays
+  // the refund on its payment request, so "waiting for cashier payment" has no flow.
+  "invoice paid cancellation": {
+    model: "InvoicePaidCancellation",
+    label: "Invoice Cancellation (Paid / Tax Invoice Issued)",
+    numberField: "invoice_no",
+    statuses: {
+      "waiting ar&ap review": "Review Invoice Cancellation by AR & AP",
+      "waiting outstanding settlement": "Approve / Reject Invoice Cancellation after Outstanding Settlement",
+      rejected: "Revise & Resubmit Invoice Cancellation",
+      "waiting spv fat internal approval": "Approve / Reject Invoice Cancellation by SPV FAT Internal",
+      "waiting vice director approval": "Approve / Reject Invoice Cancellation by Vice Director",
+      "waiting director approval": "Approve / Reject Invoice Cancellation by Director",
+      "waiting for payment transfer": "Process Payment Transfer (Credit Note)",
+      "waiting for refund process": "Create Refund Payment Request",
+    },
   },
   "debit note": {
     model: "DebitNote",

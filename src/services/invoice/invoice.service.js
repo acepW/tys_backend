@@ -415,6 +415,12 @@ class InvoiceService extends DualDatabaseService {
               as: "user_verify",
               attributes: ["id", "name", "email"],
             },
+            // Payment moved from the credit note of a cancelled paid invoice
+            {
+              model: dbModels.CreditNote,
+              as: "credit_note",
+              attributes: ["id", "credit_note_no", "id_invoice"],
+            },
             {
               model: dbModels.File,
               as: "payment_proof",
@@ -503,6 +509,23 @@ class InvoiceService extends DualDatabaseService {
               required: false,
               where: { is_active: true },
             },
+          ],
+        },
+        {
+          model: dbModels.InvoicePaidCancellation,
+          as: "paid_cancellations",
+          separate: true,
+          order: [["id", "ASC"]],
+          include: [
+            ...["user_request", "user_review", "user_verify", "user_vice_approve", "user_approve"].map(
+              (as) => ({ model: dbModels.User, as, attributes: ["id", "name", "email"] }),
+            ),
+            ...["cancellation_attachment", "refund_letter", "tax_return_note"].map((as) => ({
+              model: dbModels.File,
+              as,
+              required: false,
+              where: { is_active: true },
+            })),
           ],
         },
         {
@@ -1610,20 +1633,7 @@ class InvoiceService extends DualDatabaseService {
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const invoice = await this._lockInvoice(id, t1);
       const payment = await this._paymentInVerification(invoice, t1);
-      const accepted =
-        (await this._acceptedAmount(invoice.id, t1)) + Number(payment.amount);
-      const isPaidOff = accepted >= Number(invoice.total);
-      // Any accepted payment makes the proforma final, so AR & AP must issue the
-      // final invoice (with its tax invoice when the invoice has PPN) if sales
-      // has not requested it yet.
-      const requestsTaxInvoice = invoice.tax_invoice_status === "none";
-      // Paid off with PPh 23 / PPh 4(2): sales must collect the withholding tax
-      // receipts before the invoice is clear.
-      const withholdingTaxes = isPaidOff
-        ? await this._createWithholdingTaxes(invoice, t1, t2)
-        : [];
-      const paidStatus = withholdingTaxes.length ? "paid waiting wht" : "paid & clear";
-
+      await this._settleAcceptedPayment(invoice, payment, note, idUser, t1, t2);
       await mirrorUpdate(
         "InvoicePayment",
         payment.id,
@@ -1636,56 +1646,82 @@ class InvoiceService extends DualDatabaseService {
         t1,
         t2,
       );
-      await mirrorUpdate(
-        "Invoice",
-        invoice.id,
-        {
-          status: isPaidOff ? paidStatus : "waiting for payment",
-          payment_amount: accepted,
-          payment_date: payment.transfer_date,
-          payment_method: payment.payment_method,
-          ...(requestsTaxInvoice && { tax_invoice_status: "requested" }),
-        },
-        t1,
-        t2,
-      );
+    });
+    return this.getById(id, {}, true);
+  }
+
+  /**
+   * What accepting a payment does to its invoice, before the payment itself is
+   * accepted (it is counted on top of the payments accepted so far): waiting for
+   * the rest, or paid off with its withholding tax receipts or clear; the final
+   * invoice (and tax invoice) is requested if sales has not done so. Used by
+   * acceptPayment and by a transfer from a credit note (paid invoice cancellation).
+   * @param {Object} payment - { amount, transfer_date, payment_method }
+   */
+  async _settleAcceptedPayment(invoice, payment, note, idUser, t1, t2) {
+    const accepted =
+      (await this._acceptedAmount(invoice.id, t1)) + Number(payment.amount);
+    const isPaidOff = accepted >= Number(invoice.total);
+    // Any accepted payment makes the proforma final, so AR & AP must issue the
+    // final invoice (with its tax invoice when the invoice has PPN) if sales
+    // has not requested it yet.
+    const requestsTaxInvoice = invoice.tax_invoice_status === "none";
+    // Paid off with PPh 23 / PPh 4(2): sales must collect the withholding tax
+    // receipts before the invoice is clear.
+    const withholdingTaxes = isPaidOff
+      ? await this._createWithholdingTaxes(invoice, t1, t2)
+      : [];
+    const paidStatus = withholdingTaxes.length ? "paid waiting wht" : "paid & clear";
+
+    await mirrorUpdate(
+      "Invoice",
+      invoice.id,
+      {
+        status: isPaidOff ? paidStatus : "waiting for payment",
+        payment_amount: accepted,
+        payment_date: payment.transfer_date,
+        // invoices.payment_method only knows transfer and cash.
+        ...(paymentMethods.includes(payment.payment_method) && { payment_method: payment.payment_method }),
+        ...(requestsTaxInvoice && { tax_invoice_status: "requested" }),
+      },
+      t1,
+      t2,
+    );
+    await this._addProgress(
+      invoice.id,
+      idUser,
+      "payment accepted",
+      note ||
+        (!isPaidOff
+          ? "Payment accepted, waiting for the remaining payment"
+          : withholdingTaxes.length
+            ? `Payment accepted, invoice paid off; waiting for the withholding tax receipt (${withholdingTaxes
+                .map((tax) => whtSources[tax.tax_type].label)
+                .join(", ")})`
+            : "Payment accepted, invoice paid off"),
+      t1,
+      t2,
+    );
+    if (isPaidOff && !withholdingTaxes.length)
       await this._addProgress(
         invoice.id,
         idUser,
-        "payment accepted",
-        note ||
-          (!isPaidOff
-            ? "Payment accepted, waiting for the remaining payment"
-            : withholdingTaxes.length
-              ? `Payment accepted, invoice paid off; waiting for the withholding tax receipt (${withholdingTaxes
-                  .map((tax) => whtSources[tax.tax_type].label)
-                  .join(", ")})`
-              : "Payment accepted, invoice paid off"),
+        "paid & clear",
+        "Invoice paid off without withholding tax",
         t1,
         t2,
       );
-      if (isPaidOff && !withholdingTaxes.length)
-        await this._addProgress(
-          invoice.id,
-          idUser,
-          "paid & clear",
-          "Invoice paid off without withholding tax",
-          t1,
-          t2,
-        );
-      if (requestsTaxInvoice)
-        await this._addProgress(
-          invoice.id,
-          idUser,
-          invoice.tax_ppn ? "tax invoice requested" : "final invoice requested",
-          invoice.tax_ppn
-            ? "Final invoice and tax invoice requested automatically after a payment was accepted"
-            : "Final invoice requested automatically after a payment was accepted",
-          t1,
-          t2,
-        );
-    });
-    return this.getById(id, {}, true);
+    if (requestsTaxInvoice)
+      await this._addProgress(
+        invoice.id,
+        idUser,
+        invoice.tax_ppn ? "tax invoice requested" : "final invoice requested",
+        invoice.tax_ppn
+          ? "Final invoice and tax invoice requested automatically after a payment was accepted"
+          : "Final invoice requested automatically after a payment was accepted",
+        t1,
+        t2,
+      );
   }
 
   /**
@@ -1821,6 +1857,9 @@ class InvoiceService extends DualDatabaseService {
       fail("file_final_invoice must be a non-empty array");
     await withTransactions(isDoubleDatabase, async (t1, t2) => {
       const invoice = await this._lockInvoice(id, t1);
+      // A paid cancellation in progress cancels the invoice and its tax invoice.
+      if (invoice.status === "paid cancellation in progress")
+        fail("Final invoice and tax invoice cannot be uploaded while the invoice is being cancelled", 409);
       if (invoice.tax_invoice_status !== "requested")
         fail(
           invoice.tax_invoice_status === "issued"
@@ -2128,12 +2167,17 @@ class InvoiceService extends DualDatabaseService {
         fail("An invoice converted to 50% cannot be cancelled or converted again", 409);
       if (invoice.tax_invoice_status !== "none")
         fail("Invoice cannot be cancelled after its tax invoice was requested", 409);
+      // Rejected payment proofs do not count (decision 45, changed 2026-11-24); an
+      // accepted payment goes to the paid cancellation instead.
       const payments = await models.db1.InvoicePayment.count({
-        where: { id_invoice: invoice.id },
+        where: { id_invoice: invoice.id, status: ["verification", "accepted"] },
         transaction: t1,
       });
       if (payments)
-        fail("Invoice cannot be cancelled after a payment proof was uploaded", 409);
+        fail(
+          "Invoice cannot be cancelled here after a payment was accepted: use the paid invoice cancellation",
+          409,
+        );
       const cancelDebitNote = await this._cancelDebitNoteChoice(
         invoice,
         data.cancel_debit_note,

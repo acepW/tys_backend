@@ -122,9 +122,15 @@ module.exports = (sequelize) => {
           "Employee name for a PJT payment request (defaults to the employee's full_name)",
       },
       payment_type: {
-        type: DataTypes.ENUM("vendor", "pnbp spb", "others", "pjt", "top up petty cash"),
+        type: DataTypes.ENUM("vendor", "pnbp spb", "others", "pjt", "top up petty cash", "refund"),
         allowNull: false,
-        comment: "Payment type",
+        comment: "Payment type; refund: created by AR & AP for a cancelled paid invoice, straight to the cashier",
+      },
+      id_invoice_paid_cancellation: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: { model: "invoice_paid_cancellations", key: "id" },
+        comment: "Paid invoice cancellation this refund settles (payment_type refund)",
       },
       payment_purpose: {
         type: DataTypes.STRING(1000),
@@ -153,7 +159,7 @@ module.exports = (sequelize) => {
         comment: "Payment date",
       },
       total_payment_request: {
-        type: DataTypes.DECIMAL(10, 2),
+        type: DataTypes.DECIMAL(20, 2),
         allowNull: false,
         comment: "Total payment request amount",
       },
@@ -243,7 +249,7 @@ module.exports = (sequelize) => {
         comment: "Payment method of Invoice",
       },
       total_payment: {
-        type: DataTypes.DECIMAL(10, 2),
+        type: DataTypes.DECIMAL(20, 2),
         allowNull: true,
         comment: "Total payment amount",
       },
@@ -327,6 +333,11 @@ module.exports = (sequelize) => {
 
   // Define associations (untuk future development)
   PaymentRequest.associate = (models) => {
+    // Paid invoice cancellation settled by this refund
+    PaymentRequest.belongsTo(models.InvoicePaidCancellation, {
+      foreignKey: "id_invoice_paid_cancellation",
+      as: "invoice_paid_cancellation",
+    });
     // Contoh: PaymentRequest dapat memiliki relasi dengan Order, dll
     // PaymentRequest.hasMany(models.Order, { ... });
 

@@ -8,6 +8,9 @@ const taxService = require("../masterTax/tax.service");
 const {
   OPEN_CANCELLATION_STATUSES,
 } = require("../../models/invoice/invoiceCancellation.model");
+const {
+  OPEN_PAID_CANCELLATION_STATUSES,
+} = require("../../models/invoice/invoicePaidCancellation.model");
 
 class DebitNoteService extends DualDatabaseService {
   constructor() {
@@ -1086,6 +1089,14 @@ class DebitNoteService extends DualDatabaseService {
     if (pending)
       conflict(
         "Debit note cannot be paid while the cancellation of its invoice, which cancels the debit note too, is in process",
+      );
+    // Same for the cancellation of a paid invoice (docs/invoice-cancellation-paid.md).
+    const pendingPaid = await models.db1.InvoicePaidCancellation.count({
+      where: { id_debit_note: id, cancel_debit_note: true, status: OPEN_PAID_CANCELLATION_STATUSES },
+    });
+    if (pendingPaid)
+      conflict(
+        "Debit note cannot be paid while the cancellation of its paid invoice, which cancels the debit note too, is in process",
       );
   }
 

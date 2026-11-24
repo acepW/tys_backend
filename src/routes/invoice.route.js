@@ -9,12 +9,18 @@ const {
 } = require("../services/invoice/invoice.service");
 const { authenticate, authorize } = require("../middleware/auth.middleware");
 const { requireApprover } = require("../middleware/approval.middleware");
+const PaidCancellationController = require("../controllers/invoice/invoicePaidCancellation.controller");
+const CreditNoteController = require("../controllers/creditNote/creditNote.controller");
+const { TARGET_INVOICE_STATUSES: creditNoteTargetStatuses } = require("../services/creditNote/creditNote.service");
+const { ELIGIBLE_STATUSES: paidCancellationStatuses } = require("../services/invoice/invoicePaidCancellation.service");
 
 // GET routes
 router.get("/incoming", authenticate, InvoiceController.getIncoming);
 router.get("/", authenticate, InvoiceController.getAll);
 router.get("/no/documents", authenticate, InvoiceController.getNoInvoice);
 router.get("/:id", authenticate, InvoiceController.getById);
+// What sales needs before requesting the cancellation of a paid invoice
+router.get("/:id/paid-cancellation/preview", authenticate, PaidCancellationController.preview);
 
 // POST routes
 router.post("/from-incoming", authenticate, InvoiceController.createFromIncoming);
@@ -151,6 +157,25 @@ router.patch(
   authenticate,
   requireApprover("invoice", cancellationStatuses),
   InvoiceController.rejectCancellation,
+);
+
+//PATCH cancellation of a paid invoice (or one with a tax invoice): sales requests
+// it (checked against the sales flow at "waiting for payment"); the approvals run
+// on /invoice-paid-cancellations. See docs/invoice-cancellation-paid.md
+router.patch(
+  "/paid-cancellation-request/:id",
+  authenticate,
+  requireApprover("invoice", paidCancellationStatuses, "waiting for payment"),
+  PaidCancellationController.request,
+);
+
+//PATCH AR & AP pays the invoice from the deposit of a credit note (checked against
+// the AR & AP flow at "payment verification", as for an accepted payment proof)
+router.patch(
+  "/credit-note-payment/:id",
+  authenticate,
+  requireApprover("invoice", creditNoteTargetStatuses, "payment verification"),
+  CreditNoteController.payInvoice,
 );
 
 module.exports = router;

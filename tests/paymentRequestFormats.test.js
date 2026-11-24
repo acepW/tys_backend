@@ -124,10 +124,12 @@ test("top up petty cash goes from manager FAT straight to the cashier", async (t
   const progress = models.db1.PaymentRequestVerificationProgress;
   const originals = {
     getById: service.getById, update: service.Model1.update, create: progress.create, transaction: db1.transaction,
+    findByPk: service.Model1.findByPk,
   };
   t.after(() => {
     service.getById = originals.getById;
     service.Model1.update = originals.update;
+    service.Model1.findByPk = originals.findByPk;
     progress.create = originals.create;
     db1.transaction = originals.transaction;
   });
@@ -136,6 +138,8 @@ test("top up petty cash goes from manager FAT straight to the cashier", async (t
   let logged;
   service.getById = async () => ({ payment_type: paymentType, cost_bearer: "company" });
   service.Model1.update = async (values) => { updated = values; return [1]; };
+  // Not a refund of a cancelled paid invoice (checked on every status change).
+  service.Model1.findByPk = async (id) => ({ id, id_invoice_paid_cancellation: null });
   progress.create = async (values) => { logged = values; return values; };
   db1.transaction = async () => ({ commit: async () => {}, rollback: async () => {} });
   const approve = (role) => service.approvePaymentRequest(role, 1, undefined, 7, false);

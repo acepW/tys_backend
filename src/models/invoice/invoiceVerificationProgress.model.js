@@ -65,6 +65,14 @@ module.exports = (sequelize) => {
           "cancellation verified",
           "cancellation rejected",
           "converted",
+          "paid cancellation requested",
+          "paid cancellation resubmitted",
+          "paid cancellation approved",
+          "paid cancellation held",
+          "paid cancellation rejected",
+          "paid cancellation withdrawn",
+          "paid cancellation completed",
+          "paid cancellation refund requested",
         ),
         allowNull: false,
         comment: "Status of Invoice Progress",
@@ -134,6 +142,17 @@ module.exports = (sequelize) => {
         category: "wht_reject_attachment",
       },
       as: "wht_reject_attachment",
+    });
+
+    // Optional files of an AR & AP rejection of a paid invoice cancellation
+    InvoiceVerificationProgress.hasMany(models.File, {
+      foreignKey: "fileable_id",
+      constraints: false,
+      scope: {
+        fileable_type: "invoice_verification_progress",
+        category: "paid_cancellation_reject_attachment",
+      },
+      as: "paid_cancellation_reject_attachment",
     });
   };
 

@@ -11,6 +11,7 @@ Penomoran poin mengikuti dokumen kebutuhan. Perbarui kolom **Status** setiap kal
 | 2026-11-04 | 2     | Kondisi REJECT oleh SPV FAT: (1) salah PPh/PPN → `REJECTED`, kembali ke My Task AR & AP untuk revisi pajak; (2) CT/PO di-addendum/batal/revisi → status CT/PO CANCELLED, SPV tidak bisa approve dan wajib REJECT, Sales membuat invoice dari awal | Menjawab pertanyaan Tahap 4 no. 2. Reject dipecah menjadi dua jenis       |
 | 2026-11-04 | 3.1.1 | AR & AP **menerbitkan dan upload Final Invoice** bersama Faktur Pajak. Status menjadi "Final Invoice & Tax Invoice (FP) Issued"                  | Menjawab pertanyaan Tahap 4 no. 3. Proforma menjadi Final di langkah ini |
 | 2026-11-18 | 3.3.1 | Revisi tax ternyata juga boleh mengubah **PPN**, bukan hanya PPh. Semua pajak bisa diisi saat revisi                                          | Keputusan 15 diubah, ditambah keputusan 49–52. FP bisa batal kalau PPN dihapus |
+| 2026-11-24 | Cancel sudah bayar 2.1, 2.2, 7A.1 | Dokumen "(4)": jenis Credit Note (non deposit = pengalihan piutang, deposit = hutang jasa), syarat refund (Surat Pengajuan Refund sesuai template, Nota Retur FP kalau FP sudah dikreditkan), rincian pembukaan Credit Note | Dirancang di [invoice-cancellation-paid.md](invoice-cancellation-paid.md), menunggu persetujuan |
 | 2026-11-18 | 6     | Jawaban pertanyaan Tahap 5: proforma yang belum dibayar wajib dibayar 50% dulu sebelum di-cancel; konversi (B) juga perlu persetujuan Direktur; konversi membuat invoice baru dengan nomor lanjutan; bukti wajib juga di konversi (B). Saat pembatalan, Sales memilih apakah debit note ikut dibatalkan | Pertanyaan Tahap 5 no. 1–4 terjawab. Keputusan 40 dan 43 terkonfirmasi, keputusan 47 berubah menjadi pilihan. Usulan lanjutan di Pertanyaan terbuka Tahap 5 |
 
 | Status          | Arti                                                         |
@@ -31,7 +32,8 @@ Penomoran poin mengikuti dokumen kebutuhan. Perbarui kolom **Status** setiap kal
 | 3     | Bukti potong PPh (Withholding Tax), status `paid & clear`                             | Selesai (2026-11-04)        |
 | 4     | Bagian awal alur: hapus signing, dua jenis reject SPV (pajak / CT/PO), Final Invoice  | Selesai (hapus signing 2026-10-29; reject dan Final Invoice 2026-11-04), kecuali blokir approve CT/PO (2d, menunggu alur pembatalan) |
 | 5     | Cancel dan konversi Proforma Invoice (poin 6–6.3)                                     | Selesai (2026-11-18), kecuali poin 5 (syarat addendum/pembatalan CT/PO, keputusan 38) |
-| -     | Alur pembatalan invoice dan seluruh report                                            | Ditunda                     |
+| 6     | Cancel invoice yang sudah bayar / terbit FP                                           | Selesai 2026-11-24 (fase A–G). Rancangan: [invoice-cancellation-paid.md](invoice-cancellation-paid.md); frontend: [invoice-cancellation-paid-frontend.md](invoice-cancellation-paid-frontend.md). Menunggu: posisi Wakil Direktur, template surat refund |
+| -     | ~~Alur pembatalan invoice dan~~ seluruh report                                        | Ditunda                     |
 
 ## Alur saat ini (setelah Tahap 1–2 dan hapus signing)
 
@@ -113,16 +115,19 @@ FP / Final Invoice: tax_invoice_status requested ─AR&AP upload FP + file_final
 
 ## Progres per poin: Tahapan Cancel Invoice yang Sudah Bayar / Terbit FP
 
-| Poin      | Ringkasan dokumen                                                           | Status  |
-| --------- | --------------------------------------------------------------------------- | ------- |
-| 1–1.2     | Sales ajukan pembatalan, konfirmasi jika FP sudah terbit, isi alasan + dokumen | Ditunda |
-| 2–2.1     | Sales pilih penyelesaian (Pengalihan Pembayaran / Refund), masuk ke AR&AP   | Ditunda |
-| 3–3.3     | Review AR&AP, termasuk cek outstanding invoice/debit note klien             | Ditunda |
-| 4–4.3     | Review SPV FAT Internal                                                     | Ditunda |
-| 5–5.3     | Review Wakil Direktur                                                       | Ditunda |
-| 6–6.3     | Review Direktur                                                             | Ditunda |
-| 7A–7A.5   | Alur Pengalihan Pembayaran                                                  | Ditunda |
-| 7B–7B.6   | Alur Refund lewat Payment Request dan Kasir                                 | Ditunda |
+Rancangan lengkap, fase, dan pertanyaannya: [invoice-cancellation-paid.md](invoice-cancellation-paid.md) (2026-11-24).
+
+| Poin      | Ringkasan dokumen                                                           | Status    | Rancangan |
+| --------- | --------------------------------------------------------------------------- | --------- | --------- |
+| 1–1.2     | Sales ajukan pembatalan, ketentuan 1–3, pop up debit note dan FP, alasan + dokumen | Selesai   | R1–R5, fase A |
+| 2–2.1     | Sales pilih penyelesaian (Pengalihan Pembayaran / Refund) dan nominal; Credit Note non deposit / deposit | Selesai   | Pilihan dan tujuan pengalihan: fase A. Pembukaan Credit Note: fase C. Pemakaian deposit di invoice berikutnya: fase E |
+| 2.2       | Refund: Surat Pengajuan Refund (template) dan Nota Retur FP                  | Selesai   | R5, fase A (template-nya menunggu file dari tim FAT, P10) |
+| 3–3.3     | Review AR&AP, termasuk cek outstanding invoice/debit note klien             | Selesai   | R6, fase B |
+| 4–4.3     | Review SPV FAT Internal                                                     | Selesai   | R6, fase B |
+| 5–5.3     | Review Wakil Direktur                                                       | Selesai   | R6, R10, fase B (posisi Wakil Direktur belum ada di master) |
+| 6–6.3     | Review Direktur                                                             | Selesai   | R6, fase B |
+| 7A–7A.5   | Alur Pengalihan Pembayaran (Credit Note, alokasi, deposit)                  | Selesai   | R8, fase C; pemakaian deposit di invoice berikutnya: fase E |
+| 7B–7B.6   | Alur Refund lewat Payment Request dan Kasir                                 | Selesai   | R9, fase D |
 
 ## Progres per poin: Yang dibutuhkan FAT Internal pada Sistem (report)
 
@@ -141,6 +146,7 @@ Semua report ditunda. Data yang dibutuhkan report invoice penjualan (pembayaran,
 | Outcome Tax Invoice Report (PPN Keluaran)      | Invoice penjualan (Tahap 2)               | Ditunda |
 | Income Tax Invoice Report (PPN Masukan)        | Invoice pembelian                         | Ditunda |
 | PPN Payment Report                             | PPN Keluaran − PPN Masukan                | Ditunda |
+| Credit Note Report (tambahan, bukan dari PDF, diminta 2026-11-24): saldo per customer, daftar, detail, mutasi | Credit Note dari pembatalan invoice yang sudah bayar | Selesai 2026-11-24, `/api/report-credit-notes` (R13 dan fase G di [invoice-cancellation-paid.md](invoice-cancellation-paid.md)) |
 
 ## Keputusan yang dipakai (disepakati 2026-10-29)
 
@@ -202,7 +208,7 @@ Semua report ditunda. Data yang dibutuhkan report invoice penjualan (pembayaran,
 42. ~~Rincian jasa di `invoice_service` tidak ikut berubah saat konversi. Opsi ikut berubah (rincian 50%, selisih pembulatan masuk ke baris terakhir) disimpan dalam keadaan nonaktif untuk jaga-jaga. Selama nonaktif, jumlah rincian tidak sama dengan `sub_total` invoice yang dikonversi.~~ Diganti 2026-11-18 oleh U5: konversi membuat invoice baru dengan rincian jasa 50%.
 43. Alasan dan bukti wajib untuk cancel maupun konversi. ~~*(Perlu konfirmasi tim FAT: PDF menyebut bukti hanya di opsi C.)*~~ Dikonfirmasi 2026-11-18: bukti juga wajib di konversi (B).
 44. AR & AP, SPV, atau Direktur boleh menolak dengan catatan wajib; invoice kembali ke `waiting for payment`.
-45. Syarat pengajuan: status `waiting for payment`, belum pernah ada bukti bayar di-upload, dan `tax_invoice_status` masih `none`.
+45. Syarat pengajuan: status `waiting for payment`, ~~belum pernah ada bukti bayar di-upload~~ tidak ada bukti bayar yang sedang diverifikasi atau sudah diterima (diubah 2026-11-24: bukti bayar yang ditolak tidak lagi menghalangi; invoice dengan pembayaran diterima masuk alur [invoice-cancellation-paid.md](invoice-cancellation-paid.md)), dan `tax_invoice_status` masih `none`.
 46. Cancel yang di-approve Direktur membuat status `cancelled`; item incoming tetap terpakai, sama seperti 2c.
 47. ~~Debit note yang terhubung tidak ikut batal atau berubah.~~ ~~Diubah 2026-11-11: debit note yang terhubung ke invoice (`invoices.id_debit_note`) **ikut batal** saat cancel invoice di-approve Direktur.~~ Diubah 2026-11-18: Sales **memilih** saat mengajukan apakah debit note yang terhubung ikut dibatalkan. Rinciannya masih usulan, lihat "Rincian debit note ikut batal" dan "Usulan setelah jawaban klien" di Pertanyaan terbuka Tahap 5.
 48. Nilai termin di Contract atau PO tidak ikut berubah saat konversi; penyesuaiannya menyusul bersama pekerjaan CT/PO.
@@ -431,7 +437,7 @@ Checklist bukti potong dengan catatan per item (2026-11-18) **belum dijalankan**
 
 1. `npm run db:sync-invoice-payments`: checklist bukti potong yang tersimpan sebagai `{ item: boolean }` dikonversi menjadi `{ item: { checked, note } }`. Baris yang sudah berformat baru dilewati, jadi aman dijalankan ulang.
 
-Tahap 5: cancel dan konversi Proforma Invoice (2026-11-18) **belum dijalankan** di database:
+Tahap 5: cancel dan konversi Proforma Invoice (2026-11-18) ~~**belum dijalankan** di database~~ *(dicek 2026-11-24: status `cancellation *`, tabel `invoice_cancellations`, dan flow `cancellation requested/reviewed/verified` sudah ada di DB1 dan DB2)*:
 
 1. `npm run db:sync-invoice-payments`: menambah status invoice `cancellation requested` / `cancellation reviewed` / `cancellation verified`, status progress `cancellation requested` / `cancellation reviewed` / `cancellation verified` / `cancellation rejected` / `converted`, kolom `invoices.id_invoice_converted_from`, tabel `invoice_cancellations`, dan status `cancelled` di debit note beserta progress-nya.
 2. `npm run db:setup-approval-flows`: membuat flow `invoice` / `cancellation requested` (AR & AP), `cancellation reviewed` (SPV FAT Internal), dan `cancellation verified` (Direktur) kalau belum ada. Posisi approver sementara Developer; atur posisi sebenarnya lewat `/api/approval-flows`.

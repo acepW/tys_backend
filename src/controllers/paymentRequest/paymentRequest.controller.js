@@ -124,7 +124,7 @@ class PaymentRequestController {
       const numbers = await paymentRequestService.getNoPaymentRequest(isDoubleDatabase);
       return successResponse(res, numbers, "Payment request numbers retrieved successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -189,7 +189,7 @@ class PaymentRequestController {
         "Payment requests retrieved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -218,7 +218,7 @@ class PaymentRequestController {
         "Payment request retrieved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -350,7 +350,7 @@ class PaymentRequestController {
         201
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -566,7 +566,7 @@ class PaymentRequestController {
         "Payment request approved successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -623,7 +623,7 @@ class PaymentRequestController {
         "Payment request rejected successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -676,7 +676,7 @@ class PaymentRequestController {
         "Payment request marked as paid successfully"
       );
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 
@@ -698,6 +698,7 @@ class PaymentRequestController {
       if (!existing) {
         return errorResponse(res, "Payment request not found", 404);
       }
+      await paymentRequestService.assertEditable(id);
 
       await paymentRequestService.update(
         id,
@@ -707,7 +708,7 @@ class PaymentRequestController {
 
       return successResponse(res, null, "Payment request deleted successfully");
     } catch (error) {
-      return errorResponse(res, error.message);
+      return errorResponse(res, error.message, error.statusCode || 500);
     }
   }
 }
